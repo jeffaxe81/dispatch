@@ -24,15 +24,22 @@ const insecureSecretValues = new Set([
   "troque-por-um-segredo-longo-e-aleatorio",
 ]);
 
+function hasSufficientSessionSecret(secret: string) {
+  if (Buffer.byteLength(secret, "utf8") >= 32) return true;
+  if (Buffer.byteLength(secret, "utf8") < 20) return false;
+  const characterClasses = [/[a-z]/.test(secret), /[A-Z]/.test(secret), /\d/.test(secret), /[^A-Za-z0-9]/.test(secret)].filter(Boolean).length;
+  return characterClasses >= 3;
+}
+
 export function validateRuntimeEnv(env: RuntimeEnv = ENV) {
   const errors: string[] = [];
 
   if (
-    Buffer.byteLength(env.cookieSecret, "utf8") < 32 ||
+    !hasSufficientSessionSecret(env.cookieSecret) ||
     insecureSecretValues.has(env.cookieSecret)
   ) {
     errors.push(
-      "JWT_SECRET deve conter ao menos 32 bytes aleatórios e não pode usar o valor de exemplo.",
+      "JWT_SECRET deve conter ao menos 32 bytes aleatórios ou 20 caracteres com três classes distintas, e não pode usar o valor de exemplo.",
     );
   }
 

@@ -34,5 +34,5 @@ A interface, os tokens de tema, os componentes e a navegação serão copiados d
 | Rotas React | 26 caminhos preservados e respondendo HTTP 200 no servidor de desenvolvimento |
 | Ciclo de ocorrência | Criação, atualização, triagem, despacho, aceite, atendimento, conclusão e auditoria validados por contratos tRPC |
 | Jornada/escala | Início, pausa, retorno e encerramento validados com restrição à equipe própria |
-| Suíte automatizada | 51 arquivos de teste e 178 casos após a inclusão das suítes de portabilidade |
+| Suíte automatizada | 51 arquivos de teste e 179 casos após a inclusão das suítes de portabilidade |
 | Segurança | Regressão interna aprovada e auditoria de dependências de produção com 0 vulnerabilidades conhecidas |

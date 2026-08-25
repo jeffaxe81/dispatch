@@ -44,3 +44,7 @@
 - [x] Executar um diff completo do projeto-fonte contra o portado e catalogar cada diferença intencional com motivo.
 - [x] Gerar uma matriz completa rota→tela→navegação→carregamento→vazio→erro, distinguindo evidência direta, indireta e global.
 - [x] Validar estados compartilhados renderizados com `QueryState.test.tsx` e registrar separadamente as páginas cobertas por testes próprios ou inspeção estrutural.
+- [x] Diagnosticar a rejeição de `JWT_SECRET` no ambiente de produção gerenciado durante o boot.
+- [x] Ajustar a validação de segredo para aceitar somente o segredo gerenciado equivalente, sem permitir valores de exemplo ou segredos fracos.
+- [x] Validar o boot do bundle de produção com ambiente representativo, testes, segurança e build.
+- [x] Criar checkpoint corrigido e orientar nova publicação pelo painel.
