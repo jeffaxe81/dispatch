@@ -24,6 +24,15 @@ describe("navegação por perfil operacional", () => {
     expect(labels).toContain("Dashboards e Relatórios");
   });
 
+  it("exibe todos os grupos laterais para o superadministrador", () => {
+    const labels = getMenuItems([], "administrador", true).map(item => item.label);
+    expect(labels).toEqual(expect.arrayContaining([
+      "Central", "Ocorrências", "Dashboards e Relatórios", "Equipes", "Kanban",
+      "Aplicativo Agente", "Viaturas", "Integrações", "Administração", "Usuários",
+      "Perfis", "Escopos", "Log de operações", "Configurações",
+    ]));
+  });
+
   it("encerra a sessão e redireciona para a tela inicial", async () => {
     const logout = vi.fn().mockResolvedValue(undefined);
     const redirect = vi.fn();

@@ -19,14 +19,14 @@ import { isFieldAgent, type AccessAssignmentLike } from "@/lib/operationalAccess
 import { useIsMobile } from "@/hooks/useMobile";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { BarChart3, CarFront, CircleHelp, ClipboardList, DoorOpen, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
-import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import React, { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 export function getMenuItems(permissions: string[] | undefined, role?: string, isSuperAdministrator = false, assignments?: AccessAssignmentLike[]) {
   const fallback = (permission: string) => role === "administrador" || (permission === "dispatch.view" && ["despachador", "supervisor"].includes(role ?? "")) || (permission === "occurrences.view" || permission === "teams.view");
-  const can = (permission: string) => permissions ? permissions.includes(permission) : fallback(permission);
+  const can = (permission: string) => isSuperAdministrator || (permissions ? permissions.includes(permission) : fallback(permission));
   const fieldAgent = isFieldAgent(role, assignments);
   const items = [] as { icon: typeof LayoutDashboard; label: string; path: string }[];
   if (!fieldAgent && can("occurrences.view")) items.push({ icon: LayoutDashboard, label: "Central", path: "/" }, { icon: MapPinned, label: "Ocorrências", path: "/ocorrencias" });

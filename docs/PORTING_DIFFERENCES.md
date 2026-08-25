@@ -27,7 +27,7 @@ Este registro cataloga as diferenças encontradas pelo `diff -qr` completo entre
 | Diretório `client` | Somente `client/index.html` e `DashboardLayout.tsx` diferem, pelos motivos de marca acima |
 | Rotas | 26 caminhos React responderam HTTP 200 |
 | Responsividade | 8 rotas recapturadas em desktop (1440×900) e 8 em mobile (390×844) |
-| Testes | 51 arquivos e 179 casos aprovados |
+| Testes | 52 arquivos e 184 casos aprovados |
 | Contratos tRPC | 95 inventariados; 91 com cobertura direta e 4 com cobertura indireta documentada |
 | Segurança | Regressão interna aprovada; auditoria de produção com 0 vulnerabilidades |
 

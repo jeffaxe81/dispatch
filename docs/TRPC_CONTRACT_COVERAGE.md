@@ -1,6 +1,6 @@
 # Cobertura dos contratos tRPC
 
-Este inventário é gerado a partir de `server/routers.ts`. O roteador e a camada de dados portados são idênticos aos arquivos do pacote-fonte, com SHA-256 **35deacf52bf84249af9ab8f0bfbcb4776cc9be841d0b3aed8debc55926ec8762** e **f8a55ba590940aa22ae8916a408ac2764ae083d53b605cc19b62c16221153142**, respectivamente. A suíte completa contém **51 arquivos e 179 testes**. A classificação **direta** indica chamadas aos contratos do domínio; **indireta** indica cobertura das mesmas regras e dependências por componentes ou políticas exercitadas pela suíte. O gerador falha se algum procedimento não possuir classificação e evidência.
+Este inventário é gerado a partir de `server/routers.ts`. O roteador e a camada de dados portados são idênticos aos arquivos do pacote-fonte, com SHA-256 **35deacf52bf84249af9ab8f0bfbcb4776cc9be841d0b3aed8debc55926ec8762** e **f8a55ba590940aa22ae8916a408ac2764ae083d53b605cc19b62c16221153142**, respectivamente. A suíte completa contém **52 arquivos e 184 testes**. A classificação **direta** indica chamadas aos contratos do domínio; **indireta** indica cobertura das mesmas regras e dependências por componentes ou políticas exercitadas pela suíte. O gerador falha se algum procedimento não possuir classificação e evidência.
 
 | Procedimento | Tipo | Cobertura | Suítes relacionadas | Evidência |
 |---|---|---|---|---|
@@ -108,5 +108,5 @@ Este inventário é gerado a partir de `server/routers.ts`. O roteador e a camad
 | Cobertura direta | 91 |
 | Cobertura indireta | 4 |
 | Procedimentos sem classificação | 0 |
-| Arquivos de teste aprovados | 51 |
-| Casos de teste aprovados | 179 |
+| Arquivos de teste aprovados | 52 |
+| Casos de teste aprovados | 184 |

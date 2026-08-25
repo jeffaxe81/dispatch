@@ -48,3 +48,10 @@
 - [x] Ajustar a validação de segredo para aceitar somente o segredo gerenciado equivalente, sem permitir valores de exemplo ou segredos fracos.
 - [x] Validar o boot do bundle de produção com ambiente representativo, testes, segurança e build.
 - [x] Criar checkpoint corrigido e orientar nova publicação pelo painel.
+- [x] Diagnosticar por que os itens e botões laterais não são exibidos na sessão operacional padrão.
+- [x] Restaurar os grupos e botões laterais previstos no AXE Dispatch, mantendo as regras de acesso e rotas válidas.
+- [x] Cobrir a visibilidade da navegação lateral por perfil e preservar os controles existentes de recolhimento.
+- [x] Validar a barra lateral restaurada em desktop e mobile.
+- [x] Criar checkpoint publicável da correção da barra lateral e registrar as instruções de acesso.
+- [x] Adicionar teste renderizado da barra lateral para superadministrador, despachador e agente de campo.
+- [x] Adicionar teste de interação do botão de recolhimento e expansão da barra lateral.
