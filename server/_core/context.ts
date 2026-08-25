@@ -1,5 +1,6 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
+import { reconcileOperationalRoleWithAssignments } from "../db";
 import { sdk } from "./sdk";
 
 export type TrpcContext = {
@@ -18,6 +19,14 @@ export async function createContext(
   } catch (error) {
     // Authentication is optional for public procedures.
     user = null;
+  }
+
+  if (user) {
+    try {
+      user = await reconcileOperationalRoleWithAssignments(user);
+    } catch (error) {
+      console.warn("[Auth] Não foi possível reconciliar o perfil operacional", error);
+    }
   }
 
   return {

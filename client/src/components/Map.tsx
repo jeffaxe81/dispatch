@@ -77,7 +77,6 @@
 /// <reference types="@types/google.maps" />
 
 import { useEffect, useRef } from "react";
-import { usePersistFn } from "@/hooks/usePersistFn";
 import { cn } from "@/lib/utils";
 
 declare global {
@@ -91,63 +90,95 @@ const FORGE_BASE_URL =
   import.meta.env.VITE_FRONTEND_FORGE_API_URL ||
   "https://forge.butterfly-effect.dev";
 const MAPS_PROXY_URL = `${FORGE_BASE_URL}/v1/maps/proxy`;
+const MAPS_SCRIPT_ID = "axe-dispatch-google-maps-sdk";
+let mapsSdkPromise: Promise<void> | null = null;
 
 function loadMapScript() {
-  return new Promise(resolve => {
+  if (window.google?.maps) return Promise.resolve();
+  if (mapsSdkPromise) return mapsSdkPromise;
+  mapsSdkPromise = new Promise<void>((resolve, reject) => {
+    const existingScript = document.getElementById(MAPS_SCRIPT_ID) as HTMLScriptElement | null;
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener("error", () => reject(new Error("Falha ao carregar o SDK de mapas.")), { once: true });
+      return;
+    }
     const script = document.createElement("script");
-    script.src = `${MAPS_PROXY_URL}/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding,geometry`;
+    script.id = MAPS_SCRIPT_ID;
+    script.src = `${MAPS_PROXY_URL}/maps/api/js?key=${API_KEY}&v=weekly&loading=async&libraries=marker,places,geocoding,geometry`;
     script.async = true;
     script.crossOrigin = "anonymous";
-    script.onload = () => {
-      resolve(null);
-      script.remove(); // Clean up immediately
-    };
+    script.onload = () => resolve();
     script.onerror = () => {
-      console.error("Failed to load Google Maps script");
+      mapsSdkPromise = null;
+      reject(new Error("Falha ao carregar o SDK de mapas."));
     };
     document.head.appendChild(script);
   });
+  return mapsSdkPromise;
+}
+
+export function canInitializeMap(input: { cancelled: boolean; hasContainer: boolean; hasMapsApi: boolean }) {
+  return !input.cancelled && input.hasContainer && input.hasMapsApi;
 }
 
 interface MapViewProps {
   className?: string;
   initialCenter?: google.maps.LatLngLiteral;
   initialZoom?: number;
+  mapTypeId?: google.maps.MapTypeId | string;
+  trafficEnabled?: boolean;
   onMapReady?: (map: google.maps.Map) => void;
+  onMapError?: (error: Error) => void;
 }
 
 export function MapView({
   className,
   initialCenter = { lat: 37.7749, lng: -122.4194 },
   initialZoom = 12,
+  mapTypeId = "roadmap",
+  trafficEnabled = false,
   onMapReady,
+  onMapError,
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
-
-  const init = usePersistFn(async () => {
-    await loadMapScript();
-    if (!mapContainer.current) {
-      console.error("Map container not found");
-      return;
-    }
-    map.current = new window.google.maps.Map(mapContainer.current, {
-      zoom: initialZoom,
-      center: initialCenter,
-      mapTypeControl: true,
-      fullscreenControl: true,
-      zoomControl: true,
-      streetViewControl: true,
-      mapId: "DEMO_MAP_ID",
-    });
-    if (onMapReady) {
-      onMapReady(map.current);
-    }
-  });
+  const initializationId = useRef(0);
+  const latestProps = useRef({ initialCenter, initialZoom, mapTypeId, trafficEnabled, onMapReady, onMapError });
+  latestProps.current = { initialCenter, initialZoom, mapTypeId, trafficEnabled, onMapReady, onMapError };
 
   useEffect(() => {
-    init();
-  }, [init]);
+    let cancelled = false;
+    const currentInitializationId = ++initializationId.current;
+    const initialize = async () => {
+      try {
+        await loadMapScript();
+        const current = latestProps.current;
+        const hasMapsApi = Boolean(window.google?.maps);
+        if (!canInitializeMap({ cancelled: cancelled || currentInitializationId !== initializationId.current, hasContainer: Boolean(mapContainer.current), hasMapsApi })) return;
+        map.current = new window.google.maps.Map(mapContainer.current!, {
+          zoom: current.initialZoom,
+          center: current.initialCenter,
+          mapTypeControl: true,
+          fullscreenControl: true,
+          zoomControl: true,
+          streetViewControl: true,
+          mapId: "DEMO_MAP_ID",
+          mapTypeId: current.mapTypeId,
+        });
+        if (current.trafficEnabled) new window.google.maps.TrafficLayer().setMap(map.current);
+        current.onMapReady?.(map.current);
+      } catch (error) {
+        if (!cancelled) latestProps.current.onMapError?.(error instanceof Error ? error : new Error("Falha ao carregar o SDK de mapas."));
+      }
+    };
+    void initialize();
+    return () => {
+      cancelled = true;
+      initializationId.current += 1;
+      map.current = null;
+    };
+  }, []);
 
   return (
     <div ref={mapContainer} className={cn("w-full h-[500px]", className)} />

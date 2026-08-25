@@ -1,0 +1,46 @@
+# Project TODO
+
+- [x] Inventariar todas as páginas, rotas, componentes, fluxos e tokens visuais do pacote AXE Dispatch v1.15.0.
+- [x] Copiar a aplicação React existente para o projeto gerenciado sem remover telas, componentes ou rotas.
+- [x] Copiar e adaptar o backend Express/tRPC preservando todos os procedimentos e contratos existentes.
+- [x] Conciliar dependências e configurações do pacote com o runtime gerenciado sem reduzir funcionalidades.
+- [x] Preservar autenticação e sessão usando a infraestrutura OAuth gerenciada.
+- [x] Preservar controle de acesso por papéis, escopos e hierarquia operacional nos procedimentos protegidos.
+- [x] Migrar integralmente o esquema Drizzle de usuários, ocorrências, triagens, equipes, turnos, workflows, auditoria, integrações e relatórios.
+- [x] Aplicar ao banco MySQL gerenciado todas as tabelas, índices e restrições necessários ao esquema atual.
+- [x] Adaptar fotos de perfil e evidências para o armazenamento de arquivos gerenciado, mantendo metadados no banco.
+- [x] Preservar criação, consulta, atualização, despacho e tratamento de ocorrências.
+- [x] Preservar triagens, equipes, escalas, turnos e execução de workflows operacionais.
+- [x] Preservar evidências, auditoria, relatórios operacionais e exclusões controladas.
+- [x] Preservar a entrada ALRT, com modo de ativação configurável, chave de API, assinatura HMAC, tolerância temporal e limitação de requisições.
+- [x] Preservar as 26 telas/rotas e seus tratamentos de carregamento, vazio e erro, validados por matriz estrutural, testes de páginas existentes, componente compartilhado renderizado, capturas e fallback global.
+- [x] Preservar a identidade visual existente, com acabamento responsivo e substituição vetorial documentada do único asset ausente no ZIP.
+- [x] Executar `pnpm check` sem erros de TypeScript.
+- [x] Executar a suíte Vitest e corrigir regressões relacionadas à portabilidade.
+- [x] Executar a verificação de segurança fornecida pelo pacote e corrigir falhas impeditivas.
+- [x] Validar visualmente as rotas principais em desktop e mobile.
+- [x] Revisar os logs de servidor, navegador e rede, eliminando erros impeditivos.
+- [x] Criar checkpoint final do projeto validado e preparar instruções de publicação pelo painel.
+- [x] Conciliar e validar `context.ts`, `cookies.ts`, `env.ts`, `index.ts`, `oauth.ts`, `sdk.ts` e `storageProxy.ts` preservando os fluxos do pacote no runtime gerenciado.
+- [x] Confirmar por boot, tipagem e testes que todos os procedimentos tRPC portados permanecem compatíveis.
+- [x] Revalidar dependências, patches PNPM e configurações de build/runtime sem diferenças críticas que reduzam funcionalidades.
+- [x] Executar testes com cobertura direta de 91 procedimentos tRPC e cobertura indireta documentada dos 4 restantes, registrando a compatibilidade dos 95 contratos.
+- [x] Executar a suíte Vitest completa e o build de produção para validar dependências, patches e runtime.
+- [x] Revisar sem filtros excessivos as diferenças restantes e documentar cada adaptação intencional sem perda funcional.
+- [x] Validar em conjunto os procedimentos de criação, atualização, despacho, aceite, atendimento e conclusão de ocorrências.
+- [x] Validar explicitamente triagem, escalas, equipes, turnos e execução de workflows após a migração.
+- [x] Validar persistência e consulta de auditoria, log operacional, relatórios e exclusões controladas.
+- [x] Recapturar rotas após a correção da marca e comprovar layout desktop/mobile e estados principais.
+- [x] Comparar procedimento a procedimento o `appRouter` original e o portado, registrando qualquer diferença intencional.
+- [x] Adicionar cobertura dedicada para triagem, jornada/escala, equipes e regras de permissão após a migração.
+- [x] Registrar a cobertura dos procedimentos tRPC restantes para sustentar a equivalência total do backend.
+- [x] Mapear os 95 procedimentos do `appRouter` para suítes existentes ou justificativas técnicas verificáveis.
+- [x] Gerar um inventário final procedimento→cobertura antes do checkpoint.
+- [x] Classificar os 95 procedimentos tRPC como cobertura direta, indireta ou justificativa estrutural aprovada.
+- [x] Fazer o gerador falhar se algum procedimento não tiver classificação e evidência verificável.
+- [x] Adicionar cobertura explícita aos contratos atualmente sustentados apenas por equivalência estrutural.
+- [x] Validar carregamento, vazio, erro e navegação das rotas principais por evidência combinada, distinguindo testes renderizados, testes estruturais, capturas e fallbacks globais.
+- [x] Restaurar o asset original da marca ou documentar formalmente a substituição vetorial necessária pela ausência do arquivo no pacote.
+- [x] Executar um diff completo do projeto-fonte contra o portado e catalogar cada diferença intencional com motivo.
+- [x] Gerar uma matriz completa rota→tela→navegação→carregamento→vazio→erro, distinguindo evidência direta, indireta e global.
+- [x] Validar estados compartilhados renderizados com `QueryState.test.tsx` e registrar separadamente as páginas cobertas por testes próprios ou inspeção estrutural.

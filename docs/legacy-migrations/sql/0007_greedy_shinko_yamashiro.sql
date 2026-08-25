@@ -1,0 +1,1 @@
+ALTER TABLE `general_settings` ADD `map_fallback_mode` varchar(24) DEFAULT 'automatic' NOT NULL;
