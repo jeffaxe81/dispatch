@@ -40,6 +40,13 @@ export function evaluatePermission(input: { active: boolean; operationalRole: Op
   return legacy?.has("*") || legacy?.has(permission) || false;
 }
 
+export function resolveEffectivePermissions(input: { active: boolean; operationalRole: OperationalRole; hasDynamicAssignments: boolean; dynamicPermissions: Iterable<PermissionCode> }, catalog: Iterable<PermissionCode>) {
+  const catalogCodes = Array.from(catalog);
+  if (catalogCodes.length > 0) return catalogCodes.filter(code => evaluatePermission(input, code));
+  if (input.hasDynamicAssignments) return Array.from(new Set(input.dynamicPermissions));
+  return Array.from(legacyPermissions[input.operationalRole] ?? []);
+}
+
 export function evaluateTeamScope(assignments: AccessAssignment[], team: { organizationId: number | null; organizationalUnitId: number | null; id: number }) {
   return assignments.some(assignment => {
     if (assignment.defaultScope === "global") return true;
@@ -92,7 +99,8 @@ export async function getEffectiveAccess(user: CurrentUser) {
   if (!db) throw new Error("Banco de dados indisponível.");
   const [snapshot, catalog] = await Promise.all([getAccessSnapshot(user.id), db.select({ code: accessPermissions.code }).from(accessPermissions).where(eq(accessPermissions.active, true))]);
   const input = { active: user.active, operationalRole: user.operationalRole, hasDynamicAssignments: snapshot.assignments.length > 0, dynamicPermissions: snapshot.permissions };
-  return { permissions: catalog.map(row => row.code).filter(code => evaluatePermission(input, code)), assignments: snapshot.assignments, usesDynamicRoles: snapshot.assignments.length > 0, isSuperAdministrator: user.openId === ENV.ownerOpenId || hasSuperAdministratorAssignment(snapshot.assignments) };
+  const permissions = resolveEffectivePermissions(input, catalog.map(row => row.code));
+  return { permissions, assignments: snapshot.assignments, usesDynamicRoles: snapshot.assignments.length > 0, isSuperAdministrator: user.openId === ENV.ownerOpenId || hasSuperAdministratorAssignment(snapshot.assignments) };
 }
 
 export async function assertPermission(user: CurrentUser, permission: PermissionCode) {

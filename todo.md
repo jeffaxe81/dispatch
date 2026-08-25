@@ -55,3 +55,7 @@
 - [x] Criar checkpoint publicável da correção da barra lateral e registrar as instruções de acesso.
 - [x] Adicionar teste renderizado da barra lateral para superadministrador, despachador e agente de campo.
 - [x] Adicionar teste de interação do botão de recolhimento e expansão da barra lateral.
+- [x] Reproduzir a ausência de itens laterais na sessão publicada e registrar perfil, permissões e estado de carregamento efetivos.
+- [x] Corrigir a regra de fallback da navegação lateral para não ocultar itens quando as permissões ainda não foram carregadas.
+- [x] Validar o fallback da sidebar com catálogo RBAC vazio, testes de acesso, testes renderizados e preview atualizado.
+- [x] Criar checkpoint da correção comprovada e orientar atualização sem cache.

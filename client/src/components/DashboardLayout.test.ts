@@ -33,6 +33,14 @@ describe("navegação por perfil operacional", () => {
     ]));
   });
 
+  it("exibe todos os itens para o curinga administrativo devolvido pelo fallback legado", () => {
+    const labels = getMenuItems(["*"], "administrador").map(item => item.label);
+    expect(labels).toEqual(expect.arrayContaining([
+      "Central", "Ocorrências", "Dashboards e Relatórios", "Equipes", "Kanban",
+      "Viaturas", "Integrações", "Administração", "Usuários", "Perfis", "Escopos", "Log de operações",
+    ]));
+  });
+
   it("encerra a sessão e redireciona para a tela inicial", async () => {
     const logout = vi.fn().mockResolvedValue(undefined);
     const redirect = vi.fn();

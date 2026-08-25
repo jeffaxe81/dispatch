@@ -26,7 +26,7 @@ import { Button } from "./ui/button";
 
 export function getMenuItems(permissions: string[] | undefined, role?: string, isSuperAdministrator = false, assignments?: AccessAssignmentLike[]) {
   const fallback = (permission: string) => role === "administrador" || (permission === "dispatch.view" && ["despachador", "supervisor"].includes(role ?? "")) || (permission === "occurrences.view" || permission === "teams.view");
-  const can = (permission: string) => isSuperAdministrator || (permissions ? permissions.includes(permission) : fallback(permission));
+  const can = (permission: string) => isSuperAdministrator || (permissions ? permissions.includes("*") || permissions.includes(permission) : fallback(permission));
   const fieldAgent = isFieldAgent(role, assignments);
   const items = [] as { icon: typeof LayoutDashboard; label: string; path: string }[];
   if (!fieldAgent && can("occurrences.view")) items.push({ icon: LayoutDashboard, label: "Central", path: "/" }, { icon: MapPinned, label: "Ocorrências", path: "/ocorrencias" });

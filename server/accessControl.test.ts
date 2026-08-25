@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { evaluatePermission, evaluateTeamScope, hasAdministratorAssignment, hasSuperAdministratorAssignment, requiresExplicitTeamSelection } from "./accessControl";
+import { evaluatePermission, evaluateTeamScope, hasAdministratorAssignment, hasSuperAdministratorAssignment, requiresExplicitTeamSelection, resolveEffectivePermissions } from "./accessControl";
 
 describe("decisão de permissões RBAC", () => {
   it("mantém a compatibilidade de administrador legado durante a transição", () => {
     expect(evaluatePermission({ active: true, operationalRole: "administrador", hasDynamicAssignments: false, dynamicPermissions: [] }, "system.configure")).toBe(true);
     expect(evaluatePermission({ active: true, operationalRole: "agente", hasDynamicAssignments: false, dynamicPermissions: [] }, "occurrences.transition")).toBe(true);
+  });
+
+  it("mantém permissões de perfis legados quando não há catálogo dinâmico migrado", () => {
+    expect(resolveEffectivePermissions({ active: true, operationalRole: "operador", hasDynamicAssignments: false, dynamicPermissions: [] }, [])).toEqual(expect.arrayContaining(["occurrences.view", "occurrences.create", "dispatch.view"]));
+    expect(resolveEffectivePermissions({ active: true, operationalRole: "administrador", hasDynamicAssignments: false, dynamicPermissions: [] }, [])).toContain("*");
   });
 
   it("aceita permissões dinâmicas do módulo de integrações", () => {
