@@ -1483,13 +1483,17 @@ export async function listUsersWithAccess(input: { page: number; pageSize: numbe
   return { rows: await Promise.all(rows.map(async row => ({ ...row, profile: row.profile ? { ...row.profile, avatarUrl: row.profile.avatarStorageKey ? (await storageGet(row.profile.avatarStorageKey)).url : null } : null, assignments: assignmentsByUser.get(row.user.id) ?? [] }))), total: Number(totalRows[0]?.total ?? 0) };
 }
 
-export async function createManualUser(input: { displayName: string; email: string; employeeId?: string | null; institutionalId?: string | null; phone?: string | null; jobTitle?: string | null; operationalRole: OperationalRole; active: boolean; teamId?: number | null; roleId: number; organizationId?: number | null; organizationalUnitId?: number | null; roleTeamId?: number | null; actorUserId: number }) {
+export async function createManualUser(input: { displayName: string; email: string; username?: string | null; passwordHash?: string | null; employeeId?: string | null; institutionalId?: string | null; phone?: string | null; jobTitle?: string | null; operationalRole: OperationalRole; active: boolean; teamId?: number | null; roleId: number; organizationId?: number | null; organizationalUnitId?: number | null; roleTeamId?: number | null; actorUserId: number }) {
   const db = await requireDb();
   const email = input.email.trim().toLowerCase();
   if (requiresTeamForOperationalRole(input.operationalRole) && !input.teamId) throw new Error("Agentes de campo devem ser vinculados a uma equipe no pré-cadastro.");
   return db.transaction(async tx => {
     const duplicateEmail = (await tx.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1))[0];
     if (duplicateEmail) throw new Error("Já existe um usuário cadastrado com este e-mail.");
+    if (input.username) {
+      const duplicateUsername = (await tx.select({ id: users.id }).from(users).where(eq(users.username, input.username)).limit(1))[0];
+      if (duplicateUsername) throw new Error("Este nome de usuário já está em uso.");
+    }
     if (input.employeeId) {
       const duplicateEmployee = (await tx.select({ id: userProfiles.id }).from(userProfiles).where(eq(userProfiles.employeeId, input.employeeId)).limit(1))[0];
       if (duplicateEmployee) throw new Error("A matrícula informada já está vinculada a outro usuário.");
@@ -1498,14 +1502,27 @@ export async function createManualUser(input: { displayName: string; email: stri
     if (!role || !role.active) throw new Error("Perfil não encontrado ou inativo.");
     if (!isRoleScopeAssignmentValid({ defaultScope: role.defaultScope, organizationId: input.organizationId, organizationalUnitId: input.organizationalUnitId, teamId: input.roleTeamId })) throw new Error("O escopo informado não atende ao nível exigido pelo perfil.");
     const openId = createManualUserOpenId();
-    const [created] = await tx.insert(users).values({ openId, name: input.displayName, email, loginMethod: "preprovisioned", role: input.operationalRole === "administrador" ? "admin" : "user", operationalRole: input.operationalRole, teamId: input.teamId ?? null, active: input.active }).$returningId();
+    const [created] = await tx.insert(users).values({ openId, username: input.username ?? null, passwordHash: input.passwordHash ?? null, name: input.displayName, email, loginMethod: input.passwordHash ? "local_password" : "preprovisioned", role: input.operationalRole === "administrador" ? "admin" : "user", operationalRole: input.operationalRole, teamId: input.teamId ?? null, active: input.active }).$returningId();
     await tx.insert(userProfiles).values({ userId: created.id, displayName: input.displayName, employeeId: input.employeeId ?? null, institutionalId: input.institutionalId ?? null, phone: input.phone ?? null, jobTitle: input.jobTitle ?? null, authType: "preprovisioned" });
     const [assignment] = await tx.insert(userRoleAssignments).values({ userId: created.id, roleId: input.roleId, organizationId: input.organizationId ?? null, organizationalUnitId: input.organizationalUnitId ?? null, teamId: input.roleTeamId ?? null, activeUserId: created.id, assignedByUserId: input.actorUserId }).$returningId();
     await tx.insert(auditLogs).values([
-      { resourceType: "user", resourceId: created.id, action: "manual_preprovision", actorUserId: input.actorUserId, beforeData: null, afterData: { displayName: input.displayName, email, employeeId: input.employeeId ?? null, institutionalId: input.institutionalId ?? null, operationalRole: input.operationalRole, active: input.active } },
+      { resourceType: "user", resourceId: created.id, action: input.passwordHash ? "local_user_provisioned" : "manual_preprovision", actorUserId: input.actorUserId, beforeData: null, afterData: { displayName: input.displayName, email, username: input.username ?? null, employeeId: input.employeeId ?? null, institutionalId: input.institutionalId ?? null, operationalRole: input.operationalRole, active: input.active } },
       { resourceType: "user_role_assignment", resourceId: assignment.id, action: "create", actorUserId: input.actorUserId, beforeData: null, afterData: { userId: created.id, roleId: input.roleId, organizationId: input.organizationId ?? null, organizationalUnitId: input.organizationalUnitId ?? null, teamId: input.roleTeamId ?? null } },
     ]);
     return { id: created.id };
+  });
+}
+
+export async function setUserLocalCredentials(input: { userId: number; username: string; passwordHash: string; actorUserId: number }) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const user = (await tx.select({ id: users.id, username: users.username }).from(users).where(eq(users.id, input.userId)).limit(1))[0];
+    if (!user) throw new Error("Usuário não encontrado.");
+    const duplicate = (await tx.select({ id: users.id }).from(users).where(eq(users.username, input.username)).limit(1))[0];
+    if (duplicate && duplicate.id !== user.id) throw new Error("Este nome de usuário já está em uso.");
+    await tx.update(users).set({ username: input.username, passwordHash: input.passwordHash, loginMethod: "local_password", failedLoginAttempts: 0, lockedUntil: null }).where(eq(users.id, user.id));
+    await tx.insert(auditLogs).values({ resourceType: "user", resourceId: user.id, action: "local_credentials_set", actorUserId: input.actorUserId, beforeData: { username: user.username }, afterData: { username: input.username } });
+    return { id: user.id, username: input.username };
   });
 }
 

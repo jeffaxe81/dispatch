@@ -9,6 +9,7 @@ import KanbanPage from "@/pages/KanbanPage";
 import NotFound from "@/pages/NotFound";
 import TeamsPage from "@/pages/TeamsPage";
 import UsersAccessPage from "@/pages/UsersAccessPage";
+import LocalCredentialsPage from "@/pages/LocalCredentialsPage";
 import VehiclesPage from "@/pages/VehiclesPage";
 import RolesPermissionsPage from "@/pages/RolesPermissionsPage";
 import GeneralSettingsPage from "@/pages/GeneralSettingsPage";
@@ -22,6 +23,7 @@ import ExternalIncidentReviewsPage from "@/pages/ExternalIncidentReviewsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
 import DashboardsReportsPage from "@/pages/DashboardsReportsPage";
 import ManualsHelpPage from "@/pages/ManualsHelpPage";
+import LoginPage from "@/pages/LoginPage";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { isFieldAgent } from "@/lib/operationalAccess";
 import { trpc } from "@/lib/trpc";
@@ -42,6 +44,7 @@ function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
+      <Route path={"/login"} component={LoginPage} />
       <Route path={"/"} component={() => <FieldRestrictedRoute component={Home} />} />
       <Route path={"/dashboards-relatorios"} component={() => <FieldRestrictedRoute component={DashboardsReportsPage} />} />
       <Route path={"/ocorrencias"} component={IncidentsPage} />
@@ -63,6 +66,7 @@ function Router() {
       <Route path={"/manuais-ajuda"} component={ManualsHelpPage} />
       <Route path={"/administracao"} component={AdminPage} />
       <Route path={"/administracao/usuarios"} component={UsersAccessPage} />
+      <Route path={"/administracao/credenciais"} component={LocalCredentialsPage} />
       <Route path={"/administracao/perfis"} component={RolesPermissionsPage} />
       <Route path={"/administracao/escopos"} component={AccessScopesPage} />
       <Route path={"/administracao/configuracoes"} component={GeneralSettingsPage} />

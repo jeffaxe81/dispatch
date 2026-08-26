@@ -6,7 +6,7 @@ import { getDb } from "./db";
 import { ENV } from "./_core/env";
 
 export type PermissionCode = string;
-type CurrentUser = Pick<User, "id" | "openId" | "operationalRole" | "teamId" | "active">;
+type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
 
 const legacyPermissions: Record<OperationalRole, Set<PermissionCode>> = {
   administrador: new Set(["*"]),
@@ -100,7 +100,7 @@ export async function getEffectiveAccess(user: CurrentUser) {
   const [snapshot, catalog] = await Promise.all([getAccessSnapshot(user.id), db.select({ code: accessPermissions.code }).from(accessPermissions).where(eq(accessPermissions.active, true))]);
   const input = { active: user.active, operationalRole: user.operationalRole, hasDynamicAssignments: snapshot.assignments.length > 0, dynamicPermissions: snapshot.permissions };
   const permissions = resolveEffectivePermissions(input, catalog.map(row => row.code));
-  return { permissions, assignments: snapshot.assignments, usesDynamicRoles: snapshot.assignments.length > 0, isSuperAdministrator: user.openId === ENV.ownerOpenId || hasSuperAdministratorAssignment(snapshot.assignments) };
+  return { permissions, assignments: snapshot.assignments, usesDynamicRoles: snapshot.assignments.length > 0, isSuperAdministrator: user.role === "admin" || user.openId === ENV.ownerOpenId || hasSuperAdministratorAssignment(snapshot.assignments) };
 }
 
 export async function assertPermission(user: CurrentUser, permission: PermissionCode) {
@@ -155,7 +155,7 @@ export async function assertAdminAccess(user: CurrentUser) {
 }
 
 export async function assertSuperAdministrator(user: CurrentUser) {
-  if (user.openId === ENV.ownerOpenId) return;
+  if (user.role === "admin" || user.openId === ENV.ownerOpenId) return;
   const snapshot = await getAccessSnapshot(user.id);
   if (hasSuperAdministratorAssignment(snapshot.assignments)) return;
   throw new TRPCError({ code: "FORBIDDEN", message: "Configurações gerais disponíveis somente para o perfil Super Administrador." });

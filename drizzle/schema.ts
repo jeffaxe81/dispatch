@@ -62,6 +62,10 @@ export const users = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     openId: varchar("openId", { length: 64 }).notNull().unique(),
+    username: varchar("username", { length: 64 }).unique(),
+    passwordHash: varchar("password_hash", { length: 255 }),
+    failedLoginAttempts: int("failed_login_attempts").notNull().default(0),
+    lockedUntil: timestamp("locked_until"),
     name: text("name"),
     email: varchar("email", { length: 320 }),
     loginMethod: varchar("loginMethod", { length: 64 }),
@@ -73,7 +77,7 @@ export const users = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
     lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
   },
-  table => [index("users_operational_role_idx").on(table.operationalRole), index("users_team_idx").on(table.teamId)],
+  table => [index("users_operational_role_idx").on(table.operationalRole), index("users_team_idx").on(table.teamId), index("users_login_lock_idx").on(table.lockedUntil)],
 );
 
 export const vehicles = mysqlTable(

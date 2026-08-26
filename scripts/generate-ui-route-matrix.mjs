@@ -6,6 +6,7 @@ const appSource = fs.readFileSync(path.join(root, "client/src/App.tsx"), "utf8")
 const outputPath = path.join(root, "docs/UI_ROUTE_STATE_MATRIX.md");
 
 const routes = [
+  ["/login", "LoginPage.tsx", "desktop+mobile", []],
   ["/", "Home.tsx", "desktop+mobile", []],
   ["/dashboards-relatorios", "DashboardsReportsPage.tsx", "desktop+mobile", []],
   ["/ocorrencias", "IncidentsPage.tsx", "desktop+mobile", []],
@@ -27,6 +28,7 @@ const routes = [
   ["/manuais-ajuda", "ManualsHelpPage.tsx", "desktop+mobile", ["client/src/pages/ManualsHelpPage.test.tsx"]],
   ["/administracao", "AdminPage.tsx", "HTTP 200 + fonte preservada", []],
   ["/administracao/usuarios", "UsersAccessPage.tsx", "HTTP 200 + fonte preservada", []],
+  ["/administracao/credenciais", "LocalCredentialsPage.tsx", "browser desktop+mobile autenticado", []],
   ["/administracao/perfis", "RolesPermissionsPage.tsx", "HTTP 200 + fonte preservada", []],
   ["/administracao/escopos", "AccessScopesPage.tsx", "HTTP 200 + fonte preservada", []],
   ["/administracao/configuracoes", "GeneralSettingsPage.tsx", "desktop+mobile", ["client/src/pages/GeneralSettingsPage.test.tsx"]],
@@ -60,11 +62,11 @@ const rows = routes.map(([route, page, visual, tests]) => {
   };
 });
 
-if (rows.length !== 26) throw new Error(`Matriz incompleta: ${rows.length} rotas; eram esperadas 26.`);
+if (rows.length !== 28) throw new Error(`Matriz incompleta: ${rows.length} rotas; eram esperadas 28.`);
 if (!appSource.includes("<Route component={NotFound} />")) throw new Error("Fallback global 404 ausente.");
 if (!appSource.includes("<ErrorBoundary>")) throw new Error("ErrorBoundary global ausente.");
 
-const markdown = `# Matriz de rotas e estados da interface\n\nA matriz combina inspeção verificável de código, renderização do componente compartilhado \`QueryState\`, testes próprios de páginas, respostas HTTP e capturas responsivas. **Implementado no componente** identifica o tratamento presente na tela, mas não implica que cada estado foi renderizado isoladamente no teste dessa página; **global** significa proteção pelo layout de sessão ou pelo \`ErrorBoundary\`; **não aplicável** indica telas de detalhe/formulário sem coleção vazia. O gerador falha se uma das 26 rotas, sua tela, seu teste declarado ou o fallback global estiver ausente.\n\n| Rota | Tela | Navegação | Carregamento | Vazio | Erro | Evidência automatizada | Evidência visual |\n|---|---|---|---|---|---|---|---|\n${rows.map(row => `| \`${row.route}\` | \`${row.page}\` | ${row.navigation} | ${row.loading} | ${row.empty} | ${row.error} | ${row.tests} | ${row.visual} |`).join("\n")}\n\n## Totais\n\n| Métrica | Resultado |\n|---|---:|\n| Rotas explícitas | ${rows.length} |\n| Telas principais com validação estrutural dedicada | ${rows.filter(row => primaryPages.has(row.page)).length} |\n| Rotas com captura desktop e/ou mobile | ${rows.filter(row => !row.visual.startsWith("HTTP 200")).length} |\n| Rotas com carregamento implementado no componente | ${rows.filter(row => row.loading.startsWith("implementado")).length} |\n| Rotas com vazio implementado no componente | ${rows.filter(row => row.empty.startsWith("implementado")).length} |\n| Rotas com erro implementado no componente | ${rows.filter(row => row.error.startsWith("implementado")).length} |\n| Rotas sem fallback de erro | 0 |\n`;
+const markdown = `# Matriz de rotas e estados da interface\n\nA matriz combina inspeção verificável de código, renderização do componente compartilhado \`QueryState\`, testes próprios de páginas, respostas HTTP, login real em navegador e capturas responsivas. **Implementado no componente** identifica o tratamento presente na tela, mas não implica que cada estado foi renderizado isoladamente no teste dessa página; **global** significa proteção pelo layout de sessão ou pelo \`ErrorBoundary\`; **não aplicável** indica telas de detalhe/formulário sem coleção vazia. O gerador falha se uma das 28 rotas, sua tela, seu teste declarado ou o fallback global estiver ausente.\n\n| Rota | Tela | Navegação | Carregamento | Vazio | Erro | Evidência automatizada | Evidência visual |\n|---|---|---|---|---|---|---|---|\n${rows.map(row => `| \`${row.route}\` | \`${row.page}\` | ${row.navigation} | ${row.loading} | ${row.empty} | ${row.error} | ${row.tests} | ${row.visual} |`).join("\n")}\n\n## Totais\n\n| Métrica | Resultado |\n|---|---:|\n| Rotas explícitas | ${rows.length} |\n| Telas principais com validação estrutural dedicada | ${rows.filter(row => primaryPages.has(row.page)).length} |\n| Rotas com captura desktop e/ou mobile | ${rows.filter(row => !row.visual.startsWith("HTTP 200")).length} |\n| Rotas com carregamento implementado no componente | ${rows.filter(row => row.loading.startsWith("implementado")).length} |\n| Rotas com vazio implementado no componente | ${rows.filter(row => row.empty.startsWith("implementado")).length} |\n| Rotas com erro implementado no componente | ${rows.filter(row => row.error.startsWith("implementado")).length} |\n| Rotas sem fallback de erro | 0 |\n`;
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, markdown);

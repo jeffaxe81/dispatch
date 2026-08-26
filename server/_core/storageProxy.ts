@@ -3,7 +3,7 @@ import { assertCanReadIncident } from "../authorization";
 import { assertPermission, assertTeamScope } from "../accessControl";
 import { getStoredObjectAuthorization } from "../db";
 import { storageGetSignedUrl } from "../storage";
-import { sdk } from "./sdk";
+import { authenticateLocalRequest } from "../localAuth";
 
 const PUBLIC_STORAGE_KEYS = new Set(["axe-sistemas-viking-mark_2bb3ebce.png"]);
 
@@ -21,7 +21,7 @@ export function registerStorageProxy(app: Express) {
 
     try {
       if (!isPublicStorageKey(key)) {
-        const user = await sdk.authenticateRequest(req).catch(() => null);
+        const user = await authenticateLocalRequest(req).catch(() => null);
         if (!user) {
           res.status(401).send("Authentication required");
           return;

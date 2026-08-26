@@ -3,7 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
+import { ensureLocalAdministrator } from "../localAuth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { alrtIngressJsonErrorHandler, registerAlrtIngressRoutes } from "../alrtIngress";
@@ -32,6 +32,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 
 async function startServer() {
   if (ENV.isProduction) validateRuntimeEnv();
+  await ensureLocalAdministrator();
   const app = express();
   // Trust exactly one forwarding hop only when deployment explicitly opts in.
   // This makes req.secure/request.ip reliable without trusting spoofed headers.
@@ -43,7 +44,6 @@ async function startServer() {
   app.use(express.json({ limit: "12mb" }));
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
   app.use(alrtIngressJsonErrorHandler);
   // tRPC API
   app.use(

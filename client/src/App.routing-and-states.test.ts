@@ -6,6 +6,7 @@ const projectRoot = resolve(import.meta.dirname, "../..");
 const read = (relativePath: string) => readFileSync(resolve(projectRoot, relativePath), "utf8");
 
 const routes = [
+  "/login",
   "/",
   "/dashboards-relatorios",
   "/ocorrencias",
@@ -27,6 +28,7 @@ const routes = [
   "/manuais-ajuda",
   "/administracao",
   "/administracao/usuarios",
+  "/administracao/credenciais",
   "/administracao/perfis",
   "/administracao/escopos",
   "/administracao/configuracoes",
@@ -47,7 +49,7 @@ const primaryPages = [
 ];
 
 describe("roteamento e estados principais preservados", () => {
-  it("mantém as 26 rotas explícitas e o fallback sem becos sem saída", () => {
+  it("mantém as 28 rotas explícitas e o fallback sem becos sem saída", () => {
     const app = read("client/src/App.tsx");
 
     for (const route of routes) expect(app).toContain(`path={"${route}"}`);
@@ -62,7 +64,7 @@ describe("roteamento e estados principais preservados", () => {
 
     expect(layout).toContain("DashboardLayoutSkeleton");
     expect(layout).toContain("Acesso operacional");
-    expect(layout).toContain("startLogin()");
+    expect(layout).toContain("/login");
     expect(app).toContain("ErrorBoundary");
     expect(app).toContain("Toaster");
   });

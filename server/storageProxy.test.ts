@@ -2,7 +2,7 @@ import express from "express";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ authenticate: vi.fn(), resolve: vi.fn(), sign: vi.fn(), assertPermission: vi.fn(), assertTeamScope: vi.fn(), assertCanRead: vi.fn() }));
-vi.mock("./_core/sdk", () => ({ sdk: { authenticateRequest: mocks.authenticate } }));
+vi.mock("./localAuth", () => ({ authenticateLocalRequest: mocks.authenticate }));
 vi.mock("./db", () => ({ getStoredObjectAuthorization: mocks.resolve }));
 vi.mock("./storage", () => ({ storageGetSignedUrl: mocks.sign }));
 vi.mock("./accessControl", () => ({ assertPermission: mocks.assertPermission, assertTeamScope: mocks.assertTeamScope }));

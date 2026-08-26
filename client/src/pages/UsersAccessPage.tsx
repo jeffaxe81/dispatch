@@ -24,6 +24,8 @@ const operationalRoleLabels: Record<(typeof operationalRoles)[number], string> =
 type ManualUserForm = {
   displayName: string;
   email: string;
+  username: string;
+  password: string;
   employeeId: string;
   institutionalId: string;
   phone: string;
@@ -38,7 +40,7 @@ type ManualUserForm = {
 
 type UserProfileForm = Pick<ManualUserForm, "displayName" | "employeeId" | "institutionalId" | "phone" | "jobTitle"> & { userId: number; userLabel: string; avatarUrl?: string | null };
 
-const emptyManualUserForm: ManualUserForm = { displayName: "", email: "", employeeId: "", institutionalId: "", phone: "", jobTitle: "", operationalRole: "operador", teamId: "none", roleId: "", organizationId: "none", organizationalUnitId: "none", roleTeamId: "none" };
+const emptyManualUserForm: ManualUserForm = { displayName: "", email: "", username: "", password: "", employeeId: "", institutionalId: "", phone: "", jobTitle: "", operationalRole: "operador", teamId: "none", roleId: "", organizationId: "none", organizationalUnitId: "none", roleTeamId: "none" };
 
 function formatDate(value?: Date | null) {
   return value ? new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
@@ -76,6 +78,8 @@ function UsersAccessContent() {
     createUser.mutate({
       displayName: manualUser.displayName,
       email: manualUser.email,
+      username: manualUser.username,
+      password: manualUser.password,
       employeeId: manualUser.employeeId || null,
       institutionalId: manualUser.institutionalId || null,
       phone: manualUser.phone || null,

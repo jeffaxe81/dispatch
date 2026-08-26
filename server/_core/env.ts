@@ -5,6 +5,8 @@ export const ENV = {
   oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
   oAuthPortalUrl: process.env.VITE_OAUTH_PORTAL_URL ?? "",
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+  localAdminUsername: process.env.LOCAL_AUTH_BOOTSTRAP_USERNAME ?? "",
+  localAdminPassword: process.env.LOCAL_AUTH_BOOTSTRAP_PASSWORD ?? "",
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
@@ -45,11 +47,8 @@ export function validateRuntimeEnv(env: RuntimeEnv = ENV) {
 
   if (env.isProduction) {
     if (!env.databaseUrl) errors.push("DATABASE_URL é obrigatória em produção.");
-    if (!env.appId) errors.push("VITE_APP_ID é obrigatório em produção.");
-    if (!env.oAuthServerUrl) errors.push("OAUTH_SERVER_URL é obrigatória em produção.");
-    if (!env.oAuthPortalUrl) {
-      errors.push("VITE_OAUTH_PORTAL_URL é obrigatória em produção.");
-    }
+    if (!/^[a-z0-9._-]{3,64}$/i.test(env.localAdminUsername)) errors.push("LOCAL_AUTH_BOOTSTRAP_USERNAME deve ter entre 3 e 64 caracteres alfanuméricos, ponto, hífen ou sublinhado.");
+    if (Buffer.byteLength(env.localAdminPassword, "utf8") < 12) errors.push("LOCAL_AUTH_BOOTSTRAP_PASSWORD deve ter ao menos 12 caracteres.");
   }
 
   if (errors.length > 0) {

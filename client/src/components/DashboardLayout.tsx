@@ -13,7 +13,6 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { isFieldAgent, type AccessAssignmentLike } from "@/lib/operationalAccess";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -37,7 +36,7 @@ export function getMenuItems(permissions: string[] | undefined, role?: string, i
   if (can("vehicles.manage")) items.push({ icon: CarFront, label: "Viaturas", path: "/viaturas" });
   if (can("integrations.view") || can("workflow.view")) items.push({ icon: PlugZap, label: "Integrações", path: "/integracoes" });
   if (can("users.view") || can("roles.view")) items.push({ icon: ShieldCheck, label: "Administração", path: "/administracao" });
-  if (can("users.view")) items.push({ icon: UsersRound, label: "Usuários", path: "/administracao/usuarios" });
+  if (can("users.view")) items.push({ icon: UsersRound, label: "Usuários", path: "/administracao/usuarios" }, { icon: ShieldCheck, label: "Credenciais locais", path: "/administracao/credenciais" });
   if (can("roles.view")) items.push({ icon: ShieldCheck, label: "Perfis", path: "/administracao/perfis" });
   if (can("system.configure")) items.push({ icon: ShieldCheck, label: "Escopos", path: "/administracao/escopos" });
   if (can("audit.view")) items.push({ icon: ClipboardList, label: "Log de operações", path: "/administracao/log-operacoes" });
@@ -92,11 +91,11 @@ export default function DashboardLayout({
               Acesso operacional
             </h1>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Entre com sua conta corporativa para acessar os recursos autorizados do AXE Dispatch.
+              Entre com seu usuário e senha para acessar os recursos autorizados do AXE Dispatch.
             </p>
           </div>
           <Button
-            onClick={() => startLogin()}
+            onClick={() => window.location.assign("/login")}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"
           >

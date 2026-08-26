@@ -7,7 +7,7 @@ const outputPath = path.join(root, "docs/TRPC_CONTRACT_COVERAGE.md");
 const routerSource = fs.readFileSync(routerPath, "utf8");
 
 const coverageRules = [
-  { prefix: "auth", suites: ["server/auth.logout.test.ts", "server/_core/cookies.test.ts"], evidence: "Sessão, contexto autenticado, logout e cookie seguro." },
+  { prefix: "auth", suites: ["server/auth.logout.test.ts", "server/_core/cookies.test.ts", "server/localAuth.test.ts", "server/localAuth.bootstrap.test.ts", "server/localAuth.integration.test.ts"], evidence: "Login local, sessão, contexto autenticado, logout, cookie seguro, bloqueio de tentativas e perfis operacionais." },
   { prefix: "help", suites: ["server/helpCenter.test.ts", "client/src/pages/ManualsHelpPage.test.tsx"], evidence: "Central de ajuda, favoritos e sugestões." },
   { prefix: "dashboard", suites: ["server/operationalReports.test.ts", "client/src/hooks/useRefreshSettings.test.ts"], evidence: "Consultas operacionais, filtros e atualização configurável." },
   { prefix: "reports", suites: ["server/operationalReports.test.ts"], evidence: "Visão geral, exportação auditada e filtros salvos são chamados diretamente pela suíte." },
@@ -18,7 +18,7 @@ const coverageRules = [
   { prefix: "teams", suites: ["server/teamShift.test.ts", "server/triageAndShift.router.test.ts", "server/accessPolicies.test.ts", "client/src/hooks/useAgentLocation.test.ts"], evidence: "Listagem, jornada/escala, status, localização e restrição à equipe própria." },
   { prefix: "vehicles", suites: ["server/authorization.test.ts", "server/accessControl.test.ts"], evidence: "Permissões de frota e escopo preservados; camada tRPC/db idêntica ao pacote-fonte." },
   { prefix: "administration", suites: ["server/userManagement.test.ts", "server/accessControl.test.ts", "server/accessPolicies.test.ts"], evidence: "Administração de usuários e vínculos operacionais." },
-  { prefix: "access", suites: ["server/accessControl.test.ts", "server/accessPolicies.test.ts", "server/authorization.test.ts", "server/scopeHierarchy.test.ts", "server/profilePhoto.test.ts", "client/src/components/ProfilePhotoControl.test.ts"], evidence: "Papéis, permissões, escopos, atribuições, perfis e fotos." },
+  { prefix: "access", suites: ["server/accessControl.test.ts", "server/accessPolicies.test.ts", "server/authorization.test.ts", "server/scopeHierarchy.test.ts", "server/profilePhoto.test.ts", "server/localAuth.integration.test.ts", "client/src/components/ProfilePhotoControl.test.ts"], evidence: "Papéis, permissões, escopos, atribuições, perfis, credenciais locais e fotos." },
   { prefix: "settings", suites: ["server/solutionReset.test.ts", "server/solutionReset.transactions.test.ts", "client/src/pages/GeneralSettingsPage.test.tsx", "client/src/components/OperationalMap.test.ts", "client/src/components/OpenStreetMapFallback.test.ts"], evidence: "Mapa, configurações futuras e reinicialização controlada." },
 ];
 
@@ -44,8 +44,8 @@ for (const line of routerSource.split("\n")) {
   procedures.push({ path: [...routerStack.map(item => item.name), name].join("."), procedureType });
 }
 
-if (procedures.length !== 95) {
-  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 95.`);
+if (procedures.length !== 97) {
+  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 97.`);
 }
 
 const rows = procedures.map(procedure => {
@@ -66,7 +66,7 @@ const rows = procedures.map(procedure => {
 
 const sourceHash = "35deacf52bf84249af9ab8f0bfbcb4776cc9be841d0b3aed8debc55926ec8762";
 const dbHash = "f8a55ba590940aa22ae8916a408ac2764ae083d53b605cc19b62c16221153142";
-const markdown = `# Cobertura dos contratos tRPC\n\nEste inventário é gerado a partir de \`server/routers.ts\`. O roteador e a camada de dados portados são idênticos aos arquivos do pacote-fonte, com SHA-256 **${sourceHash}** e **${dbHash}**, respectivamente. A suíte completa contém **52 arquivos e 186 testes**. A classificação **direta** indica chamadas aos contratos do domínio; **indireta** indica cobertura das mesmas regras e dependências por componentes ou políticas exercitadas pela suíte. O gerador falha se algum procedimento não possuir classificação e evidência.\n\n| Procedimento | Tipo | Cobertura | Suítes relacionadas | Evidência |\n|---|---|---|---|---|\n${rows.map(row => `| \`${row.path}\` | \`${row.procedureType}\` | **${row.coverage}** | ${row.suites} | ${row.evidence} |`).join("\n")}\n\n## Totais\n\n| Métrica | Resultado |\n|---|---:|\n| Procedimentos inventariados | ${rows.length} |\n| Cobertura direta | ${rows.filter(row => row.coverage === "direta").length} |\n| Cobertura indireta | ${rows.filter(row => row.coverage === "indireta").length} |\n| Procedimentos sem classificação | 0 |\n| Arquivos de teste aprovados | 52 |\n| Casos de teste aprovados | 186 |\n`;
+const markdown = `# Cobertura dos contratos tRPC\n\nEste inventário é gerado a partir de \`server/routers.ts\`. O roteador e a camada de dados do domínio foram portados do pacote-fonte e ampliados com autenticação local por usuário e senha. A suíte completa contém **55 arquivos e 197 testes**. A classificação **direta** indica chamadas aos contratos do domínio; **indireta** indica cobertura das mesmas regras e dependências por componentes ou políticas exercitadas pela suíte. O gerador falha se algum procedimento não possuir classificação e evidência.\n\n| Procedimento | Tipo | Cobertura | Suítes relacionadas | Evidência |\n|---|---|---|---|---|\n${rows.map(row => `| \`${row.path}\` | \`${row.procedureType}\` | **${row.coverage}** | ${row.suites} | ${row.evidence} |`).join("\n")}\n\n## Totais\n\n| Métrica | Resultado |\n|---|---:|\n| Procedimentos inventariados | ${rows.length} |\n| Cobertura direta | ${rows.filter(row => row.coverage === "direta").length} |\n| Cobertura indireta | ${rows.filter(row => row.coverage === "indireta").length} |\n| Procedimentos sem classificação | 0 |\n| Arquivos de teste aprovados | 55 |\n| Casos de teste aprovados | 197 |\n`;
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, markdown);

@@ -59,3 +59,24 @@
 - [x] Corrigir a regra de fallback da navegação lateral para não ocultar itens quando as permissões ainda não foram carregadas.
 - [x] Validar o fallback da sidebar com catálogo RBAC vazio, testes de acesso, testes renderizados e preview atualizado.
 - [x] Criar checkpoint da correção comprovada e orientar atualização sem cache.
+- [x] Mapear callbacks, contexto, cookies, procedimentos e componentes dependentes do OAuth Manus.
+- [x] Adicionar credenciais locais com senha derivada de forma resistente, usuário único e identificador de login.
+- [x] Implementar sessão local HTTP-only, expiração, logout e proteção contra tentativa excessiva de autenticação.
+- [x] Criar bootstrap administrativo via credenciais seguras de implantação, sem senha padrão no código ou banco.
+- [x] Substituir redirecionamentos e telas do OAuth por uma página de login local acessível e compatível com o padrão visual.
+- [x] Preservar papéis, permissões e controle de acesso no contexto autenticado local.
+- [x] Cobrir login, falha de senha, bloqueio por tentativas, sessão, logout e autorização com Vitest.
+- [x] Validar login local e as rotas protegidas em desktop/mobile, com credenciais administrativas fornecidas de forma segura.
+- [x] Criar checkpoint publicado e entregar somente as instruções seguras de primeiro acesso.
+- [x] Cobrir procedimentos críticos de ocorrências permitidos e proibidos para despachador e agente após login local.
+- [x] Permitir provisionar ou redefinir login e senha locais para usuários operacionais sem expor hashes.
+- [x] Cobrir autenticação local e autorização para administrador, despachador e agente de campo.
+- [x] Executar testes integrados de login, sessão, logout e procedimentos protegidos para administrador, despachador e agente.
+- [x] Cobrir a persistência de falhas de senha e o bloqueio temporário no banco por meio de testes integrados.
+- [x] Validar no navegador o login administrativo e o acesso subsequente a rota protegida em desktop e mobile.
+- [x] Testar provisionamento e redefinição de credenciais locais, incluindo o bloqueio de acesso não autorizado.
+- [x] Cobrir tRPC permitido/proibido e logout para despachador e agente com sessão local.
+- [x] Testar `access.createUser` com credenciais locais e autenticar o usuário provisionado.
+- [x] Cobrir procedure protegido permitido por despachador e agente em contexto de sessão local.
+- [x] Cobrir fluxo integrado do administrador com login, `auth.me`, procedure protegido permitido e logout.
+- [x] Validar em repositório o navegador desktop/mobile com login local, rota protegida e logout.

@@ -12,6 +12,7 @@ import {
 } from "./authorization";
 import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, resolveAuthorizedTeamFilter } from "./accessControl";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername } from "./localAuth";
 import { systemRouter } from "./_core/systemRouter";
 import { getSimulatedIntegrationsOverview } from "./integrations";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -20,6 +21,7 @@ import {
   addIncidentEvidence,
   assignUserRole,
   createManualUser,
+  setUserLocalCredentials,
   createAccessRole,
   createAccessPermission,
   createOrganization,
@@ -130,6 +132,12 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    login: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: z.string().min(12).max(256) })).mutation(async ({ ctx, input }) => {
+      const user = await loginWithLocalCredentials(input);
+      const token = await createLocalSessionToken(user.id);
+      ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 8 * 60 * 60 * 1000 });
+      return { id: user.id, name: user.name, username: user.username, role: user.role, operationalRole: user.operationalRole };
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       ctx.res.clearCookie(COOKIE_NAME, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
       return { success: true } as const;
@@ -606,10 +614,11 @@ export const appRouter = router({
       }),
     myProfilePhoto: operationalProcedure.query(({ ctx }) => getOwnProfilePhoto(ctx.user.id)),
     createUser: operationalProcedure
-      .input(z.object({ displayName: z.string().trim().min(3).max(160), email: z.string().trim().email().max(320), employeeId: z.string().trim().max(80).nullable().optional(), institutionalId: z.string().trim().max(80).nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), jobTitle: z.string().trim().max(120).nullable().optional(), operationalRole: roleEnum, active: z.boolean().default(true), teamId: z.number().int().positive().nullable().optional(), roleId: z.number().int().positive(), organizationId: z.number().int().positive().nullable().optional(), organizationalUnitId: z.number().int().positive().nullable().optional(), roleTeamId: z.number().int().positive().nullable().optional() }))
+      .input(z.object({ displayName: z.string().trim().min(3).max(160), email: z.string().trim().email().max(320), username: z.string().trim().regex(/^[a-zA-Z0-9._-]{3,64}$/).max(64).optional(), password: z.string().min(12).max(256).optional(), employeeId: z.string().trim().max(80).nullable().optional(), institutionalId: z.string().trim().max(80).nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), jobTitle: z.string().trim().max(120).nullable().optional(), operationalRole: roleEnum, active: z.boolean().default(true), teamId: z.number().int().positive().nullable().optional(), roleId: z.number().int().positive(), organizationId: z.number().int().positive().nullable().optional(), organizationalUnitId: z.number().int().positive().nullable().optional(), roleTeamId: z.number().int().positive().nullable().optional() }))
       .mutation(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "users.edit");
-        return createManualUser({ ...input, actorUserId: ctx.user.id });
+        if (Boolean(input.username) !== Boolean(input.password)) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe usuário e senha juntos ou deixe ambos em branco para pré-cadastro." });
+        return createManualUser({ ...input, username: input.username ? normalizeUsername(input.username) : null, passwordHash: input.password ? await hashLocalPassword(input.password) : null, actorUserId: ctx.user.id });
       }),
     createRole: operationalProcedure
       .input(z.object({ code: z.string().trim().regex(/^[a-z0-9_]+$/).min(3).max(80), name: z.string().trim().min(3).max(160), description: z.string().trim().max(1000).optional(), defaultScope: accessScopeEnum, permissionIds: z.array(z.number().int().positive()).max(100) }))
@@ -643,6 +652,12 @@ export const appRouter = router({
         await assertPermission(ctx.user, input.active === false ? "users.disable" : "users.edit");
         await updateUserProfileAccess({ ...input, actorUserId: ctx.user.id });
         return { success: true };
+      }),
+    setLocalCredentials: operationalProcedure
+      .input(z.object({ userId: z.number().int().positive(), username: z.string().trim().regex(/^[a-zA-Z0-9._-]{3,64}$/), password: z.string().min(12).max(256) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertPermission(ctx.user, "users.edit");
+        return setUserLocalCredentials({ userId: input.userId, username: normalizeUsername(input.username), passwordHash: await hashLocalPassword(input.password), actorUserId: ctx.user.id });
       }),
     uploadUserProfilePhoto: operationalProcedure
       .input(z.object({ userId: z.number().int().positive(), fileName: z.string().trim().min(1).max(255), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().max(3_000_000) }))
