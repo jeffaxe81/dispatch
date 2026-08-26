@@ -80,3 +80,6 @@
 - [x] Cobrir procedure protegido permitido por despachador e agente em contexto de sessão local.
 - [x] Cobrir fluxo integrado do administrador com login, `auth.me`, procedure protegido permitido e logout.
 - [x] Validar em repositório o navegador desktop/mobile com login local, rota protegida e logout.
+- [x] Comparar o HTML e os bundles do domínio publicado com a revisão de autenticação local atual; o domínio respondeu 503 sem assets e sem cache, confirmando implantação inativa.
+- [x] Acionar nova publicação automática da revisão validada para restaurar uma implantação ativa.
+- [x] Preparar a confirmação pública do login local após a nova publicação automática.
