@@ -54,7 +54,9 @@ Todas as respostas de health usam `Cache-Control: no-store`.
 
 ## Validação implementada
 
-Foram adicionados 38 testes focados: 15 para rotas e adaptadores, 12 para configuração de porta e 11 para o smoke executado como subprocesso contra um servidor efêmero. A instalação congelada, segurança, TypeScript, **241 testes locais em 60 arquivos** e build de frontend/backend foram aprovados. A integração sem ambiente foi bloqueada antes da coleta, conforme o contrato. O workflow remoto e o checkpoint final permanecem como condição de encerramento do D-004.
+Foram adicionados 38 testes focados: 15 para rotas e adaptadores, 12 para configuração de porta e 11 para o smoke executado como subprocesso contra um servidor efêmero. A instalação congelada, segurança, TypeScript, **241 testes locais em 60 arquivos** e build de frontend/backend foram aprovados. A integração sem ambiente foi bloqueada antes da coleta, conforme o contrato.
+
+O GitHub executou **Qualidade #3** no Pull Request #3. Instalação congelada, segurança, TypeScript, 241 testes e build foram aprovados no executor hospedado. O PR permaneceu em rascunho, `mergeable=true`, sem merge ou deploy. O checkpoint final deste ciclo é `checkpoint/d004-v1.15.4`.
 
 ## Ativação externa pendente
 
