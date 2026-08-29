@@ -8,6 +8,18 @@ Este arquivo registra mudanças funcionais relevantes do AXE Dispatch. As versõ
 | Funcionalidade compatível adicionada | MINOR | `1.1.0` |
 | Correção ou ajuste compatível | PATCH | `1.0.1` |
 
+## [1.15.4] — 2026-08-29
+
+### Operação — saúde, smoke test e rollback seguro
+
+Foram adicionadas as rotas públicas `GET /health/live` e `GET /health/ready`. A primeira confirma somente que o processo HTTP está vivo; a segunda permite tráfego apenas quando uma consulta mínima ao MySQL e a leitura de um byte de um objeto sentinela no armazenamento são aprovadas. Os checks têm prazo de dois segundos, não alteram dados e devolvem apenas estados sanitizados. A ausência de `STORAGE_HEALTHCHECK_KEY` mantém liveness disponível e readiness em `503`, tornando o provisionamento incompleto visível sem derrubar o processo.
+
+Em produção, o servidor agora usa exatamente a porta indicada por `PORT`; somente desenvolvimento procura uma porta alternativa. Foi criado `pnpm smoke:post-deploy`, que verifica externamente liveness, readiness e a página HTML sem credenciais e sem imprimir corpos ou cabeçalhos. O novo runbook diferencia retorno da aplicação de restauração de dados: este ciclo não executa deploy, rollback real, migração ou restauração de banco.
+
+Foram adicionados 38 testes específicos para rotas, falhas e timeouts dos adaptadores, seleção de porta e smoke controlado. A validação local aprovou instalação congelada, segurança com 3 migrações e 11 correções, TypeScript, **241 testes em 60 arquivos** e build de frontend/backend. A suíte de integração sem ambiente parou antes da coleta e listou somente as quatro variáveis obrigatórias. Permanecem os avisos conhecidos de analytics opcional e bundle principal grande.
+
+A ativação real depende da criação única de uma sentinela não vazia no armazenamento, da variável `STORAGE_HEALTHCHECK_KEY` e de uma URL HTTP(S) autorizada para o smoke. O guia conteinerizado foi marcado como arquitetura de referência porque os artefatos Docker citados não existem no pacote atual.
+
 ## [1.15.3] — 2026-08-29
 
 ### Qualidade — integração contínua segura

@@ -10,6 +10,7 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  storageHealthcheckKey: process.env.STORAGE_HEALTHCHECK_KEY ?? "",
   alrtIngressMode: process.env.ALRT_INGRESS_MODE ?? "desativado",
   alrtIngressApiKey: process.env.ALRT_INGRESS_API_KEY ?? "",
   alrtIngressHmacSecret: process.env.ALRT_INGRESS_HMAC_SECRET ?? "",

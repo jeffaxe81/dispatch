@@ -1,6 +1,6 @@
 {
   "name": "dispatch-brusque-live",
-  "version": "1.15.3",
+  "version": "1.15.4",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -12,6 +12,7 @@
     "test:browser-local": "node scripts/browser-local-login-smoke.mjs",
     "ui:coverage": "node scripts/generate-ui-route-matrix.mjs",
     "security:check": "node scripts/security-regression-check.mjs",
+    "smoke:post-deploy": "node scripts/post-deploy-smoke.mjs",
     "format": "prettier --write .",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
