@@ -16,7 +16,7 @@ Foi criada a primeira integração contínua do projeto em `.github/workflows/qu
 
 O workflow usa permissão global somente de leitura, não recebe segredos da aplicação, não executa testes de integração, deploy ou merge e possui timeout e cancelamento de execuções obsoletas. `actions/checkout` e `actions/setup-node` foram fixadas por SHA completo; o cache automático foi desativado nesta primeira linha de base.
 
-Foram adicionados 6 testes de regressão para proteger os disparadores, permissões, ações imutáveis, Node 24, ordem dos comandos e ausência de credenciais ou entrega. Validação local: instalação congelada, segurança com 3 migrações e 11 correções, TypeScript, **203 testes aprovados em 57 arquivos**, bloqueio antecipado da integração sem as quatro variáveis obrigatórias e build de produção aprovado. A primeira execução real no GitHub permanece como condição de encerramento do D-003.
+Foram adicionados 6 testes de regressão para proteger os disparadores, permissões, ações imutáveis, Node 24, ordem dos comandos e ausência de credenciais ou entrega. Validação local: instalação congelada, segurança com 3 migrações e 11 correções, TypeScript, **203 testes aprovados em 57 arquivos**, bloqueio antecipado da integração sem as quatro variáveis obrigatórias e build de produção aprovado. A primeira execução real, **Qualidade #1**, também concluiu instalação, segurança, tipos, testes e build com sucesso no GitHub.
 
 Avisos conhecidos e não causados por esta alteração: variáveis opcionais de analytics ausentes e bundle principal acima de 500 kB. Os testes de integração serão incorporados à CI somente após existir banco isolado, migrações controladas e credenciais exclusivas de teste.
 

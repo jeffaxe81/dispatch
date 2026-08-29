@@ -62,6 +62,6 @@ O SHA completo é imutável, ao contrário de uma referência móvel como `@v7`.
 
 O checkpoint anterior é `checkpoint/d002-v1.15.2`. Se a automação apresentar comportamento inseguro, o Pull Request não será mesclado e o workflow será corrigido ou retirado apenas da branch D-003. Nenhum dado, contrato, banco ou ambiente produtivo foi modificado.
 
-## Pendência para encerramento
+## Resultado remoto e encerramento
 
-O D-003 somente será concluído depois que o GitHub executar o workflow com sucesso. Só então serão criados o checkpoint `checkpoint/d003-v1.15.3` e o registro remoto correspondente.
+O GitHub executou **Qualidade #1** no Pull Request #2. Checkout, Node 24, Corepack, instalação congelada, segurança, TypeScript, 203 testes locais e build foram aprovados no executor hospedado. O checkpoint recuperável deste ciclo é `checkpoint/d003-v1.15.3`, criado somente após a execução final aprovada.
