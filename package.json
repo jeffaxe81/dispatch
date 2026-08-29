@@ -1,6 +1,6 @@
 {
   "name": "dispatch-brusque-live",
-  "version": "1.15.1",
+  "version": "1.15.2",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -13,7 +13,10 @@
     "ui:coverage": "node scripts/generate-ui-route-matrix.mjs",
     "security:check": "node scripts/security-regression-check.mjs",
     "format": "prettier --write .",
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.ts",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:all": "vitest run --config vitest.config.ts && vitest run --config vitest.integration.config.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {

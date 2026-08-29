@@ -8,6 +8,16 @@ Este arquivo registra mudanças funcionais relevantes do AXE Dispatch. As versõ
 | Funcionalidade compatível adicionada | MINOR | `1.1.0` |
 | Correção ou ajuste compatível | PATCH | `1.0.1` |
 
+## [1.15.2] — 2026-08-29
+
+### Qualidade — suítes locais e de integração separadas
+
+Os testes locais determinísticos foram separados dos testes que exigem banco de dados e credenciais de bootstrap. `pnpm test` e `pnpm test:unit` agora executam somente a suíte local; `pnpm test:integration` seleciona os arquivos `.integration.test.ts`; e `pnpm test:all` executa os dois grupos em sequência.
+
+A suíte local recebe valores fictícios exclusivos para título, sessão e armazenamento simulado. A suíte de integração valida antecipadamente `DATABASE_URL`, `JWT_SECRET`, `LOCAL_AUTH_BOOTSTRAP_USERNAME` e `LOCAL_AUTH_BOOTSTRAP_PASSWORD`, falhando com uma mensagem explícita em vez de ignorar testes silenciosamente.
+
+Validação: instalação congelada aprovada, segurança com 3 migrações e 11 correções preservadas, TypeScript aprovado, **197 testes locais aprovados em 56 arquivos, sem testes ignorados**, e build de produção concluído. Os 7 testes em 2 arquivos de integração permanecem disponíveis para execução no ambiente preparado.
+
 ## [1.15.1] — 2026-08-29
 
 ### Corrigido — instalação reproduzível
