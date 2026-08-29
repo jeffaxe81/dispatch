@@ -14,6 +14,7 @@ Esta é a menor alteração capaz de restabelecer uma instalação congelada coe
 
 ## Consequências
 
+- A correção será registrada no checkpoint `1.15.1`.
 - `corepack pnpm install --frozen-lockfile` passa a ser o comando oficial de instalação.
 - A segurança continua apoiada no lockfile e no script `security:check`, sem pinos que já não representam a árvore atual.
 - O patch de coleta de rotas do Wouter é removido porque não corresponde à versão instalada e a matriz atual de rotas é gerada diretamente de `client/src/App.tsx`.

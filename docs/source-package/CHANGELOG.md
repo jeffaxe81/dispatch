@@ -8,7 +8,7 @@ Este arquivo registra mudanças funcionais relevantes do AXE Dispatch. As versõ
 | Funcionalidade compatível adicionada | MINOR | `1.1.0` |
 | Correção ou ajuste compatível | PATCH | `1.0.1` |
 
-## [Não publicado]
+## [1.15.1] — 2026-08-29
 
 ### Corrigido — instalação reproduzível
 
