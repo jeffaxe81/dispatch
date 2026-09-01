@@ -1,0 +1,98 @@
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+      args:
+        VITE_APP_ID: ${VITE_APP_ID:-}
+        VITE_OAUTH_PORTAL_URL: ${VITE_OAUTH_PORTAL_URL:-}
+    image: axe-dispatch:dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: mysql://${MYSQL_USER:-axe_dispatch}:${MYSQL_PASSWORD:-axe_dispatch_dev}@mysql:3306/${MYSQL_DATABASE:-axe_dispatch}
+      STORAGE_S3_ENDPOINT: http://minio:9000
+      STORAGE_S3_FORCE_PATH_STYLE: "true"
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-axe-dispatch-evidencias}
+      STORAGE_S3_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY_ID:-axe_dispatch_dev}
+      STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:-axe_dispatch_dev_secret}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: .
+      target: dependencies
+    image: axe-dispatch-tools:dev
+    profiles: ["tools"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-axe_dispatch}:${MYSQL_PASSWORD:-axe_dispatch_dev}@mysql:3306/${MYSQL_DATABASE:-axe_dispatch}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["corepack", "pnpm", "drizzle-kit", "migrate"]
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-axe_dispatch}
+      MYSQL_USER: ${MYSQL_USER:-axe_dispatch}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-axe_dispatch_dev}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-axe_dispatch_root_dev}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-axe_dispatch_root_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_S3_ACCESS_KEY_ID:-axe_dispatch_dev}
+      MINIO_ROOT_PASSWORD: ${STORAGE_S3_SECRET_ACCESS_KEY:-axe_dispatch_dev_secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  create-bucket:
+    image: minio/mc:latest
+    profiles: ["tools"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${STORAGE_S3_ACCESS_KEY_ID:-axe_dispatch_dev} ${STORAGE_S3_SECRET_ACCESS_KEY:-axe_dispatch_dev_secret} &&
+      mc mb -p local/${STORAGE_S3_BUCKET:-axe-dispatch-evidencias} &&
+      exit 0
+      "
+
+volumes:
+  mysql_data:
+  minio_data:
