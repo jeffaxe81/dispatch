@@ -1,0 +1,61 @@
+name: D-005B Recovery Drill
+
+on:
+  push:
+    branches:
+      - chore/d005b-recovery-drill
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d005b-recovery-drill
+  cancel-in-progress: false
+
+jobs:
+  recovery:
+    name: Backup, restore e verificação descartável
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    env:
+      RECOVERY_SOURCE_CLASS: non-production
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BUILT_IN_FORGE_API_URL: ${{ secrets.BUILT_IN_FORGE_API_URL }}
+      BUILT_IN_FORGE_API_KEY: ${{ secrets.BUILT_IN_FORGE_API_KEY }}
+      RECOVERY_TARGET_CLASS: disposable
+      RECOVERY_TARGET_DATABASE_URL: ${{ secrets.RECOVERY_TARGET_DATABASE_URL }}
+      RECOVERY_TARGET_FORGE_API_URL: ${{ secrets.RECOVERY_TARGET_FORGE_API_URL }}
+      RECOVERY_TARGET_FORGE_API_KEY: ${{ secrets.RECOVERY_TARGET_FORGE_API_KEY }}
+      RECOVERY_TARGET_STORAGE_PREFIX: ${{ secrets.RECOVERY_TARGET_STORAGE_PREFIX }}
+      RECOVERY_CONFIRM_RESTORE: RESTORE_ONLY_DISPOSABLE_AXE_DISPATCH
+      RECOVERY_ENCRYPTION_KEY: ${{ secrets.RECOVERY_ENCRYPTION_KEY }}
+
+    steps:
+      - name: Obter checkpoint D-005A
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Habilitar Corepack
+        run: corepack enable
+
+      - name: Instalar dependências congeladas
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Garantir clientes MySQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v mysqldump >/dev/null 2>&1 || ! command -v mysql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y default-mysql-client
+          fi
+          command -v mysqldump >/dev/null
+          command -v mysql >/dev/null
+
+      - name: Executar D-005B uma única vez
+        run: corepack pnpm test:recovery -- --reporter=verbose
