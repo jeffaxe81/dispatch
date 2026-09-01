@@ -3,10 +3,15 @@ import fs from "fs";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
 import path from "path";
-import { createServer as createViteServer } from "vite";
-import viteConfig from "../../vite.config";
 
+// "vite" and vite.config.ts (and its plugins) are devDependencies, only
+// needed for the development middleware below. They must be imported
+// dynamically so a production build/runtime — which installs only
+// production dependencies — never tries to load them.
 export async function setupVite(app: Express, server: Server) {
+  const { createServer: createViteServer } = await import("vite");
+  const { default: viteConfig } = await import("../../vite.config");
+
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
