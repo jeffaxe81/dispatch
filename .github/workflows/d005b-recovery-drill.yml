@@ -1,9 +1,7 @@
 name: D-005B Recovery Drill
 
 on:
-  push:
-    branches:
-      - chore/d005b-recovery-drill
+  workflow_dispatch: {}
 
 permissions:
   contents: read
