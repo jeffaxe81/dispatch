@@ -11,6 +11,7 @@ import {
   assertOwnTeam,
 } from "./authorization";
 import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, resolveAuthorizedTeamFilter } from "./accessControl";
+import { listAccessPermissionGlossary } from "./accessCatalog";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername } from "./localAuth";
 import { systemRouter } from "./_core/systemRouter";
@@ -190,6 +191,9 @@ export const appRouter = router({
       listMine: operationalProcedure.query(({ ctx }) => listOwnFaqSuggestions(ctx.user.id)),
       create: operationalProcedure.input(z.object({ question: z.string().trim().min(10).max(280), detail: z.string().trim().max(2000).optional() })).mutation(({ ctx, input }) => createFaqSuggestion({ userId: ctx.user.id, ...input })),
     }),
+    // Any active user can read what a privilege means — the matrix of who
+    // has what (access.roles / access.permissions) stays gated by roles.view.
+    permissionGlossary: operationalProcedure.query(() => listAccessPermissionGlossary()),
   }),
   integrations: router({
     overview: operationalProcedure.query(async ({ ctx }) => {

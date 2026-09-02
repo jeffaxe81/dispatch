@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { faqEntries, filterFaqEntries, filterManualEntries, manualEntries } from "./ManualsHelpPage";
+import { defaultProfileEntries, faqEntries, filterFaqEntries, filterManualEntries, manualEntries } from "./ManualsHelpPage";
 
 describe("ManualsHelpContent", () => {
   it("mantém os sete guias operacionais e a FAQ de apoio", () => {
@@ -14,5 +14,10 @@ describe("ManualsHelpContent", () => {
     expect(filterManualEntries("prioridade").map(manual => manual.id)).toContain("ocorrencias");
     expect(filterManualEntries("viatura").map(manual => manual.id)).toContain("viaturas");
     expect(filterFaqEntries("localizacao").map(faq => faq.id)).toContain("agente-localizacao");
+  });
+
+  it("lista os 5 perfis padrão, incluindo agente_campo (exigido por server/accessCatalog.ts)", () => {
+    expect(defaultProfileEntries).toHaveLength(5);
+    expect(defaultProfileEntries.map(profile => profile.code)).toEqual(["administrador", "supervisor", "despachador", "agente_campo", "agente_seguranca"]);
   });
 });

@@ -8,7 +8,7 @@ const routerSource = fs.readFileSync(routerPath, "utf8");
 
 const coverageRules = [
   { prefix: "auth", suites: ["server/auth.logout.test.ts", "server/_core/cookies.test.ts", "server/localAuth.test.ts", "server/localAuth.bootstrap.test.ts", "server/localAuth.integration.test.ts"], evidence: "Login local, sessão, contexto autenticado, logout, cookie seguro, bloqueio de tentativas e perfis operacionais." },
-  { prefix: "help", suites: ["server/helpCenter.test.ts", "client/src/pages/ManualsHelpPage.test.tsx"], evidence: "Central de ajuda, favoritos e sugestões." },
+  { prefix: "help", suites: ["server/helpCenter.test.ts", "client/src/pages/ManualsHelpPage.test.tsx", "server/accessCatalog.test.ts"], evidence: "Central de ajuda, favoritos, sugestões e glossário de privilégios." },
   { prefix: "dashboard", suites: ["server/operationalReports.test.ts", "client/src/hooks/useRefreshSettings.test.ts"], evidence: "Consultas operacionais, filtros e atualização configurável." },
   { prefix: "reports", suites: ["server/operationalReports.test.ts"], evidence: "Visão geral, exportação auditada e filtros salvos são chamados diretamente pela suíte." },
   { prefix: "integrations", suites: ["server/integrations.test.ts", "server/openapi.test.ts", "server/alrtIngress.test.ts", "server/homologationMatrix.test.ts", "client/src/pages/IntegrationResourcePages.test.tsx", "client/src/pages/ApiDocsPage.test.tsx", "client/src/pages/ExternalIncidentReviewsPage.test.tsx"], evidence: "Conexões, webhooks, credenciais, OpenAPI, ALRT, logs e revisão externa." },
@@ -44,8 +44,8 @@ for (const line of routerSource.split("\n")) {
   procedures.push({ path: [...routerStack.map(item => item.name), name].join("."), procedureType });
 }
 
-if (procedures.length !== 97) {
-  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 97.`);
+if (procedures.length !== 98) {
+  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 98.`);
 }
 
 const rows = procedures.map(procedure => {
