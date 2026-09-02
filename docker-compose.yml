@@ -6,6 +6,7 @@ services:
       args:
         VITE_APP_ID: ${VITE_APP_ID:-}
         VITE_OAUTH_PORTAL_URL: ${VITE_OAUTH_PORTAL_URL:-}
+        VITE_CARTO_API_KEY: ${VITE_CARTO_API_KEY:-}
     image: axe-dispatch:dev
     restart: unless-stopped
     ports:

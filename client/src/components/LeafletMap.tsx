@@ -24,8 +24,15 @@ const PRIORITY_COLOR: Record<string, string> = {
   critica: "#c52d45",
 };
 
-// All tile sources below are free, public, and require no API key — real
-// internet access, no proxy or third-party account needed.
+// CARTO's basemap tiles require a free API key as of their 2024 policy
+// change (5M requests/month on the free tier, no credit card needed) —
+// get one at https://carto.com/basemaps/apikey/ and set it as
+// VITE_CARTO_API_KEY. Without a key configured, CARTO is skipped
+// entirely and everything falls back to OpenStreetMap, which stays free
+// and keyless (subject only to its own fair-use policy).
+const CARTO_API_KEY = (import.meta.env.VITE_CARTO_API_KEY as string | undefined)?.trim();
+export const CARTO_AVAILABLE = Boolean(CARTO_API_KEY);
+
 const OPENSTREETMAP_LAYER: TileLayerConfig = {
   name: "OpenStreetMap",
   url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -33,20 +40,21 @@ const OPENSTREETMAP_LAYER: TileLayerConfig = {
   maxZoom: 19,
 };
 
-// CARTO's basemap is free, keyless, and built on the same OSM data — an
-// alternative source, not just a passive fallback: it can be selected
-// directly as "Tipo de mapa" in Configurações, or kick in automatically
-// (see BACKUP_TILE_LAYERS below) if OpenStreetMap's own tiles fail.
+// Alternative source built on the same OSM data — selectable directly as
+// "Tipo de mapa" in Configurações, or used automatically as OpenStreetMap's
+// contingency (see BACKUP_TILE_LAYERS below), but only when a key is set.
 const CARTO_LAYER: TileLayerConfig = {
   name: "CARTO",
-  url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${CARTO_API_KEY ? `?key=${encodeURIComponent(CARTO_API_KEY)}` : ""}`,
   attribution: '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a> — dados &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
   maxZoom: 20,
 };
 
 const PRIMARY_TILE_LAYERS: Record<MapType, TileLayerConfig> = {
   roadmap: OPENSTREETMAP_LAYER,
-  carto: CARTO_LAYER,
+  // Without a configured key, selecting "carto" silently behaves like
+  // "roadmap" instead of showing a broken/blank map.
+  carto: CARTO_AVAILABLE ? CARTO_LAYER : OPENSTREETMAP_LAYER,
   terrain: {
     name: "OpenTopoMap",
     url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
@@ -71,8 +79,9 @@ const PRIMARY_TILE_LAYERS: Record<MapType, TileLayerConfig> = {
 // two OSM-family tile providers, and OpenStreetMap's own servers have a
 // fair-use policy that discourages sustained production traffic (the
 // reason CARTO exists at all here). Satellite/terrain have none wired up.
+// CARTO only appears as roadmap's backup when a key is actually configured.
 const BACKUP_TILE_LAYERS: Partial<Record<MapType, TileLayerConfig>> = {
-  roadmap: CARTO_LAYER,
+  ...(CARTO_AVAILABLE ? { roadmap: CARTO_LAYER } : {}),
   carto: OPENSTREETMAP_LAYER,
 };
 

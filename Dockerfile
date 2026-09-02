@@ -23,8 +23,10 @@ COPY . .
 FROM dependencies AS build
 ARG VITE_APP_ID
 ARG VITE_OAUTH_PORTAL_URL
+ARG VITE_CARTO_API_KEY
 ENV VITE_APP_ID=${VITE_APP_ID}
 ENV VITE_OAUTH_PORTAL_URL=${VITE_OAUTH_PORTAL_URL}
+ENV VITE_CARTO_API_KEY=${VITE_CARTO_API_KEY}
 RUN pnpm build
 
 # ---------------------------------------------------------------------------

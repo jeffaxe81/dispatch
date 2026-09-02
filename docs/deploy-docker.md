@@ -47,17 +47,35 @@ O tipo "roadmap" (o padrão) tem uma segunda camada de contingência: os
 servidores públicos `tile.openstreetmap.org` são um serviço de uso
 leve/comunitário da fundação OSM, não pensado para tráfego sustentado de
 produção. Se o mapa detectar falhas consecutivas ao carregar tiles do
-OpenStreetMap, ele troca automaticamente para o CARTO (também gratuito e
-sem chave de API, usando os mesmos dados OSM) — sem intervenção do
-usuário. Satélite e terreno não têm uma segunda camada de contingência
-hoje.
+OpenStreetMap, ele pode trocar automaticamente para o CARTO (também
+gratuito, usando os mesmos dados OSM) — mas, ao contrário dos demais
+tiles usados aqui, **o CARTO passou a exigir uma chave de API gratuita**
+desde uma mudança de política em 2024 (sem cartão de crédito, 5 milhões
+de requisições/mês no plano gratuito). Sem uma chave configurada, o app
+nunca tenta usar o CARTO — tudo continua no OpenStreetMap normalmente,
+sem quebrar. Satélite e terreno não têm uma segunda camada de
+contingência hoje.
+
+Para habilitar o CARTO:
+
+1. Gere uma chave gratuita em <https://carto.com/basemaps/apikey/>.
+2. Defina `VITE_CARTO_API_KEY=sua-chave` no `.env`.
+3. **Reconstrua a imagem** — diferente das outras variáveis deste
+   arquivo, esta é embutida no bundle do cliente em tempo de *build*, não
+   lida na inicialização do contêiner:
+   ```bash
+   docker compose build --no-cache app
+   docker compose up -d
+   ```
 
 CARTO também pode ser escolhido diretamente como tipo de mapa em
 **Configurações → Mapa operacional → Tipo de mapa**, junto com Mapa
 padrão, Satélite, Terreno e Híbrido. Selecionar CARTO nesse campo sempre
 usa o mapa OpenStreetMap/Leaflet (com OpenStreetMap como sua própria
 contingência), independentemente da configuração de "Contingência de
-mapa" — CARTO não tem equivalente no Google Maps.
+mapa" — CARTO não tem equivalente no Google Maps. Sem a chave
+configurada, essa opção se comporta como o mapa padrão (OpenStreetMap) em
+vez de mostrar um mapa quebrado.
 
 Quando o projeto for para produção com volume maior de uso, considere
 contratar uma API de mapas paga (Google Maps, Mapbox, etc.) para ter SLA
