@@ -1,7 +1,5 @@
-import { Button } from "@/components/ui/button";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 type GeoPoint = { latitude: string | number | null; longitude: string | number | null };
@@ -16,7 +14,7 @@ type LeafletMapProps = {
   mapType?: MapType;
   incidents: Array<GeoPoint & { code: string; priority: string }>;
   teams: Array<GeoPoint & { code: string; name: string }>;
-  onRetryGoogle?: () => void;
+  onSourceChange?: (sourceName: string) => void;
 };
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -95,14 +93,15 @@ function markerIcon(color: string, symbol: string) {
   });
 }
 
-export function LeafletMap({ center, zoom, mapType = "roadmap", incidents, teams, onRetryGoogle }: LeafletMapProps) {
+export function LeafletMap({ center, zoom, mapType = "roadmap", incidents, teams, onSourceChange }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const tileErrorCountRef = useRef(0);
   const [usingBackupTiles, setUsingBackupTiles] = useState(false);
-  const [activeTileSourceName, setActiveTileSourceName] = useState(() => resolveTileLayer(mapType).name);
+  const onSourceChangeRef = useRef(onSourceChange);
+  onSourceChangeRef.current = onSourceChange;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -129,7 +128,7 @@ export function LeafletMap({ center, zoom, mapType = "roadmap", incidents, teams
     const map = mapRef.current;
     if (!map) return;
     const layer = resolveTileLayer(mapType, usingBackupTiles);
-    setActiveTileSourceName(layer.name);
+    onSourceChangeRef.current?.(layer.name);
     tileErrorCountRef.current = 0;
 
     if (tileLayerRef.current) map.removeLayer(tileLayerRef.current);
@@ -173,25 +172,7 @@ export function LeafletMap({ center, zoom, mapType = "roadmap", incidents, teams
     return () => markers.forEach(marker => marker.remove());
   }, [incidents, teams]);
 
-  const visibleIncidents = incidents.filter(asPoint).length;
-  const visibleTeams = teams.filter(asPoint).length;
-
-  return (
-    <div className="absolute inset-0 overflow-hidden bg-slate-100">
-      <div ref={containerRef} className="h-full w-full" />
-      <div role="status" className="pointer-events-none absolute bottom-4 left-4 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-lg border border-emerald-200/90 bg-emerald-50/95 px-2.5 py-2 text-xs text-emerald-950 shadow-sm backdrop-blur">
-        <span className="font-medium">
-          {activeTileSourceName} ativo · {visibleIncidents} ocorrência(s) · {visibleTeams} equipe(s)
-        </span>
-        {onRetryGoogle && (
-          <Button size="sm" variant="ghost" className="pointer-events-auto h-6 px-1.5 text-[11px] text-emerald-900 hover:bg-emerald-100" onClick={onRetryGoogle}>
-            <RefreshCw className="mr-1 h-3 w-3" />
-            Tentar Google
-          </Button>
-        )}
-      </div>
-    </div>
-  );
+  return <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-slate-100" />;
 }
 
 export default LeafletMap;

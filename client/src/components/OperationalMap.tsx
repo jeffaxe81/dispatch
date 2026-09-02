@@ -59,6 +59,7 @@ export function OperationalMap({ incidents, teams, settings }: { incidents: MapI
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [mapUnavailable, setMapUnavailable] = useState(false);
   const [mapAttempt, setMapAttempt] = useState(0);
+  const [activeSource, setActiveSource] = useState<string | null>(null);
   const markerRefs = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
 
   useEffect(() => {
@@ -105,33 +106,44 @@ export function OperationalMap({ incidents, teams, settings }: { incidents: MapI
   const fallbackMode = settings?.fallbackMode ?? "automatic";
   const { useOpenStreetMap, showGoogleOnlyUnavailable: googleOnlyUnavailable } = resolveOperationalMapMode(fallbackMode, mapUnavailable);
 
+  const positionedTeams = teams.filter(team => team.lastLatitude && team.lastLongitude).length;
+
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
-      {!useOpenStreetMap && <MapView
-        key={`${mapAttempt}-${settings?.centerLatitude ?? -27.0976}-${settings?.centerLongitude ?? -48.9104}-${settings?.defaultZoom ?? 13}-${settings?.mapType ?? "roadmap"}-${settings?.trafficEnabled ?? false}`}
-        initialCenter={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }}
-        initialZoom={settings?.defaultZoom ?? 13}
-        mapTypeId={settings?.mapType ?? "roadmap"}
-        trafficEnabled={settings?.trafficEnabled ?? false}
-        className="h-[430px] w-full"
-        onMapReady={map => {
-          setMapUnavailable(false);
-          setMap(map);
-        }}
-        onMapError={() => { setMap(null); setMapUnavailable(true); }}
-      />}
-      {useOpenStreetMap && <LeafletMap center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} mapType={settings?.mapType ?? "roadmap"} incidents={incidents} teams={teams.map(team => ({ latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name }))} onRetryGoogle={fallbackMode === "automatic" ? () => { setMapUnavailable(false); setMapAttempt(current => current + 1); } : undefined} />}
-      {googleOnlyUnavailable && <div role="status" className="absolute right-4 top-4 max-w-xs rounded-lg border border-amber-200/90 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur"><p className="font-semibold">Google Maps indisponível</p><p className="mt-0.5 leading-4">Modo somente Google ativo. Altere a contingência nas Configurações.</p></div>}
-      <div className="pointer-events-none absolute left-4 top-4 rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm backdrop-blur">
-        <p className="font-semibold text-slate-900">Mapa operacional</p>
-        <p>{incidents.length} ocorrência(s) · {teams.filter(team => team.lastLatitude && team.lastLongitude).length} equipe(s) posicionada(s)</p>
+    <div className="space-y-2">
+      <section className="relative h-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
+        {!useOpenStreetMap && <MapView
+          key={`${mapAttempt}-${settings?.centerLatitude ?? -27.0976}-${settings?.centerLongitude ?? -48.9104}-${settings?.defaultZoom ?? 13}-${settings?.mapType ?? "roadmap"}-${settings?.trafficEnabled ?? false}`}
+          initialCenter={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }}
+          initialZoom={settings?.defaultZoom ?? 13}
+          mapTypeId={settings?.mapType ?? "roadmap"}
+          trafficEnabled={settings?.trafficEnabled ?? false}
+          className="h-full w-full"
+          onMapReady={map => {
+            setMapUnavailable(false);
+            setMap(map);
+          }}
+          onMapError={() => { setMap(null); setMapUnavailable(true); }}
+        />}
+        {useOpenStreetMap && <LeafletMap center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} mapType={settings?.mapType ?? "roadmap"} incidents={incidents} teams={teams.map(team => ({ latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name }))} onSourceChange={setActiveSource} />}
+        {googleOnlyUnavailable && <div role="status" className="absolute right-4 top-4 max-w-xs rounded-lg border border-amber-200/90 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur"><p className="font-semibold">Google Maps indisponível</p><p className="mt-0.5 leading-4">Modo somente Google ativo. Altere a contingência nas Configurações.</p></div>}
+      </section>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-1 text-[11px] text-slate-600">
+        <p>
+          <span className="font-medium text-slate-900">Mapa operacional</span> · {incidents.length} ocorrência(s) · {positionedTeams} equipe(s) posicionada(s)
+          {useOpenStreetMap && activeSource && <span> · fonte: {activeSource}</span>}
+          {useOpenStreetMap && fallbackMode === "automatic" && (
+            <button type="button" className="ml-2 underline underline-offset-2 hover:text-slate-900" onClick={() => { setMapUnavailable(false); setMapAttempt(current => current + 1); }}>
+              Tentar Google
+            </button>
+          )}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(priorityColor).map(([priority, color]) => (
+            <span key={priority} className="flex items-center gap-1.5 capitalize"><i className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />{priority}</span>
+          ))}
+          <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-sky-600" />equipe</span>
+        </div>
       </div>
-      <div className="pointer-events-none absolute bottom-4 left-4 flex flex-wrap gap-2 rounded-xl border border-white/70 bg-white/90 p-2 text-[11px] text-slate-700 shadow-sm backdrop-blur">
-        {Object.entries(priorityColor).map(([priority, color]) => (
-          <span key={priority} className="flex items-center gap-1.5 capitalize"><i className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />{priority}</span>
-        ))}
-        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-sky-600" />equipe</span>
-      </div>
-    </section>
+    </div>
   );
 }
