@@ -12,7 +12,7 @@ describe("configuração de marca", () => {
     const header = readFileSync(resolve(projectRoot, "client/src/components/DashboardLayout.tsx"), "utf8");
     const document = readFileSync(resolve(projectRoot, "client/index.html"), "utf8");
 
-    expect(header).toContain("ShieldCheck");
+    expect(header).toContain("<Axe ");
     expect(header).toContain("AXE Sistemas");
     expect(document).toContain('rel="icon" href="data:image/svg+xml');
     expect(document).not.toContain("axe-sistemas-viking-mark_2bb3ebce.png");

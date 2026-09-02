@@ -17,7 +17,7 @@ import { trpc } from "@/lib/trpc";
 import { isFieldAgent, type AccessAssignmentLike } from "@/lib/operationalAccess";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { BarChart3, CarFront, CircleHelp, ClipboardList, DoorOpen, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
+import { Axe, BarChart3, CarFront, CircleHelp, ClipboardList, DoorOpen, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
 import React, { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -223,7 +223,7 @@ function DashboardLayoutContent({
                     aria-hidden="true"
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-700 to-teal-600 text-white shadow-sm shadow-sky-900/15"
                   >
-                    <ShieldCheck className="h-4 w-4" strokeWidth={1.8} />
+                    <Axe className="h-4 w-4" strokeWidth={1.8} />
                   </span>
                   <div className="min-w-0 leading-none">
                     <span className="block text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-700">
