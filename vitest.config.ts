@@ -15,6 +15,6 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts", "client/src/**/*.test.ts", "client/src/**/*.spec.ts", "client/src/**/*.test.tsx", "client/src/**/*.spec.tsx"],
-    environmentMatchGlobs: [["client/src/pages/WorkflowBuilderPage.full.test.tsx", "jsdom"], ["client/src/pages/ExecutionsPage.test.tsx", "jsdom"], ["client/src/pages/IntegrationResourcePages.test.tsx", "jsdom"], ["client/src/pages/ExternalIncidentReviewsPage.test.tsx", "jsdom"], ["client/src/pages/ApiDocsPage.test.tsx", "jsdom"], ["client/src/pages/AgentPage.test.tsx", "jsdom"], ["client/src/pages/GeneralSettingsPage.test.tsx", "jsdom"]],
+    environmentMatchGlobs: [["client/src/pages/WorkflowBuilderPage.full.test.tsx", "jsdom"], ["client/src/pages/ExecutionsPage.test.tsx", "jsdom"], ["client/src/pages/IntegrationResourcePages.test.tsx", "jsdom"], ["client/src/pages/ExternalIncidentReviewsPage.test.tsx", "jsdom"], ["client/src/pages/ApiDocsPage.test.tsx", "jsdom"], ["client/src/pages/AgentPage.test.tsx", "jsdom"], ["client/src/pages/GeneralSettingsPage.test.tsx", "jsdom"], ["client/src/components/LeafletMap.test.ts", "jsdom"], ["client/src/components/OperationalMap.test.ts", "jsdom"]],
   },
 });

@@ -1,5 +1,5 @@
+import { LeafletMap } from "@/components/LeafletMap";
 import { MapView } from "@/components/Map";
-import OpenStreetMapFallback from "@/components/OpenStreetMapFallback";
 import { useEffect, useRef, useState } from "react";
 
 type MapIncident = {
@@ -120,7 +120,7 @@ export function OperationalMap({ incidents, teams, settings }: { incidents: MapI
         }}
         onMapError={() => { setMap(null); setMapUnavailable(true); }}
       />}
-      {useOpenStreetMap && <OpenStreetMapFallback center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} incidents={incidents} teams={teams.map(team => ({ latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name }))} onRetryGoogle={fallbackMode === "automatic" ? () => { setMapUnavailable(false); setMapAttempt(current => current + 1); } : undefined} />}
+      {useOpenStreetMap && <LeafletMap center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} mapType={settings?.mapType ?? "roadmap"} incidents={incidents} teams={teams.map(team => ({ latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name }))} onRetryGoogle={fallbackMode === "automatic" ? () => { setMapUnavailable(false); setMapAttempt(current => current + 1); } : undefined} />}
       {googleOnlyUnavailable && <div role="status" className="absolute right-4 top-4 max-w-xs rounded-lg border border-amber-200/90 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur"><p className="font-semibold">Google Maps indisponível</p><p className="mt-0.5 leading-4">Modo somente Google ativo. Altere a contingência nas Configurações.</p></div>}
       <div className="pointer-events-none absolute left-4 top-4 rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm backdrop-blur">
         <p className="font-semibold text-slate-900">Mapa operacional</p>

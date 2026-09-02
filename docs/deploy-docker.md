@@ -21,14 +21,27 @@ importantes:
 
 ## Limitação conhecida: recursos exclusivos da plataforma Manus
 
-Vários módulos (`server/_core/map.ts`, `llm.ts`, `imageGeneration.ts`,
-`voiceTranscription.ts`, `notification.ts`, `heartbeat.ts`, `dataApi.ts`)
-dependem de `BUILT_IN_FORGE_API_URL`/`BUILT_IN_FORGE_API_KEY` para recursos
-como proxy de mapas, geração de imagem, transcrição de voz e notificações.
+Alguns módulos (`llm.ts`, `imageGeneration.ts`, `voiceTranscription.ts`,
+`notification.ts`, `heartbeat.ts`, `dataApi.ts`) dependem de
+`BUILT_IN_FORGE_API_URL`/`BUILT_IN_FORGE_API_KEY` para recursos como
+assistente por LLM, geração de imagem, transcrição de voz e notificações.
 Fora da plataforma Manus essas variáveis não existem, então essas
 funcionalidades ficam indisponíveis (falham de forma controlada, sem
 derrubar o app). O núcleo operacional — ocorrências, despacho, equipes,
 turnos, workflows, evidências, auditoria — funciona normalmente sem elas.
+
+**O mapa operacional não depende mais da Manus.** `server/_core/map.ts`
+(o proxy Google Maps via Forge) nunca foi usado por nenhum código —
+morto desde o início. O mapa real, em `client/src/components/Map.tsx`,
+tentava carregar o SDK do Google Maps através do mesmo proxy Forge, o que
+também nunca funcionava fora da Manus. Agora o app usa
+`client/src/components/LeafletMap.tsx`: um mapa interativo de verdade
+(pan, zoom, marcadores de ocorrências e equipes em tempo real) com
+camadas de tiles públicas e gratuitas — OpenStreetMap (padrão), Esri World
+Imagery (satélite/híbrido) e OpenTopoMap (terreno) — sem chave de API e
+sem depender da Manus. É o comportamento padrão (`mapFallbackMode =
+"automatic"`): como não há credencial do Google configurada, o app usa
+OpenStreetMap desde o primeiro boot, sem nenhuma configuração adicional.
 
 ## 1. Desenvolvimento local com Compose
 

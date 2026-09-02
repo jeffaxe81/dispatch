@@ -19,7 +19,7 @@ const coverageRules = [
   { prefix: "vehicles", suites: ["server/authorization.test.ts", "server/accessControl.test.ts"], evidence: "Permissões de frota e escopo preservados; camada tRPC/db idêntica ao pacote-fonte." },
   { prefix: "administration", suites: ["server/userManagement.test.ts", "server/accessControl.test.ts", "server/accessPolicies.test.ts"], evidence: "Administração de usuários e vínculos operacionais." },
   { prefix: "access", suites: ["server/accessControl.test.ts", "server/accessPolicies.test.ts", "server/authorization.test.ts", "server/scopeHierarchy.test.ts", "server/profilePhoto.test.ts", "server/localAuth.integration.test.ts", "client/src/components/ProfilePhotoControl.test.ts"], evidence: "Papéis, permissões, escopos, atribuições, perfis, credenciais locais e fotos." },
-  { prefix: "settings", suites: ["server/solutionReset.test.ts", "server/solutionReset.transactions.test.ts", "client/src/pages/GeneralSettingsPage.test.tsx", "client/src/components/OperationalMap.test.ts", "client/src/components/OpenStreetMapFallback.test.ts"], evidence: "Mapa, configurações futuras e reinicialização controlada." },
+  { prefix: "settings", suites: ["server/solutionReset.test.ts", "server/solutionReset.transactions.test.ts", "client/src/pages/GeneralSettingsPage.test.tsx", "client/src/components/OperationalMap.test.ts", "client/src/components/LeafletMap.test.ts"], evidence: "Mapa, configurações futuras e reinicialização controlada." },
 ];
 
 const procedures = [];
