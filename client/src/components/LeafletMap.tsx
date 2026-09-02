@@ -6,7 +6,7 @@ type GeoPoint = { latitude: string | number | null; longitude: string | number |
 
 type MapType = "roadmap" | "satellite" | "terrain" | "hybrid" | "carto";
 
-type TileLayerConfig = { name: string; url: string; attribution: string; maxZoom: number };
+type TileLayerConfig = { name: string; url: string; attribution: string; maxZoom: number; subdomains?: string };
 
 type LeafletMapProps = {
   center: { lat: number; lng: number };
@@ -15,6 +15,9 @@ type LeafletMapProps = {
   incidents: Array<GeoPoint & { code: string; priority: string }>;
   teams: Array<GeoPoint & { code: string; name: string }>;
   onSourceChange?: (sourceName: string) => void;
+  // Whether OpenStreetMap is allowed to fail over to CARTO automatically.
+  // Defaults to true ("Contingência de mapa" = "Automático").
+  contingencyEnabled?: boolean;
 };
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -45,9 +48,10 @@ const OPENSTREETMAP_LAYER: TileLayerConfig = {
 // contingency (see BACKUP_TILE_LAYERS below), but only when a key is set.
 const CARTO_LAYER: TileLayerConfig = {
   name: "CARTO",
-  url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${CARTO_API_KEY ? `?key=${encodeURIComponent(CARTO_API_KEY)}` : ""}`,
-  attribution: '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a> — dados &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+  url: `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${CARTO_API_KEY ? `?key=${encodeURIComponent(CARTO_API_KEY)}` : ""}`,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>',
   maxZoom: 20,
+  subdomains: "abcd",
 };
 
 const PRIMARY_TILE_LAYERS: Record<MapType, TileLayerConfig> = {
@@ -110,7 +114,7 @@ function markerIcon(color: string, symbol: string) {
   });
 }
 
-export function LeafletMap({ center, zoom, mapType = "roadmap", incidents, teams, onSourceChange }: LeafletMapProps) {
+export function LeafletMap({ center, zoom, mapType = "roadmap", incidents, teams, onSourceChange, contingencyEnabled = true }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
@@ -149,15 +153,15 @@ export function LeafletMap({ center, zoom, mapType = "roadmap", incidents, teams
     tileErrorCountRef.current = 0;
 
     if (tileLayerRef.current) map.removeLayer(tileLayerRef.current);
-    const tileLayer = L.tileLayer(layer.url, { attribution: layer.attribution, maxZoom: layer.maxZoom });
+    const tileLayer = L.tileLayer(layer.url, { attribution: layer.attribution, maxZoom: layer.maxZoom, ...(layer.subdomains ? { subdomains: layer.subdomains } : {}) });
     tileLayer.on("tileerror", () => {
-      if (usingBackupTiles || !BACKUP_TILE_LAYERS[mapType ?? "roadmap"]) return;
+      if (!contingencyEnabled || usingBackupTiles || !BACKUP_TILE_LAYERS[mapType ?? "roadmap"]) return;
       tileErrorCountRef.current += 1;
       if (tileErrorCountRef.current >= TILE_ERROR_THRESHOLD) setUsingBackupTiles(true);
     });
     tileLayer.addTo(map);
     tileLayerRef.current = tileLayer;
-  }, [mapType, usingBackupTiles]);
+  }, [mapType, usingBackupTiles, contingencyEnabled]);
 
   useEffect(() => {
     const map = mapRef.current;

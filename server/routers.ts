@@ -685,7 +685,7 @@ export const appRouter = router({
       return getSolutionResetPreview({ ...input, actorUserId: ctx.user.id });
     }),
     updateGeneralMap: operationalProcedure
-      .input(z.object({ centerLatitude: z.number().min(-90).max(90), centerLongitude: z.number().min(-180).max(180), defaultZoom: z.number().int().min(8).max(20), mapType: z.enum(["roadmap", "satellite", "terrain", "hybrid", "carto"]), trafficEnabled: z.boolean(), autoFitEnabled: z.boolean(), fallbackMode: z.enum(["automatic", "openstreetmap", "google_only"]) }))
+      .input(z.object({ centerLatitude: z.number().min(-90).max(90), centerLongitude: z.number().min(-180).max(180), defaultZoom: z.number().int().min(8).max(20), mapType: z.enum(["roadmap", "satellite", "terrain", "hybrid", "carto"]), trafficEnabled: z.boolean(), autoFitEnabled: z.boolean(), fallbackMode: z.enum(["automatic", "openstreetmap"]) }))
       .mutation(async ({ ctx, input }) => {
         await assertSuperAdministrator(ctx.user);
         return updateGeneralMapSettings({ ...input, actorUserId: ctx.user.id });

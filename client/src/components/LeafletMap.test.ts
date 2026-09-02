@@ -50,14 +50,18 @@ describe("CARTO com chave de API configurada", () => {
     vi.unstubAllEnvs();
   });
 
-  it("usa CARTO como contingência do roadmap quando o OpenStreetMap falha", async () => {
+  it("usa CARTO como contingência do roadmap quando o OpenStreetMap falha, com a URL e o parâmetro de chave corretos", async () => {
     vi.stubEnv("VITE_CARTO_API_KEY", "chave-de-teste");
     vi.resetModules();
     const { resolveTileLayer, CARTO_AVAILABLE } = await import("./LeafletMap");
     expect(CARTO_AVAILABLE).toBe(true);
-    expect(resolveTileLayer("roadmap", true).url).toContain("basemaps.cartocdn.com");
-    expect(resolveTileLayer("roadmap", true).url).toContain("key=chave-de-teste");
-    expect(resolveTileLayer("roadmap", true).name).toContain("CARTO");
+    const layer = resolveTileLayer("roadmap", true);
+    // CARTO's keyed raster endpoint only works under /rastertiles/voyager/
+    // — the older /light_all/ path 404s once a key is required. Query
+    // param is "key", not "api_key". "abcd" subdomains match CARTO's docs.
+    expect(layer.url).toBe("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=chave-de-teste");
+    expect(layer.subdomains).toBe("abcd");
+    expect(layer.name).toContain("CARTO");
   });
 
   it("permite selecionar CARTO diretamente como tipo de mapa, com OpenStreetMap como contingência", async () => {

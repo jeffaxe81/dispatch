@@ -1,6 +1,5 @@
 import { LeafletMap } from "@/components/LeafletMap";
-import { MapView } from "@/components/Map";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 type MapIncident = {
   id: number;
@@ -29,6 +28,9 @@ type OperationalMapSettings = {
   mapType: "roadmap" | "satellite" | "terrain" | "hybrid" | "carto";
   trafficEnabled: boolean;
   autoFitEnabled: boolean;
+  // "google_only" is a legacy value a settings row saved before Google
+  // Maps was removed from the app may still hold; resolveContingencyEnabled
+  // treats anything other than "openstreetmap" as "automatic".
   fallbackMode: "automatic" | "openstreetmap" | "google_only";
 };
 
@@ -39,107 +41,38 @@ const priorityColor: Record<MapIncident["priority"], string> = {
   critica: "#c52d45",
 };
 
-export function resolveOperationalMapMode(fallbackMode: OperationalMapSettings["fallbackMode"], googleUnavailable: boolean, mapType?: OperationalMapSettings["mapType"]) {
-  // "carto" has no Google Maps equivalent, so choosing it always renders
-  // the OpenStreetMap-family map — it's a deliberate style choice, not a
-  // failure, so it never triggers the "Google Maps indisponível" notice.
-  if (mapType === "carto") return { useOpenStreetMap: true, showGoogleOnlyUnavailable: false };
-  return {
-    useOpenStreetMap: fallbackMode === "openstreetmap" || (fallbackMode === "automatic" && googleUnavailable),
-    showGoogleOnlyUnavailable: fallbackMode === "google_only" && googleUnavailable,
-  };
-}
-
-function markerElement(label: string, color: string, symbol: string) {
-  const element = document.createElement("div");
-  element.className = "map-marker";
-  element.setAttribute("aria-label", label);
-  element.style.cssText = `display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:${color};color:#fff;border:3px solid rgba(255,255,255,.94);box-shadow:0 8px 18px rgba(13,39,52,.32);font-size:14px;font-weight:800;`;
-  element.textContent = symbol;
-  return element;
+// "automatic" (default): OpenStreetMap switches to CARTO automatically if
+// its tiles fail repeatedly. "openstreetmap": stays on OpenStreetMap even
+// if it fails, no automatic contingency. There is no Google Maps option —
+// the app has no working Google Maps integration outside the Manus
+// platform, so it was removed rather than left silently broken.
+export function resolveContingencyEnabled(fallbackMode: OperationalMapSettings["fallbackMode"]) {
+  return fallbackMode !== "openstreetmap";
 }
 
 export function OperationalMap({ incidents, teams, settings }: { incidents: MapIncident[]; teams: MapTeam[]; settings?: OperationalMapSettings }) {
-  const [map, setMap] = useState<google.maps.Map | null>(null);
-  const [mapUnavailable, setMapUnavailable] = useState(false);
-  const [mapAttempt, setMapAttempt] = useState(0);
   const [activeSource, setActiveSource] = useState<string | null>(null);
-  const markerRefs = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
-
-  useEffect(() => {
-    if (!map || !window.google?.maps?.marker) return;
-    markerRefs.current.forEach(marker => {
-      marker.map = null;
-    });
-    const markers: google.maps.marker.AdvancedMarkerElement[] = [];
-
-    incidents.forEach(incident => {
-      const latitude = Number(incident.latitude);
-      const longitude = Number(incident.longitude);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-      markers.push(
-        new google.maps.marker.AdvancedMarkerElement({
-          map,
-          position: { lat: latitude, lng: longitude },
-          title: `${incident.code} — ${incident.category}`,
-          content: markerElement(`${incident.priority}: ${incident.category}`, priorityColor[incident.priority], "!"),
-        }),
-      );
-    });
-
-    teams.forEach(team => {
-      const latitude = Number(team.lastLatitude);
-      const longitude = Number(team.lastLongitude);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-      markers.push(
-        new google.maps.marker.AdvancedMarkerElement({
-          map,
-          position: { lat: latitude, lng: longitude },
-          title: `${team.code} — ${team.name}`,
-          content: markerElement(`${team.code}: ${team.status}`, "#147ab7", "▣"),
-        }),
-      );
-    });
-    markerRefs.current = markers;
-
-    return () => markers.forEach(marker => {
-      marker.map = null;
-    });
-  }, [incidents, map, teams]);
-
   const fallbackMode = settings?.fallbackMode ?? "automatic";
-  const { useOpenStreetMap, showGoogleOnlyUnavailable: googleOnlyUnavailable } = resolveOperationalMapMode(fallbackMode, mapUnavailable, settings?.mapType);
-
+  const contingencyEnabled = resolveContingencyEnabled(fallbackMode);
   const positionedTeams = teams.filter(team => team.lastLatitude && team.lastLongitude).length;
 
   return (
     <div className="space-y-2">
       <section className="relative h-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
-        {!useOpenStreetMap && <MapView
-          key={`${mapAttempt}-${settings?.centerLatitude ?? -27.0976}-${settings?.centerLongitude ?? -48.9104}-${settings?.defaultZoom ?? 13}-${settings?.mapType ?? "roadmap"}-${settings?.trafficEnabled ?? false}`}
-          initialCenter={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }}
-          initialZoom={settings?.defaultZoom ?? 13}
-          mapTypeId={settings?.mapType ?? "roadmap"}
-          trafficEnabled={settings?.trafficEnabled ?? false}
-          className="h-full w-full"
-          onMapReady={map => {
-            setMapUnavailable(false);
-            setMap(map);
-          }}
-          onMapError={() => { setMap(null); setMapUnavailable(true); }}
-        />}
-        {useOpenStreetMap && <LeafletMap center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} mapType={settings?.mapType ?? "roadmap"} incidents={incidents} teams={teams.map(team => ({ latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name }))} onSourceChange={setActiveSource} />}
-        {googleOnlyUnavailable && <div role="status" className="absolute right-4 top-4 max-w-xs rounded-lg border border-amber-200/90 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur"><p className="font-semibold">Google Maps indisponível</p><p className="mt-0.5 leading-4">Modo somente Google ativo. Altere a contingência nas Configurações.</p></div>}
+        <LeafletMap
+          center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }}
+          zoom={settings?.defaultZoom ?? 13}
+          mapType={settings?.mapType ?? "roadmap"}
+          incidents={incidents}
+          teams={teams.map(team => ({ latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name }))}
+          onSourceChange={setActiveSource}
+          contingencyEnabled={contingencyEnabled}
+        />
       </section>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-1 text-[11px] text-slate-600">
         <p>
           <span className="font-medium text-slate-900">Mapa operacional</span> · {incidents.length} ocorrência(s) · {positionedTeams} equipe(s) posicionada(s)
-          {useOpenStreetMap && activeSource && <span> · fonte: {activeSource}</span>}
-          {useOpenStreetMap && fallbackMode === "automatic" && settings?.mapType !== "carto" && (
-            <button type="button" className="ml-2 underline underline-offset-2 hover:text-slate-900" onClick={() => { setMapUnavailable(false); setMapAttempt(current => current + 1); }}>
-              Tentar Google
-            </button>
-          )}
+          {activeSource && <span> · fonte: {activeSource}</span>}
         </p>
         <div className="flex flex-wrap gap-2">
           {Object.entries(priorityColor).map(([priority, color]) => (

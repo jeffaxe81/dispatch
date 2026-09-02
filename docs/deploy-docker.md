@@ -30,18 +30,18 @@ funcionalidades ficam indisponíveis (falham de forma controlada, sem
 derrubar o app). O núcleo operacional — ocorrências, despacho, equipes,
 turnos, workflows, evidências, auditoria — funciona normalmente sem elas.
 
-**O mapa operacional não depende mais da Manus.** `server/_core/map.ts`
-(o proxy Google Maps via Forge) nunca foi usado por nenhum código —
-morto desde o início. O mapa real, em `client/src/components/Map.tsx`,
-tentava carregar o SDK do Google Maps através do mesmo proxy Forge, o que
-também nunca funcionava fora da Manus. Agora o app usa
+**O mapa operacional não depende mais da Manus, e não usa mais Google
+Maps.** `server/_core/map.ts` (um proxy Google Maps via Forge) nunca foi
+usado por nenhum código — morto desde o início. O mapa real, em
+`client/src/components/Map.tsx`, tentava carregar o SDK do Google Maps
+através do mesmo proxy Forge, o que também nunca funcionava fora da
+Manus — sem uma chave paga do Google configurada (e não há), essa opção
+nunca teve como funcionar. Ambos foram removidos. O app usa
 `client/src/components/LeafletMap.tsx`: um mapa interativo de verdade
 (pan, zoom, marcadores de ocorrências e equipes em tempo real) com
-camadas de tiles públicas e gratuitas — OpenStreetMap (padrão), Esri World
-Imagery (satélite/híbrido) e OpenTopoMap (terreno) — sem chave de API e
-sem depender da Manus. É o comportamento padrão (`mapFallbackMode =
-"automatic"`): como não há credencial do Google configurada, o app usa
-OpenStreetMap desde o primeiro boot, sem nenhuma configuração adicional.
+camadas de tiles públicas — OpenStreetMap (padrão), Esri World Imagery
+(satélite/híbrido) e OpenTopoMap (terreno), nenhuma com chave de API —
+funcionando desde o primeiro boot, sem nenhuma configuração adicional.
 
 O tipo "roadmap" (o padrão) tem uma segunda camada de contingência: os
 servidores públicos `tile.openstreetmap.org` são um serviço de uso
@@ -49,12 +49,17 @@ leve/comunitário da fundação OSM, não pensado para tráfego sustentado de
 produção. Se o mapa detectar falhas consecutivas ao carregar tiles do
 OpenStreetMap, ele pode trocar automaticamente para o CARTO (também
 gratuito, usando os mesmos dados OSM) — mas, ao contrário dos demais
-tiles usados aqui, **o CARTO passou a exigir uma chave de API gratuita**
-desde uma mudança de política em 2024 (sem cartão de crédito, 5 milhões
-de requisições/mês no plano gratuito). Sem uma chave configurada, o app
+tiles usados aqui, **o CARTO exige uma chave de API gratuita** desde uma
+mudança de política em 2024 (sem cartão de crédito, 5 milhões de
+requisições/mês no plano gratuito). Sem uma chave configurada, o app
 nunca tenta usar o CARTO — tudo continua no OpenStreetMap normalmente,
 sem quebrar. Satélite e terreno não têm uma segunda camada de
 contingência hoje.
+
+Esse comportamento é controlado em **Configurações → Mapa operacional →
+Contingência de mapa**: "Automático" (padrão) troca para CARTO em falha;
+"Somente OpenStreetMap" nunca troca. Não há mais opção de Google Maps
+nesse campo.
 
 Para habilitar o CARTO:
 
@@ -73,12 +78,11 @@ CARTO também pode ser escolhido diretamente como tipo de mapa em
 padrão, Satélite, Terreno e Híbrido. Selecionar CARTO nesse campo sempre
 usa o mapa OpenStreetMap/Leaflet (com OpenStreetMap como sua própria
 contingência), independentemente da configuração de "Contingência de
-mapa" — CARTO não tem equivalente no Google Maps. Sem a chave
-configurada, essa opção se comporta como o mapa padrão (OpenStreetMap) em
-vez de mostrar um mapa quebrado.
+mapa". Sem a chave configurada, essa opção se comporta como o mapa
+padrão (OpenStreetMap) em vez de mostrar um mapa quebrado.
 
 Quando o projeto for para produção com volume maior de uso, considere
-contratar uma API de mapas paga (Google Maps, Mapbox, etc.) para ter SLA
+contratar uma API de mapas paga (Mapbox, Google Maps, etc.) para ter SLA
 e suporte — isso pode ser adicionado depois sem afetar o restante do
 app, já que o mapa aceita múltiplas fontes de tile.
 

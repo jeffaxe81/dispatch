@@ -1331,6 +1331,11 @@ type OperationalMapSettings = {
   mapType: "roadmap" | "satellite" | "terrain" | "hybrid" | "carto";
   trafficEnabled: boolean;
   autoFitEnabled: boolean;
+  // "google_only" was a legacy value from when the map could load Google
+  // Maps; that never worked outside the Manus platform and was removed.
+  // Kept in the accepted type only so a row still holding it from before
+  // this change doesn't produce a TypeScript mismatch — the client treats
+  // any unrecognized value the same as "automatic".
   fallbackMode: "automatic" | "openstreetmap" | "google_only";
 };
 
