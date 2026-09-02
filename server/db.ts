@@ -1328,7 +1328,7 @@ type OperationalMapSettings = {
   centerLatitude: number;
   centerLongitude: number;
   defaultZoom: number;
-  mapType: "roadmap" | "satellite" | "terrain" | "hybrid";
+  mapType: "roadmap" | "satellite" | "terrain" | "hybrid" | "carto";
   trafficEnabled: boolean;
   autoFitEnabled: boolean;
   fallbackMode: "automatic" | "openstreetmap" | "google_only";

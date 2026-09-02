@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 type GeoPoint = { latitude: string | number | null; longitude: string | number | null };
 
-type MapType = "roadmap" | "satellite" | "terrain" | "hybrid";
+type MapType = "roadmap" | "satellite" | "terrain" | "hybrid" | "carto";
 
 type TileLayerConfig = { name: string; url: string; attribution: string; maxZoom: number };
 
@@ -26,13 +26,27 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 // All tile sources below are free, public, and require no API key — real
 // internet access, no proxy or third-party account needed.
+const OPENSTREETMAP_LAYER: TileLayerConfig = {
+  name: "OpenStreetMap",
+  url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+  maxZoom: 19,
+};
+
+// CARTO's basemap is free, keyless, and built on the same OSM data — an
+// alternative source, not just a passive fallback: it can be selected
+// directly as "Tipo de mapa" in Configurações, or kick in automatically
+// (see BACKUP_TILE_LAYERS below) if OpenStreetMap's own tiles fail.
+const CARTO_LAYER: TileLayerConfig = {
+  name: "CARTO",
+  url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  attribution: '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a> — dados &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+  maxZoom: 20,
+};
+
 const PRIMARY_TILE_LAYERS: Record<MapType, TileLayerConfig> = {
-  roadmap: {
-    name: "OpenStreetMap",
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
-    maxZoom: 19,
-  },
+  roadmap: OPENSTREETMAP_LAYER,
+  carto: CARTO_LAYER,
   terrain: {
     name: "OpenTopoMap",
     url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
@@ -53,19 +67,13 @@ const PRIMARY_TILE_LAYERS: Record<MapType, TileLayerConfig> = {
   },
 };
 
-// Second-tier contingency: only OpenStreetMap's own tile servers (the
-// roadmap default) have a documented fair-use policy that discourages
-// sustained production traffic, so that's the one type with a backup.
-// CARTO's basemaps are free, keyless, and built on the same OSM data.
-const CARTO_BACKUP_LAYER: TileLayerConfig = {
-  name: "CARTO (contingência)",
-  url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-  attribution: '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a> — dados &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
-  maxZoom: 20,
-};
-
+// Only "roadmap" and "carto" have a documented second source: they're the
+// two OSM-family tile providers, and OpenStreetMap's own servers have a
+// fair-use policy that discourages sustained production traffic (the
+// reason CARTO exists at all here). Satellite/terrain have none wired up.
 const BACKUP_TILE_LAYERS: Partial<Record<MapType, TileLayerConfig>> = {
-  roadmap: CARTO_BACKUP_LAYER,
+  roadmap: CARTO_LAYER,
+  carto: OPENSTREETMAP_LAYER,
 };
 
 // Consecutive tile failures required before switching to the backup

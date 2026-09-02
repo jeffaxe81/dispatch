@@ -26,7 +26,7 @@ type OperationalMapSettings = {
   centerLatitude: number;
   centerLongitude: number;
   defaultZoom: number;
-  mapType: "roadmap" | "satellite" | "terrain" | "hybrid";
+  mapType: "roadmap" | "satellite" | "terrain" | "hybrid" | "carto";
   trafficEnabled: boolean;
   autoFitEnabled: boolean;
   fallbackMode: "automatic" | "openstreetmap" | "google_only";
@@ -39,7 +39,11 @@ const priorityColor: Record<MapIncident["priority"], string> = {
   critica: "#c52d45",
 };
 
-export function resolveOperationalMapMode(fallbackMode: OperationalMapSettings["fallbackMode"], googleUnavailable: boolean) {
+export function resolveOperationalMapMode(fallbackMode: OperationalMapSettings["fallbackMode"], googleUnavailable: boolean, mapType?: OperationalMapSettings["mapType"]) {
+  // "carto" has no Google Maps equivalent, so choosing it always renders
+  // the OpenStreetMap-family map — it's a deliberate style choice, not a
+  // failure, so it never triggers the "Google Maps indisponível" notice.
+  if (mapType === "carto") return { useOpenStreetMap: true, showGoogleOnlyUnavailable: false };
   return {
     useOpenStreetMap: fallbackMode === "openstreetmap" || (fallbackMode === "automatic" && googleUnavailable),
     showGoogleOnlyUnavailable: fallbackMode === "google_only" && googleUnavailable,
@@ -104,7 +108,7 @@ export function OperationalMap({ incidents, teams, settings }: { incidents: MapI
   }, [incidents, map, teams]);
 
   const fallbackMode = settings?.fallbackMode ?? "automatic";
-  const { useOpenStreetMap, showGoogleOnlyUnavailable: googleOnlyUnavailable } = resolveOperationalMapMode(fallbackMode, mapUnavailable);
+  const { useOpenStreetMap, showGoogleOnlyUnavailable: googleOnlyUnavailable } = resolveOperationalMapMode(fallbackMode, mapUnavailable, settings?.mapType);
 
   const positionedTeams = teams.filter(team => team.lastLatitude && team.lastLongitude).length;
 
@@ -131,7 +135,7 @@ export function OperationalMap({ incidents, teams, settings }: { incidents: MapI
         <p>
           <span className="font-medium text-slate-900">Mapa operacional</span> · {incidents.length} ocorrência(s) · {positionedTeams} equipe(s) posicionada(s)
           {useOpenStreetMap && activeSource && <span> · fonte: {activeSource}</span>}
-          {useOpenStreetMap && fallbackMode === "automatic" && (
+          {useOpenStreetMap && fallbackMode === "automatic" && settings?.mapType !== "carto" && (
             <button type="button" className="ml-2 underline underline-offset-2 hover:text-slate-900" onClick={() => { setMapUnavailable(false); setMapAttempt(current => current + 1); }}>
               Tentar Google
             </button>

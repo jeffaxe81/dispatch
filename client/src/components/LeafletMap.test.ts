@@ -29,4 +29,9 @@ describe("mapa interativo OpenStreetMap", () => {
     expect(resolveTileLayer("satellite", true)).toEqual(resolveTileLayer("satellite", false));
     expect(resolveTileLayer("terrain", true)).toEqual(resolveTileLayer("terrain", false));
   });
+
+  it("permite selecionar CARTO diretamente como tipo de mapa, com OpenStreetMap como contingência", () => {
+    expect(resolveTileLayer("carto").url).toContain("basemaps.cartocdn.com");
+    expect(resolveTileLayer("carto", true).url).toContain("tile.openstreetmap.org");
+  });
 });

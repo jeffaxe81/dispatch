@@ -27,7 +27,7 @@ type MapForm = {
   centerLatitude: string;
   centerLongitude: string;
   defaultZoom: string;
-  mapType: "roadmap" | "satellite" | "terrain" | "hybrid";
+  mapType: "roadmap" | "satellite" | "terrain" | "hybrid" | "carto";
   trafficEnabled: boolean;
   autoFitEnabled: boolean;
   fallbackMode: "automatic" | "openstreetmap" | "google_only";
@@ -40,7 +40,7 @@ const resetScopeDetails: Record<ResetScope, { confirmation: string; title: strin
   operational: { confirmation: "ZERAR DADOS OPERACIONAIS", title: "Dados operacionais e de simulação", description: "Remove ocorrências, despachos, referências de evidências, posições, workflows e registros de integração simulada.", preserved: "Preserva usuários, acessos, equipes, viaturas, configurações e auditoria." },
   total: { confirmation: "ZERAR SOLUÇÃO AXE DISPATCH", title: "Dados totais da solução", description: "Além dos dados operacionais, remove usuários cadastrados, perfis de usuário, vínculos de acesso, equipes e viaturas.", preserved: "Preserva somente a sessão e o perfil do Super Administrador atual, a estrutura técnica, configurações e auditoria." },
 };
-const mapTypeLabels: Record<MapForm["mapType"], string> = { roadmap: "Mapa padrão", satellite: "Satélite", terrain: "Terreno", hybrid: "Híbrido" };
+const mapTypeLabels: Record<MapForm["mapType"], string> = { roadmap: "Mapa padrão (OpenStreetMap)", satellite: "Satélite", terrain: "Terreno", hybrid: "Híbrido", carto: "CARTO (mapa alternativo, sem Google)" };
 const fallbackModeLabels: Record<MapForm["fallbackMode"], { title: string; description: string }> = {
   automatic: { title: "Automático (recomendado)", description: "Usa Google Maps e muda para OpenStreetMap somente em falha." },
   openstreetmap: { title: "OpenStreetMap manual", description: "Mantém o mapa de contingência ativo, sem carregar Google Maps." },
@@ -165,7 +165,7 @@ function GeneralSettingsContent() {
               <div className="grid gap-2"><Label htmlFor="map-zoom">Zoom padrão</Label><Input id="map-zoom" type="number" min="8" max="20" step="1" value={form.defaultZoom} onChange={event => setForm(current => ({ ...current, defaultZoom: event.target.value }))} required /></div>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="grid gap-2"><Label>Tipo de mapa</Label><Select value={form.mapType} onValueChange={value => setForm(current => ({ ...current, mapType: value as MapForm["mapType"] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(mapTypeLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+              <div className="grid gap-2"><Label>Tipo de mapa</Label><Select value={form.mapType} onValueChange={value => setForm(current => ({ ...current, mapType: value as MapForm["mapType"] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(mapTypeLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select><p className="text-xs text-slate-500">{form.mapType === "roadmap" ? "Se os servidores do OpenStreetMap falharem repetidamente, o mapa muda para CARTO automaticamente." : form.mapType === "carto" ? "Usa CARTO como mapa principal; muda para OpenStreetMap automaticamente em caso de falha." : "Mapa padrão e CARTO são gratuitos e sem chave de API; os demais tipos usam Esri/OpenTopoMap."}</p></div>
               <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3"><div><Label htmlFor="map-traffic">Trânsito</Label><p className="mt-1 text-xs text-slate-500">Exibir camada de tráfego.</p></div><Switch id="map-traffic" checked={form.trafficEnabled} onCheckedChange={value => setForm(current => ({ ...current, trafficEnabled: value }))} /></div>
               <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3"><div><Label htmlFor="map-fit">Ajuste automático</Label><p className="mt-1 text-xs text-slate-500">Reservado para ajuste por dados.</p></div><Switch id="map-fit" checked={form.autoFitEnabled} onCheckedChange={value => setForm(current => ({ ...current, autoFitEnabled: value }))} /></div>
             </div>

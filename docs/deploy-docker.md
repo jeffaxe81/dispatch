@@ -49,9 +49,15 @@ leve/comunitário da fundação OSM, não pensado para tráfego sustentado de
 produção. Se o mapa detectar falhas consecutivas ao carregar tiles do
 OpenStreetMap, ele troca automaticamente para o CARTO (também gratuito e
 sem chave de API, usando os mesmos dados OSM) — sem intervenção do
-usuário. O indicador no canto do mapa mostra qual fonte está ativa no
-momento. Satélite e terreno não têm uma segunda camada de contingência
+usuário. Satélite e terreno não têm uma segunda camada de contingência
 hoje.
+
+CARTO também pode ser escolhido diretamente como tipo de mapa em
+**Configurações → Mapa operacional → Tipo de mapa**, junto com Mapa
+padrão, Satélite, Terreno e Híbrido. Selecionar CARTO nesse campo sempre
+usa o mapa OpenStreetMap/Leaflet (com OpenStreetMap como sua própria
+contingência), independentemente da configuração de "Contingência de
+mapa" — CARTO não tem equivalente no Google Maps.
 
 Quando o projeto for para produção com volume maior de uso, considere
 contratar uma API de mapas paga (Google Maps, Mapbox, etc.) para ter SLA

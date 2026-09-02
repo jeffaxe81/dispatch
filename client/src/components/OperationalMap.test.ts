@@ -16,4 +16,9 @@ describe("modo de mapa operacional", () => {
     expect(result.useOpenStreetMap).toBe(false);
     expect(result.showGoogleOnlyUnavailable).toBe(true);
   });
+
+  it("força OpenStreetMap quando o tipo de mapa CARTO é escolhido, mesmo com Google disponível e no modo somente Google", () => {
+    expect(resolveOperationalMapMode("automatic", false, "carto")).toEqual({ useOpenStreetMap: true, showGoogleOnlyUnavailable: false });
+    expect(resolveOperationalMapMode("google_only", true, "carto")).toEqual({ useOpenStreetMap: true, showGoogleOnlyUnavailable: false });
+  });
 });
