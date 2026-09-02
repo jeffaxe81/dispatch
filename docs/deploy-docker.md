@@ -43,6 +43,21 @@ sem depender da Manus. É o comportamento padrão (`mapFallbackMode =
 "automatic"`): como não há credencial do Google configurada, o app usa
 OpenStreetMap desde o primeiro boot, sem nenhuma configuração adicional.
 
+O tipo "roadmap" (o padrão) tem uma segunda camada de contingência: os
+servidores públicos `tile.openstreetmap.org` são um serviço de uso
+leve/comunitário da fundação OSM, não pensado para tráfego sustentado de
+produção. Se o mapa detectar falhas consecutivas ao carregar tiles do
+OpenStreetMap, ele troca automaticamente para o CARTO (também gratuito e
+sem chave de API, usando os mesmos dados OSM) — sem intervenção do
+usuário. O indicador no canto do mapa mostra qual fonte está ativa no
+momento. Satélite e terreno não têm uma segunda camada de contingência
+hoje.
+
+Quando o projeto for para produção com volume maior de uso, considere
+contratar uma API de mapas paga (Google Maps, Mapbox, etc.) para ter SLA
+e suporte — isso pode ser adicionado depois sem afetar o restante do
+app, já que o mapa aceita múltiplas fontes de tile.
+
 ## 1. Desenvolvimento local com Compose
 
 ```bash

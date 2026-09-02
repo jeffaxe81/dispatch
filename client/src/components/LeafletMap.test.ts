@@ -19,4 +19,14 @@ describe("mapa interativo OpenStreetMap", () => {
   it("usa o mapa padrão (roadmap) quando o tipo não é reconhecido", () => {
     expect(resolveTileLayer(undefined)).toEqual(resolveTileLayer("roadmap"));
   });
+
+  it("usa CARTO como contingência do roadmap quando o OpenStreetMap falha", () => {
+    expect(resolveTileLayer("roadmap", true).url).toContain("basemaps.cartocdn.com");
+    expect(resolveTileLayer("roadmap", true).name).toContain("CARTO");
+  });
+
+  it("não tem contingência para satélite/terreno e mantém a camada primária", () => {
+    expect(resolveTileLayer("satellite", true)).toEqual(resolveTileLayer("satellite", false));
+    expect(resolveTileLayer("terrain", true)).toEqual(resolveTileLayer("terrain", false));
+  });
 });
