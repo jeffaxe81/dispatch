@@ -26,6 +26,7 @@ export function NeoOperationalWorkspace({
   incident,
   teamCode,
   vehiclePrefix,
+  onCommunicationLifecycle,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -33,6 +34,7 @@ export function NeoOperationalWorkspace({
   incident: NeoWorkspaceIncident;
   teamCode?: string | null;
   vehiclePrefix?: string | null;
+  onCommunicationLifecycle?: (event: "ready" | "timeout" | "error") => void;
 }) {
   const [layout, setLayout] = useState<NeoWorkspaceLayout>("split");
 
@@ -163,7 +165,7 @@ export function NeoOperationalWorkspace({
 
           <section className={layout === "dock" ? "min-w-0 p-4 lg:overflow-y-auto" : "min-w-0 p-4 lg:overflow-y-auto"}>
             {application ? (
-              <EmbeddedApplicationFrame application={application} />
+              <EmbeddedApplicationFrame application={application} onLifecycleEvent={onCommunicationLifecycle} />
             ) : (
               <div role="status" className="flex min-h-72 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
                 O NEO Interact não está disponível para este perfil ou ambiente.
