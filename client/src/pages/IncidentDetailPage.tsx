@@ -15,7 +15,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useRefreshSettings } from "@/hooks/useRefreshSettings";
 import { formatDateTime, priorityClasses, priorityLabels, statusClasses, statusLabels } from "@/lib/operational";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Clock3, MapPin, MonitorSmartphone, Navigation, Send, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { summarizeCommunicationSessions } from "@shared/communicationMetrics";
+import { AlertTriangle, ArrowLeft, BarChart3, CheckCircle2, ClipboardList, Clock3, MapPin, MonitorSmartphone, Navigation, Send, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { useState } from "react";
 import { nanoid } from "nanoid";
 import { useLocation, useRoute } from "wouter";
@@ -31,6 +32,20 @@ const allowedTransitions: Record<string, string[]> = {
   cancelada: [],
 };
 type TransitionStatus = "triagem" | "aguardando_despacho" | "despachada" | "aceita" | "em_atendimento" | "pausada" | "concluida" | "cancelada";
+
+function formatDurationSeconds(seconds: number) {
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+function communicationChannelLabel(channel: string) {
+  if (channel === "nao_informado") return "Não informado";
+  if (channel === "whatsapp") return "WhatsApp";
+  if (channel === "email") return "E-mail";
+  return channel.charAt(0).toUpperCase() + channel.slice(1);
+}
 
 function IncidentDetailContent() {
   const { user } = useAuth();
@@ -57,6 +72,9 @@ function IncidentDetailContent() {
   const canOpenNeo = Boolean(access.data?.permissions.includes("integrations.view"));
   const embeddedApplications = trpc.integrations.embeddedApplications.list.useQuery(undefined, { enabled: neoOpen && canOpenNeo, retry: false });
   const communicationHistory = trpc.communications.history.useQuery({ incidentId }, { enabled: canOpenNeo && Number.isInteger(incidentId) && incidentId > 0, retry: false });
+  const communicationMetrics = summarizeCommunicationSessions(communicationHistory.data ?? []);
+  const dominantChannelEntry = Object.entries(communicationMetrics.byChannel).sort((a, b) => b[1] - a[1])[0];
+  const dominantChannel = communicationMetrics.totalSessions > 0 && dominantChannelEntry?.[1] > 0 ? communicationChannelLabel(dominantChannelEntry[0]) : "—";
   const teams = trpc.teams.list.useQuery(undefined, { enabled: assignOpen });
   const mapSettings = trpc.settings.operationalMap.useQuery(undefined, { enabled: assignOpen });
   const incident = detail.data?.incident;
@@ -137,6 +155,7 @@ function IncidentDetailContent() {
           <Card className="border-slate-200 shadow-sm"><CardContent className="p-0"><div className="border-b border-slate-100 px-6 py-4"><h2 className="font-semibold text-slate-950">Cronologia</h2></div><ol className="divide-y divide-slate-100">{(timeline.data ?? []).map(({ event, actorName, teamCode }) => <li key={event.id} className="flex gap-4 px-6 py-4"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-600" /><div><p className="text-sm text-slate-800">{event.message}</p><p className="mt-1 text-xs text-slate-500">{formatDateTime(event.createdAt)} · {actorName ?? "Sistema"}{teamCode ? ` · ${teamCode}` : ""}</p></div></li>)}{!timeline.isLoading && (timeline.data?.length ?? 0) === 0 && <li className="px-6 py-10 text-center text-sm text-slate-500">Ainda não há eventos para esta ocorrência.</li>}</ol></CardContent></Card>
         </div>
         <aside className="space-y-5"><Card className="border-slate-200 shadow-sm"><CardContent className="p-5"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-700" /><h2 className="font-semibold text-slate-950">Despacho atual</h2></div><dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">Equipe</dt><dd className="font-medium text-slate-800">{detail.data?.teamCode ?? "Não atribuída"}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Viatura</dt><dd className="font-medium text-slate-800">{detail.data?.vehiclePrefix ?? "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Despachada</dt><dd className="font-medium text-slate-800">{formatDateTime(incident.dispatchedAt)}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Aceita</dt><dd className="font-medium text-slate-800">{formatDateTime(incident.acceptedAt)}</dd></div></dl></CardContent></Card>
+          {canOpenNeo && <Card className="border-slate-200 shadow-sm"><CardContent className="p-0"><div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><BarChart3 className="h-4 w-4 text-sky-700" /><h2 className="font-semibold text-slate-950">Indicadores de comunicação</h2></div><div className="grid grid-cols-2 gap-px bg-slate-100"><div className="bg-white p-4"><p className="text-[11px] uppercase tracking-wide text-slate-400">Sessões</p><p className="mt-1 text-xl font-semibold text-slate-900">{communicationMetrics.totalSessions}</p></div><div className="bg-white p-4"><p className="text-[11px] uppercase tracking-wide text-slate-400">Concluídas</p><p className="mt-1 text-xl font-semibold text-slate-900">{communicationMetrics.completedSessions}</p></div><div className="bg-white p-4"><p className="text-[11px] uppercase tracking-wide text-slate-400">Falhas</p><p className="mt-1 text-xl font-semibold text-slate-900">{communicationMetrics.failedSessions}</p></div><div className="bg-white p-4"><p className="text-[11px] uppercase tracking-wide text-slate-400">Ativas</p><p className="mt-1 text-xl font-semibold text-slate-900">{communicationMetrics.activeSessions}</p></div><div className="bg-white p-4"><p className="text-[11px] uppercase tracking-wide text-slate-400">Tempo total</p><p className="mt-1 text-sm font-semibold text-slate-900">{formatDurationSeconds(communicationMetrics.totalDurationSeconds)}</p></div><div className="bg-white p-4"><p className="text-[11px] uppercase tracking-wide text-slate-400">Tempo médio</p><p className="mt-1 text-sm font-semibold text-slate-900">{formatDurationSeconds(communicationMetrics.averageDurationSeconds)}</p></div><div className="col-span-2 bg-white p-4"><p className="text-[11px] uppercase tracking-wide text-slate-400">Canal predominante</p><p className="mt-1 text-sm font-semibold text-slate-900">{dominantChannel}</p></div></div></CardContent></Card>}
           {canOpenNeo && <Card className="border-slate-200 shadow-sm"><CardContent className="p-0"><div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><Clock3 className="h-4 w-4 text-sky-700" /><h2 className="font-semibold text-slate-950">Comunicações vinculadas</h2></div><div className="divide-y divide-slate-100">{(communicationHistory.data ?? []).map(session => <div key={session.correlationId} className="px-5 py-4"><div className="flex items-center justify-between gap-3"><p className="text-sm font-medium text-slate-800">{session.applicationId === "neo-interact" ? "NEO Interact" : session.applicationId}</p><Badge variant="outline">{session.status}</Badge></div><div className="mt-2 flex flex-wrap gap-2"><Badge variant="secondary">Canal: {session.channel === "nao_informado" ? "não informado" : session.channel}</Badge><Badge variant="secondary">Classificação: {session.classification === "sessao_integrada" ? "sessão integrada" : session.classification.replaceAll("_", " ")}</Badge></div><p className="mt-2 text-xs text-slate-500">Início: {formatDateTime(session.startedAt)}</p><p className="mt-1 text-xs text-slate-500">Fim: {formatDateTime(session.endedAt)}</p><p className="mt-1 text-xs text-slate-500">Duração: {session.durationSeconds === null ? "em andamento / não finalizada" : `${Math.floor(session.durationSeconds / 60)}m ${session.durationSeconds % 60}s`}</p><p className="mt-2 text-[11px] text-slate-400">Correlação: {session.correlationId.slice(0, 8)}… · dados compartilhados: nenhum</p></div>)}{!communicationHistory.isLoading && (communicationHistory.data?.length ?? 0) === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">Nenhuma comunicação vinculada.</p>}</div></CardContent></Card>}
 
           {canAudit && <Card className="border-slate-200 shadow-sm"><CardContent className="p-0"><div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><ClipboardList className="h-4 w-4 text-sky-700" /><h2 className="font-semibold text-slate-950">Auditoria</h2></div><div className="divide-y divide-slate-100">{(audit.data ?? []).map(({ audit: row, actorName }) => <div key={row.id} className="px-5 py-3"><p className="text-xs font-medium text-slate-800">{row.action}</p><p className="mt-1 text-[11px] text-slate-500">{actorName ?? "Sistema"} · {formatDateTime(row.createdAt)}</p></div>)}{!audit.isLoading && (audit.data?.length ?? 0) === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">Sem registros de auditoria.</p>}</div></CardContent></Card>}
