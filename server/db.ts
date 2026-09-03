@@ -230,6 +230,8 @@ export async function recordIncidentCommunicationEvent(input: {
   correlationId: string;
   applicationId: string;
   eventType: "communication_started" | "communication_ready" | "communication_failed" | "communication_ended";
+  channel: "nao_informado" | "voz" | "chat" | "whatsapp" | "email" | "video" | "outro";
+  classification: "sessao_integrada" | "contato_ativo" | "contato_receptivo" | "apoio_operacional" | "outro";
 }) {
   const db = await requireDb();
   return db.transaction(async tx => {
@@ -247,6 +249,8 @@ export async function recordIncidentCommunicationEvent(input: {
       correlationId: input.correlationId,
       applicationId: input.applicationId,
       dataSharing: "none",
+      channel: input.channel,
+      classification: input.classification,
     };
 
     const [event] = await tx.insert(incidentEvents).values({
@@ -271,6 +275,8 @@ export async function recordIncidentCommunicationEvent(input: {
         correlationId: input.correlationId,
         applicationId: input.applicationId,
         dataSharing: "none",
+        channel: input.channel,
+        classification: input.classification,
       },
     });
 
@@ -302,6 +308,8 @@ export async function listIncidentCommunicationSessions(incidentId: number) {
   const sessions = new Map<string, {
     correlationId: string;
     applicationId: string;
+    channel: "nao_informado" | "voz" | "chat" | "whatsapp" | "email" | "video" | "outro";
+    classification: "sessao_integrada" | "contato_ativo" | "contato_receptivo" | "apoio_operacional" | "outro";
     startedAt: Date | null;
     readyAt: Date | null;
     endedAt: Date | null;
@@ -315,11 +323,21 @@ export async function listIncidentCommunicationSessions(incidentId: number) {
     if (!metadata || typeof metadata !== "object") continue;
     const correlationId = (metadata as Record<string, unknown>).correlationId;
     const applicationId = (metadata as Record<string, unknown>).applicationId;
+    const rawChannel = (metadata as Record<string, unknown>).channel;
+    const rawClassification = (metadata as Record<string, unknown>).classification;
     if (typeof correlationId !== "string" || typeof applicationId !== "string") continue;
+    const channel = ["nao_informado", "voz", "chat", "whatsapp", "email", "video", "outro"].includes(String(rawChannel))
+      ? rawChannel as "nao_informado" | "voz" | "chat" | "whatsapp" | "email" | "video" | "outro"
+      : "nao_informado";
+    const classification = ["sessao_integrada", "contato_ativo", "contato_receptivo", "apoio_operacional", "outro"].includes(String(rawClassification))
+      ? rawClassification as "sessao_integrada" | "contato_ativo" | "contato_receptivo" | "apoio_operacional" | "outro"
+      : "sessao_integrada";
 
     const current = sessions.get(correlationId) ?? {
       correlationId,
       applicationId,
+      channel,
+      classification,
       startedAt: null,
       readyAt: null,
       endedAt: null,
@@ -329,6 +347,8 @@ export async function listIncidentCommunicationSessions(incidentId: number) {
     };
 
     current.lastEventAt = row.createdAt;
+    current.channel = channel;
+    current.classification = classification;
     if (row.eventType === "communication_started") {
       current.startedAt ??= row.createdAt;
       current.status = "iniciada";
