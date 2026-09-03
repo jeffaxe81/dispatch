@@ -13,8 +13,10 @@ O workflow `.github/workflows/cp016-ci.yml` executa, nesta ordem:
 
 Em 2026-09-03, o isolamento do teste visual de `Cp016OperationsPage` foi corrigido com limpeza explícita do DOM entre casos.
 
-A migration CP-016 foi gerada exclusivamente pelo Drizzle Kit e persistida pelo GitHub Actions no commit `46f6d8ebde62f4c12156825035394ffa9c840803`, como `drizzle/0003_panoramic_ma_gnuci.sql`, acompanhada dos metadados de snapshot/journal. A inspeção do SQL gerado confirmou estrutura aditiva: 8 novas tabelas, constraints e índices, sem operações destrutivas de remoção de tabelas, colunas ou dados.
+A primeira geração da migration CP-016 revelou uma incompatibilidade real com o MySQL: uma foreign key automática excedia o limite de 64 caracteres para identificadores. O schema fonte foi corrigido para declarar explicitamente a FK curta `embedded_integrations_connection_fk`, e a migration inválida foi removida antes de qualquer homologação.
 
-O próximo gate obrigatório é a execução completa do CI aplicando também a migration `0003` em um MySQL 8.4 vazio antes dos testes, segurança e build.
+A migration CP-016 foi então regenerada exclusivamente pelo Drizzle Kit e persistida pelo GitHub Actions no commit `ad99243eabe159291780b55a76084aa302b767e0`, como `drizzle/0003_marvelous_lionheart.sql`, acompanhada dos metadados de snapshot/journal. O SQL permanece aditivo, com 8 novas tabelas, constraints e índices, sem remoção de tabelas, colunas ou dados.
+
+O gate final obrigatório é a execução completa do CI aplicando a migration `0003_marvelous_lionheart` em um MySQL 8.4 vazio antes de TypeScript, testes, segurança e build.
 
 Nenhum merge na `main` deve ser considerado homologado sem evidência recente desses passos.
