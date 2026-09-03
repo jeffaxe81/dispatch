@@ -87,6 +87,8 @@
 
 ## GIS-1 — Fundação open source
 
+- [x] Reconciliar a GIS-1 com o checkpoint D-005A 1.15.5 em `checkpoint/d005a-gis1-reconciled-20260903`, preservando recuperação, segurança e testes anteriores.
+
 - [x] Formalizar D-005 — Arquitetura GIS Open Source e Despacho Georreferenciado.
 - [x] Isolar a evolução em branch própria sem alterar a `main`.
 - [x] Tornar OpenStreetMap o provider preferencial no modo automático.
@@ -97,7 +99,7 @@
 - [x] Tratar coordenada inválida, indisponibilidade de rede, timeout e resposta inválida.
 - [x] Adicionar testes unitários do adapter OSRM.
 - [x] Executar testes GIS direcionados (11/11), `pnpm check` e build em CI com dependências instaladas via lockfile congelado.
-- [ ] Reexecutar a suíte Vitest completa em ambiente com banco/segredos/storage de teste configurados; a CI genérica ainda depende dessas variáveis externas.
+- [x] Reexecutar a suíte local Vitest completa sobre a base D-005A reconciliada; integração e recovery com infraestrutura real permanecem suítes separadas e não foram simuladas.
 - [x] Integrar o provider OSRM a uma procedure autenticada do backend.
 - [x] Exibir distância e ETA da equipe candidata no fluxo de despacho.
 - [x] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
