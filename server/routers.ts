@@ -70,6 +70,7 @@ import {
   getIncidentAudit,
   getIncidentById,
   getIncidentTimeline,
+  listIncidentCommunicationSessions,
   listIncidents,
   listIncidentEvidence,
   listAccessPermissions,
@@ -196,6 +197,15 @@ export const appRouter = router({
     }),
   }),
   communications: router({
+    history: operationalProcedure
+      .input(z.object({ incidentId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        await assertPermission(ctx.user, "integrations.view");
+        const incident = requireIncident(await getIncidentById(input.incidentId));
+        await assertCanReadIncident(ctx.user, incident);
+        return listIncidentCommunicationSessions(input.incidentId);
+      }),
+
     recordIncidentEvent: operationalProcedure
       .input(embeddedCommunicationCorrelationSchema.extend({
         incidentId: z.number().int().positive(),
