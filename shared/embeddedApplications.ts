@@ -66,3 +66,21 @@ export function parseEmbeddedFrameMessage(value: unknown) {
 export function buildEmbeddedApplicationAllow(permissions: readonly string[]) {
   return permissions.join("; ");
 }
+
+
+export const embeddedCommunicationEventTypeSchema = z.enum([
+  "communication_started",
+  "communication_ready",
+  "communication_failed",
+  "communication_ended",
+]);
+
+export type EmbeddedCommunicationEventType = z.infer<typeof embeddedCommunicationEventTypeSchema>;
+
+export const embeddedCommunicationCorrelationSchema = z.object({
+  correlationId: z.string().trim().min(12).max(120).regex(/^[a-zA-Z0-9_-]+$/),
+  applicationId: z.string().trim().regex(/^[a-z0-9-]{2,80}$/),
+  eventType: embeddedCommunicationEventTypeSchema,
+});
+
+export type EmbeddedCommunicationCorrelation = z.infer<typeof embeddedCommunicationCorrelationSchema>;
