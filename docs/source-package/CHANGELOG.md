@@ -8,6 +8,14 @@ Este arquivo registra mudanças funcionais relevantes do AXE Dispatch. As versõ
 | Funcionalidade compatível adicionada | MINOR | `1.1.0` |
 | Correção ou ajuste compatível | PATCH | `1.0.1` |
 
+## [1.15.1] — 2026-08-29
+
+### Corrigido — instalação reproduzível
+
+A versão do pnpm passou a ter uma única fonte em `packageManager`. Foram removidos a dependência redundante do pnpm, o patch de `wouter@3.7.1` incompatível com o Wouter 3.10 atual e overrides que já não representavam a árvore registrada. O `esbuild` foi incluído como único pacote autorizado a executar script de instalação. Nenhuma biblioteca funcional foi atualizada; a instalação congelada passou de 711 para 710 pacotes apenas pela remoção do pnpm redundante.
+
+Foi adicionado um teste de regressão para impedir nova divergência entre manifesto, workspace e lockfile. Validação: instalação limpa com `corepack pnpm install --frozen-lockfile`, segurança aprovada com 3 migrações e 11 correções preservadas, TypeScript aprovado, **193 testes aprovados em 54 arquivos** sem dependências externas e build de produção concluído. As duas suítes de integração que exigem banco e credenciais de bootstrap permanecem dependentes do ambiente e serão tratadas no D-002.
+
 ## [1.15.0] — 2026-08-23
 
 ### Segurança e confiabilidade
