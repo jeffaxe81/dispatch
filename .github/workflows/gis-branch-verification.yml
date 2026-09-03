@@ -22,6 +22,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test -- client/src/components/LeafletOperationalMap.test.ts
+      - run: pnpm exec vitest run client/src/components/LeafletOperationalMap.test.ts client/src/components/OperationalMap.test.ts server/routingProvider.test.ts server/gisService.test.ts
       - run: pnpm check
       - run: pnpm build
