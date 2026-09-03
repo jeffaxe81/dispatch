@@ -106,3 +106,24 @@
 - [x] Desenhar a geometria GeoJSON da rota no mapa Leaflet do fluxo de despacho.
 - [x] Substituir o embed OSM por renderização Leaflet nativa com carregamento lazy e rollback Google preservado.
 - [x] Validar GIS-1 em desktop/mobile com o componente real `OperationalMap`, evidência Chrome 1440×900 e 390×844, sem overflow horizontal; checkpoint de homologação preparado.
+
+
+## D-006 — Módulo iFrame Responsivo e Aplicações Incorporadas
+
+- [x] Formalizar arquitetura e requisitos do módulo iFrame responsivo.
+- [x] Registrar NEO Interact como primeira aplicação de referência.
+- [ ] Criar modelo de configuração de aplicações incorporadas.
+- [ ] Criar RBAC para visualizar e administrar aplicações incorporadas.
+- [ ] Implementar componente `EmbeddedApplicationFrame`.
+- [ ] Implementar allowlist de URL/origin e bloqueio de URL arbitrária.
+- [ ] Implementar comunicação bidirecional via `postMessage`.
+- [ ] Validar mensagens com schema tipado e rejeitar payload desconhecido.
+- [ ] Implementar `TOGGLE_IFRAME_SIZE` com limites de viewport/container.
+- [ ] Implementar loading, timeout, erro e fallback.
+- [ ] Implementar permissões configuráveis de câmera, microfone e clipboard.
+- [ ] Verificar CSP `frame-src`, `frame-ancestors` e X-Frame-Options.
+- [ ] Homologar sessão/login/cookies no contexto incorporado.
+- [ ] Validar desktop e mobile sem overflow horizontal.
+- [ ] Criar teste visual automatizado para iframe responsivo.
+- [ ] Homologar NEO Interact em ambiente autorizado.
+- [ ] Planejar painel lateral/dock e janela desacoplada para dois monitores.
