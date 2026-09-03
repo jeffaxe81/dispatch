@@ -296,3 +296,52 @@ Na execução GitHub Actions **Qualidade #6** foram aprovados:
 - não houve uso de banco, storage ou credenciais de produção;
 - as suítes de integração/recovery que dependem de infraestrutura real permanecem separadas;
 - a homologação visual GIS-1 em desktop/mobile continua pendente antes do fechamento funcional.
+
+
+## Homologação visual GIS-1 — 03/09/2026
+
+A última pendência da GIS-1 foi validada com um harness isolado que importa o **mesmo componente `OperationalMap` usado pela aplicação**, sem duplicar a implementação funcional.
+
+### Cenário homologado
+
+- provider em modo `automatic`, resolvido para OpenStreetMap/Leaflet;
+- 3 ocorrências com prioridades distintas;
+- 2 equipes posicionadas;
+- 1 rota em GeoJSON `LineString`;
+- desktop em 1440×900;
+- mobile em 390×844.
+
+### Resultado automatizado
+
+O workflow **GIS visual homologation #1** concluiu com sucesso no commit `02e36fd217819a916369c95897ac2e87031e4e34`.
+
+Controles automáticos aprovados:
+
+- Leaflet inicializado no DOM;
+- atribuição OpenStreetMap presente;
+- contagem operacional esperada renderizada;
+- geometria da rota exibida;
+- ausência de overflow horizontal em desktop e mobile;
+- capturas PNG e DOM final gerados.
+
+Pacote de evidência GitHub Actions:
+
+- artefato: `gis-1-visual-homologation`;
+- artifact id: `9904314714`;
+- digest: `sha256:e77a4918bf8dbdea7a5f571f13a3af66ffd9996699c67cb53f888d9f094d4880`.
+
+### Revisão das capturas
+
+A revisão das imagens confirmou:
+
+- desktop: mapa OSM carregado, marcadores de ocorrências/equipes visíveis e rota desenhada corretamente;
+- mobile: cartões empilhados, mapa ajustado à largura da viewport e navegação vertical sem estouro lateral;
+- a continuação inferior do mapa no telefone ocorre por rolagem vertical normal, sem recorte horizontal do conteúdo.
+
+### Regressão completa
+
+O workflow **Qualidade #9** também concluiu com sucesso na mesma revisão do PR de homologação, preservando instalação congelada, segurança, TypeScript, testes locais e build.
+
+### Limites
+
+Esta homologação é visual e funcional em ambiente controlado. Não representa deploy em produção, não usa banco/storage reais e não autoriza merge automático.
