@@ -18,7 +18,7 @@ env:
 
 jobs:
   visual:
-    name: Desktop and mobile NEO workspace evidence
+    name: D-006C operational layouts evidence
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -45,7 +45,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: d006b-neo-workspace-visual
+          name: d006c-neo-workspace-visual
           path: artifacts/neo-workspace-homologation
           if-no-files-found: warn
           retention-days: 14
