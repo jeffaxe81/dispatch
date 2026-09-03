@@ -1,0 +1,24 @@
+name: GIS branch verification
+
+on:
+  push:
+    branches:
+      - roadmap/d005-gis-open-source
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test -- client/src/components/LeafletOperationalMap.test.ts
+      - run: pnpm check
