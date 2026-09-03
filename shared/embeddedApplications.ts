@@ -67,7 +67,6 @@ export function buildEmbeddedApplicationAllow(permissions: readonly string[]) {
   return permissions.join("; ");
 }
 
-
 export const embeddedCommunicationEventTypeSchema = z.enum([
   "communication_started",
   "communication_ready",
@@ -76,17 +75,6 @@ export const embeddedCommunicationEventTypeSchema = z.enum([
 ]);
 
 export type EmbeddedCommunicationEventType = z.infer<typeof embeddedCommunicationEventTypeSchema>;
-
-export const embeddedCommunicationCorrelationSchema = z.object({
-  correlationId: z.string().trim().min(12).max(120).regex(/^[a-zA-Z0-9_-]+$/),
-  applicationId: z.string().trim().regex(/^[a-z0-9-]{2,80}$/),
-  eventType: embeddedCommunicationEventTypeSchema,
-  channel: embeddedCommunicationChannelSchema.default("nao_informado"),
-  classification: embeddedCommunicationClassificationSchema.default("sessao_integrada"),
-});
-
-export type EmbeddedCommunicationCorrelation = z.infer<typeof embeddedCommunicationCorrelationSchema>;
-
 
 export const embeddedCommunicationChannelSchema = z.enum([
   "nao_informado",
@@ -109,3 +97,13 @@ export const embeddedCommunicationClassificationSchema = z.enum([
 ]);
 
 export type EmbeddedCommunicationClassification = z.infer<typeof embeddedCommunicationClassificationSchema>;
+
+export const embeddedCommunicationCorrelationSchema = z.object({
+  correlationId: z.string().trim().min(12).max(120).regex(/^[a-zA-Z0-9_-]+$/),
+  applicationId: z.string().trim().regex(/^[a-z0-9-]{2,80}$/),
+  eventType: embeddedCommunicationEventTypeSchema,
+  channel: embeddedCommunicationChannelSchema.default("nao_informado"),
+  classification: embeddedCommunicationClassificationSchema.default("sessao_integrada"),
+});
+
+export type EmbeddedCommunicationCorrelation = z.infer<typeof embeddedCommunicationCorrelationSchema>;
