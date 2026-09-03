@@ -8,6 +8,36 @@ Este arquivo registra mudanças funcionais relevantes do AXE Dispatch. As versõ
 | Funcionalidade compatível adicionada | MINOR | `1.1.0` |
 | Correção ou ajuste compatível | PATCH | `1.0.1` |
 
+## [1.15.3] — 2026-08-29
+
+### Qualidade — integração contínua segura
+
+Foi criada a primeira integração contínua do projeto em `.github/workflows/quality.yml`. Pull Requests destinados a `main`, pushes em `main` e execuções manuais passam pelos mesmos portões locais, nesta ordem: instalação congelada, segurança, TypeScript, testes locais e build.
+
+O workflow usa permissão global somente de leitura, não recebe segredos da aplicação, não executa testes de integração, deploy ou merge e possui timeout e cancelamento de execuções obsoletas. `actions/checkout` e `actions/setup-node` foram fixadas por SHA completo; o cache automático foi desativado nesta primeira linha de base.
+
+Foram adicionados 6 testes de regressão para proteger os disparadores, permissões, ações imutáveis, Node 24, ordem dos comandos e ausência de credenciais ou entrega. Validação local: instalação congelada, segurança com 3 migrações e 11 correções, TypeScript, **203 testes aprovados em 57 arquivos**, bloqueio antecipado da integração sem as quatro variáveis obrigatórias e build de produção aprovado. A primeira execução real, **Qualidade #1**, também concluiu instalação, segurança, tipos, testes e build com sucesso no GitHub.
+
+Avisos conhecidos e não causados por esta alteração: variáveis opcionais de analytics ausentes e bundle principal acima de 500 kB. Os testes de integração serão incorporados à CI somente após existir banco isolado, migrações controladas e credenciais exclusivas de teste.
+
+## [1.15.2] — 2026-08-29
+
+### Qualidade — suítes locais e de integração separadas
+
+Os testes locais determinísticos foram separados dos testes que exigem banco de dados e credenciais de bootstrap. `pnpm test` e `pnpm test:unit` agora executam somente a suíte local; `pnpm test:integration` seleciona os arquivos `.integration.test.ts`; e `pnpm test:all` executa os dois grupos em sequência.
+
+A suíte local recebe valores fictícios exclusivos para título, sessão e armazenamento simulado. A suíte de integração valida antecipadamente `DATABASE_URL`, `JWT_SECRET`, `LOCAL_AUTH_BOOTSTRAP_USERNAME` e `LOCAL_AUTH_BOOTSTRAP_PASSWORD`, falhando com uma mensagem explícita em vez de ignorar testes silenciosamente.
+
+Validação: instalação congelada aprovada, segurança com 3 migrações e 11 correções preservadas, TypeScript aprovado, **197 testes locais aprovados em 56 arquivos, sem testes ignorados**, e build de produção concluído. Os 7 testes em 2 arquivos de integração permanecem disponíveis para execução no ambiente preparado.
+
+## [1.15.1] — 2026-08-29
+
+### Corrigido — instalação reproduzível
+
+A versão do pnpm passou a ter uma única fonte em `packageManager`. Foram removidos a dependência redundante do pnpm, o patch de `wouter@3.7.1` incompatível com o Wouter 3.10 atual e overrides que já não representavam a árvore registrada. O `esbuild` foi incluído como único pacote autorizado a executar script de instalação. Nenhuma biblioteca funcional foi atualizada; a instalação congelada passou de 711 para 710 pacotes apenas pela remoção do pnpm redundante.
+
+Foi adicionado um teste de regressão para impedir nova divergência entre manifesto, workspace e lockfile. Validação: instalação limpa com `corepack pnpm install --frozen-lockfile`, segurança aprovada com 3 migrações e 11 correções preservadas, TypeScript aprovado, **193 testes aprovados em 54 arquivos** sem dependências externas e build de produção concluído. As duas suítes de integração que exigem banco e credenciais de bootstrap permanecem dependentes do ambiente e serão tratadas no D-002.
+
 ## [1.15.0] — 2026-08-23
 
 ### Segurança e confiabilidade
