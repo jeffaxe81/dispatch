@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const projectRoot = resolve(import.meta.dirname, "../..");
+const projectRoot = resolve(import.meta.dirname, "../../..");
 const page = readFileSync(resolve(projectRoot, "client/src/pages/Cp016OperationsPage.tsx"), "utf8");
 
 describe("CP-016 operations page bindings", () => {
