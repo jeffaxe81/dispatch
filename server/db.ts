@@ -223,6 +223,65 @@ export async function createIncident(input: {
   });
 }
 
+
+export async function recordIncidentCommunicationEvent(input: {
+  incidentId: number;
+  actorUserId: number;
+  correlationId: string;
+  applicationId: string;
+  eventType: "communication_started" | "communication_ready" | "communication_failed" | "communication_ended";
+}) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const incident = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
+    if (!incident) throw new Error("Ocorrência não encontrada.");
+
+    const messages = {
+      communication_started: "Comunicação vinculada à ocorrência foi iniciada.",
+      communication_ready: "Canal de comunicação vinculado à ocorrência ficou disponível.",
+      communication_failed: "Falha técnica registrada na comunicação vinculada à ocorrência.",
+      communication_ended: "Comunicação vinculada à ocorrência foi encerrada.",
+    } as const;
+
+    const metadata = {
+      correlationId: input.correlationId,
+      applicationId: input.applicationId,
+      dataSharing: "none",
+    };
+
+    const [event] = await tx.insert(incidentEvents).values({
+      incidentId: incident.id,
+      actorUserId: input.actorUserId,
+      eventType: input.eventType,
+      previousStatus: incident.status,
+      nextStatus: incident.status,
+      message: messages[input.eventType],
+      metadata,
+    }).$returningId();
+
+    await tx.insert(auditLogs).values({
+      resourceType: "incident_communication",
+      resourceId: event.id,
+      action: input.eventType,
+      actorUserId: input.actorUserId,
+      beforeData: null,
+      afterData: {
+        incidentId: incident.id,
+        incidentCode: incident.code,
+        correlationId: input.correlationId,
+        applicationId: input.applicationId,
+        dataSharing: "none",
+      },
+    });
+
+    return {
+      eventId: event.id,
+      correlationId: input.correlationId,
+      eventType: input.eventType,
+    };
+  });
+}
+
 export async function updateIncident(input: {
   incidentId: number;
   actorUserId: number;
