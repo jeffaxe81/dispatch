@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NEO_INTERACT_EMBEDDED_APPLICATION } from "@shared/embeddedApplications";
 import {
@@ -54,16 +54,18 @@ describe("EmbeddedApplicationFrame", () => {
     );
     const iframe = screen.getByTitle("NEO Interact") as HTMLIFrameElement;
 
-    window.dispatchEvent(new MessageEvent("message", {
-      origin: "https://example.invalid",
-      source: iframe.contentWindow,
-      data: {
-        type: "TOGGLE_IFRAME_SIZE",
-        isExpanded: true,
-        width: 600,
-        height: 900,
-      },
-    }));
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", {
+        origin: "https://example.invalid",
+        source: iframe.contentWindow,
+        data: {
+          type: "TOGGLE_IFRAME_SIZE",
+          isExpanded: true,
+          width: 600,
+          height: 900,
+        },
+      }));
+    });
 
     expect(iframe.style.width).toBe("100%");
     expect(securityEvent).toHaveBeenCalledWith({
@@ -71,16 +73,18 @@ describe("EmbeddedApplicationFrame", () => {
       origin: "https://example.invalid",
     });
 
-    window.dispatchEvent(new MessageEvent("message", {
-      origin: "https://gscprj.saas.digitro.cloud",
-      source: iframe.contentWindow,
-      data: {
-        type: "TOGGLE_IFRAME_SIZE",
-        isExpanded: true,
-        width: 600,
-        height: 900,
-      },
-    }));
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", {
+        origin: "https://gscprj.saas.digitro.cloud",
+        source: iframe.contentWindow,
+        data: {
+          type: "TOGGLE_IFRAME_SIZE",
+          isExpanded: true,
+          width: 600,
+          height: 900,
+        },
+      }));
+    });
 
     expect(iframe.style.width).toBe("600px");
     expect(iframe.style.height).toBe("900px");
