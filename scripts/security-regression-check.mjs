@@ -8,7 +8,7 @@ const requireCondition = (condition, message) => {
 };
 
 const packageJson = JSON.parse(read("package.json"));
-requireCondition(packageJson.version === "1.15.0", "A versão segura esperada é 1.15.0.");
+requireCondition(packageJson.version === "1.15.4", "A versão segura esperada é 1.15.4.");
 
 const journal = JSON.parse(read("drizzle/meta/_journal.json"));
 const trackedMigrations = journal.entries.map(entry => `${entry.tag}.sql`);
