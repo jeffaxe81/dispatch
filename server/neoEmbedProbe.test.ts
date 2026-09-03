@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeNeoProbeResponse } from "./neoEmbedProbe";
+import { resolveSafeNeoRedirect, summarizeNeoProbeResponse } from "./neoEmbedProbe";
 
 describe("summarizeNeoProbeResponse", () => {
   it("resume políticas de frame sem expor conteúdo desnecessário", () => {
@@ -61,5 +61,32 @@ describe("summarizeNeoProbeResponse", () => {
 
     expect(result.cookies[0]?.name).toBe("<unnamed>");
     expect(JSON.stringify(result)).not.toContain("sensitive");
+  });
+});
+
+describe("resolveSafeNeoRedirect", () => {
+  const current = "https://gscprj.saas.digitro.cloud/neo/";
+
+  it("permite redirecionamento relativo dentro da origem NEO", () => {
+    expect(resolveSafeNeoRedirect(current, "/neo/login")).toBe(
+      "https://gscprj.saas.digitro.cloud/neo/login",
+    );
+  });
+
+  it("permite URL absoluta somente quando permanece na mesma origem HTTPS", () => {
+    expect(
+      resolveSafeNeoRedirect(
+        current,
+        "https://gscprj.saas.digitro.cloud/neo/auth",
+      ),
+    ).toBe("https://gscprj.saas.digitro.cloud/neo/auth");
+  });
+
+  it("recusa redirecionamento para outro domínio", () => {
+    expect(resolveSafeNeoRedirect(current, "https://login.example.com/auth")).toBeNull();
+  });
+
+  it("recusa downgrade para HTTP", () => {
+    expect(resolveSafeNeoRedirect(current, "http://gscprj.saas.digitro.cloud/neo/login")).toBeNull();
   });
 });
