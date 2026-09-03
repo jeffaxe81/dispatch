@@ -8,6 +8,60 @@ Este arquivo registra mudanças funcionais relevantes do AXE Dispatch. As versõ
 | Funcionalidade compatível adicionada | MINOR | `1.1.0` |
 | Correção ou ajuste compatível | PATCH | `1.0.1` |
 
+## [1.15.5] — 2026-09-01
+
+### Recuperação — automação controlada e harness não produtivo
+
+Foi implementado o D-005A para tratar banco MySQL/TiDB e objetos referenciados como uma única unidade de recuperação. O pacote usa artefatos AES-256-GCM, hashes SHA-256, manifesto criptografado, envelope público sanitizado e publicação atômica. A restauração exige banco vazio com prefixo `dispatch_recovery_`, classe descartável e confirmação `RESTORE_ONLY_DISPOSABLE_AXE_DISPATCH`; os objetos são gravados em prefixo isolado e somente as referências do banco restaurado são remapeadas.
+
+Foram adicionados adaptadores de banco e Forge Storage com dependências injetáveis, backup fail-safe, restauração protegida, verificador de contagens/invariantes/objetos, CLI administrativa e exercício completo com dados sintéticos. Os cenários deliberados cobrem objeto ausente, corrupção, chave incorreta, manifesto incompleto, alvo não vazio, relação quebrada, RPO e RTO excedidos. Não há comando de delete, drop, truncate, promoção ou produção.
+
+O D-005B recebeu uma suíte exclusiva `pnpm test:recovery`, fora dos testes locais, da integração comum e do workflow do GitHub. Sem ambiente autorizado, ela para antes da coleta e lista somente os nomes das 11 variáveis e dos dois binários ausentes. **D-005B permanece pendente**: nenhum banco ou armazenamento real foi acessado, e não há prova ou ativação em produção.
+
+Validação local da versão candidata: segurança com 3 migrações e 11 correções preservadas, TypeScript, **327 testes em 72 arquivos** e build de frontend/backend. Permanecem somente os avisos conhecidos de analytics opcional e chunks grandes. A versão não agenda backup, não configura retenção e não inicia D-005C.
+
+## [1.15.4] — 2026-08-29
+
+### Operação — saúde, smoke test e rollback seguro
+
+Foram adicionadas as rotas públicas `GET /health/live` e `GET /health/ready`. A primeira confirma somente que o processo HTTP está vivo; a segunda permite tráfego apenas quando uma consulta mínima ao MySQL e a leitura de um byte de um objeto sentinela no armazenamento são aprovadas. Os checks têm prazo de dois segundos, não alteram dados e devolvem apenas estados sanitizados. A ausência de `STORAGE_HEALTHCHECK_KEY` mantém liveness disponível e readiness em `503`, tornando o provisionamento incompleto visível sem derrubar o processo.
+
+Em produção, o servidor agora usa exatamente a porta indicada por `PORT`; somente desenvolvimento procura uma porta alternativa. Foi criado `pnpm smoke:post-deploy`, que verifica externamente liveness, readiness e a página HTML sem credenciais e sem imprimir corpos ou cabeçalhos. O novo runbook diferencia retorno da aplicação de restauração de dados: este ciclo não executa deploy, rollback real, migração ou restauração de banco.
+
+Foram adicionados 38 testes específicos para rotas, falhas e timeouts dos adaptadores, seleção de porta e smoke controlado. A validação local aprovou instalação congelada, segurança com 3 migrações e 11 correções, TypeScript, **241 testes em 60 arquivos** e build de frontend/backend. A suíte de integração sem ambiente parou antes da coleta e listou somente as quatro variáveis obrigatórias. O GitHub repetiu instalação, segurança, tipos, testes e build com sucesso em **Qualidade #3** no Pull Request #3. Permanecem os avisos conhecidos de analytics opcional e bundle principal grande.
+
+A ativação real depende da criação única de uma sentinela não vazia no armazenamento, da variável `STORAGE_HEALTHCHECK_KEY` e de uma URL HTTP(S) autorizada para o smoke. O guia conteinerizado foi marcado como arquitetura de referência porque os artefatos Docker citados não existem no pacote atual.
+
+## [1.15.3] — 2026-08-29
+
+### Qualidade — integração contínua segura
+
+Foi criada a primeira integração contínua do projeto em `.github/workflows/quality.yml`. Pull Requests destinados a `main`, pushes em `main` e execuções manuais passam pelos mesmos portões locais, nesta ordem: instalação congelada, segurança, TypeScript, testes locais e build.
+
+O workflow usa permissão global somente de leitura, não recebe segredos da aplicação, não executa testes de integração, deploy ou merge e possui timeout e cancelamento de execuções obsoletas. `actions/checkout` e `actions/setup-node` foram fixadas por SHA completo; o cache automático foi desativado nesta primeira linha de base.
+
+Foram adicionados 6 testes de regressão para proteger os disparadores, permissões, ações imutáveis, Node 24, ordem dos comandos e ausência de credenciais ou entrega. Validação local: instalação congelada, segurança com 3 migrações e 11 correções, TypeScript, **203 testes aprovados em 57 arquivos**, bloqueio antecipado da integração sem as quatro variáveis obrigatórias e build de produção aprovado. A primeira execução real, **Qualidade #1**, também concluiu instalação, segurança, tipos, testes e build com sucesso no GitHub.
+
+Avisos conhecidos e não causados por esta alteração: variáveis opcionais de analytics ausentes e bundle principal acima de 500 kB. Os testes de integração serão incorporados à CI somente após existir banco isolado, migrações controladas e credenciais exclusivas de teste.
+
+## [1.15.2] — 2026-08-29
+
+### Qualidade — suítes locais e de integração separadas
+
+Os testes locais determinísticos foram separados dos testes que exigem banco de dados e credenciais de bootstrap. `pnpm test` e `pnpm test:unit` agora executam somente a suíte local; `pnpm test:integration` seleciona os arquivos `.integration.test.ts`; e `pnpm test:all` executa os dois grupos em sequência.
+
+A suíte local recebe valores fictícios exclusivos para título, sessão e armazenamento simulado. A suíte de integração valida antecipadamente `DATABASE_URL`, `JWT_SECRET`, `LOCAL_AUTH_BOOTSTRAP_USERNAME` e `LOCAL_AUTH_BOOTSTRAP_PASSWORD`, falhando com uma mensagem explícita em vez de ignorar testes silenciosamente.
+
+Validação: instalação congelada aprovada, segurança com 3 migrações e 11 correções preservadas, TypeScript aprovado, **197 testes locais aprovados em 56 arquivos, sem testes ignorados**, e build de produção concluído. Os 7 testes em 2 arquivos de integração permanecem disponíveis para execução no ambiente preparado.
+
+## [1.15.1] — 2026-08-29
+
+### Corrigido — instalação reproduzível
+
+A versão do pnpm passou a ter uma única fonte em `packageManager`. Foram removidos a dependência redundante do pnpm, o patch de `wouter@3.7.1` incompatível com o Wouter 3.10 atual e overrides que já não representavam a árvore registrada. O `esbuild` foi incluído como único pacote autorizado a executar script de instalação. Nenhuma biblioteca funcional foi atualizada; a instalação congelada passou de 711 para 710 pacotes apenas pela remoção do pnpm redundante.
+
+Foi adicionado um teste de regressão para impedir nova divergência entre manifesto, workspace e lockfile. Validação: instalação limpa com `corepack pnpm install --frozen-lockfile`, segurança aprovada com 3 migrações e 11 correções preservadas, TypeScript aprovado, **193 testes aprovados em 54 arquivos** sem dependências externas e build de produção concluído. As duas suítes de integração que exigem banco e credenciais de bootstrap permanecem dependentes do ambiente e serão tratadas no D-002.
+
 ## [1.15.0] — 2026-08-23
 
 ### Segurança e confiabilidade
