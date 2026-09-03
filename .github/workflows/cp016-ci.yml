@@ -1,0 +1,50 @@
+name: CP-016 CI
+
+on:
+  push:
+    branches:
+      - feat/cp-016-operational-foundation
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      JWT_SECRET: cp016-ci-jwt-secret-with-at-least-32-characters
+      LOCAL_AUTH_BOOTSTRAP_USERNAME: cp016-admin
+      LOCAL_AUTH_BOOTSTRAP_PASSWORD: cp016-ci-password-12345
+      MYSQL_PASSWORD: cp016-ci-mysql-password
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        run: pnpm check
+
+      - name: Unit and integration tests
+        run: pnpm test
+
+      - name: Security regression checks
+        run: pnpm security:check
+
+      - name: Production build
+        run: pnpm build
