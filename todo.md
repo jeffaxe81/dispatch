@@ -83,3 +83,22 @@
 - [x] Comparar o HTML e os bundles do domínio publicado com a revisão de autenticação local atual; o domínio respondeu 503 sem assets e sem cache, confirmando implantação inativa.
 - [x] Acionar nova publicação automática da revisão validada para restaurar uma implantação ativa.
 - [x] Preparar a confirmação pública do login local após a nova publicação automática.
+
+
+## GIS-1 — Fundação open source
+
+- [x] Formalizar D-005 — Arquitetura GIS Open Source e Despacho Georreferenciado.
+- [x] Isolar a evolução em branch própria sem alterar a `main`.
+- [x] Tornar OpenStreetMap o provider preferencial no modo automático.
+- [x] Manter Google Maps somente como opção explícita de transição/rollback.
+- [x] Criar contratos GIS portáveis em `shared/gis.ts`.
+- [x] Padronizar geometria de rota como GeoJSON LineString.
+- [x] Implementar adapter OSRM desacoplado do domínio.
+- [x] Tratar coordenada inválida, indisponibilidade de rede, timeout e resposta inválida.
+- [x] Adicionar testes unitários do adapter OSRM.
+- [ ] Executar `pnpm check`, Vitest e build em ambiente com dependências disponíveis.
+- [ ] Integrar o provider OSRM a uma procedure autenticada do backend.
+- [ ] Exibir rota e ETA entre equipe e ocorrência.
+- [ ] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
+- [ ] Substituir o embed OSM por renderização Leaflet nativa após inclusão controlada da dependência.
+- [ ] Validar GIS-1 em desktop/mobile e criar checkpoint de homologação.
