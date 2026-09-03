@@ -18,8 +18,8 @@ vi.mock("./accessControl", async importOriginal => ({
   },
 }));
 
-vi.mock("./db", async importOriginal => ({
-  ...(await importOriginal<typeof import("./db")>()),
+vi.mock("./communicationAnalytics", async importOriginal => ({
+  ...(await importOriginal<typeof import("./communicationAnalytics")>()),
   getCommunicationAnalytics: mocks.getCommunicationAnalytics,
 }));
 
