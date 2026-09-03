@@ -97,8 +97,9 @@
 - [x] Tratar coordenada inválida, indisponibilidade de rede, timeout e resposta inválida.
 - [x] Adicionar testes unitários do adapter OSRM.
 - [ ] Executar `pnpm check`, Vitest e build em ambiente com dependências disponíveis.
-- [ ] Integrar o provider OSRM a uma procedure autenticada do backend.
-- [ ] Exibir rota e ETA entre equipe e ocorrência.
-- [ ] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
+- [x] Integrar o provider OSRM a uma procedure autenticada do backend.
+- [x] Exibir distância e ETA da equipe candidata no fluxo de despacho.
+- [x] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
+- [ ] Desenhar a geometria da rota no mapa operacional.
 - [ ] Substituir o embed OSM por renderização Leaflet nativa após inclusão controlada da dependência.
 - [ ] Validar GIS-1 em desktop/mobile e criar checkpoint de homologação.
