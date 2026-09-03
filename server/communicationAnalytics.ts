@@ -1,4 +1,7 @@
-import type { FilterableCommunicationSessionSummary } from "../shared/communicationMetrics";
+import { and, eq, inArray } from "drizzle-orm";
+import { incidentEvents, incidents } from "../drizzle/schema";
+import { summarizeFilteredCommunicationSessions, type CommunicationSessionFilters, type FilterableCommunicationSessionSummary } from "../shared/communicationMetrics";
+import { getDb } from "./db";
 
 type CommunicationEventType = "communication_started" | "communication_ready" | "communication_failed" | "communication_ended";
 type CommunicationChannel = FilterableCommunicationSessionSummary["channel"];
@@ -8,6 +11,13 @@ type CommunicationEventRow = {
   createdAt: Date;
   metadata: unknown;
 };
+
+const communicationEventTypes: CommunicationEventType[] = [
+  "communication_started",
+  "communication_ready",
+  "communication_failed",
+  "communication_ended",
+];
 
 const channels: CommunicationChannel[] = ["nao_informado", "voz", "chat", "whatsapp", "email", "video", "outro"];
 
@@ -56,4 +66,35 @@ export function aggregateCommunicationEventRows(rows: readonly CommunicationEven
   return Array.from(sessions.values())
     .sort((a, b) => b.lastEventAt.getTime() - a.lastEventAt.getTime())
     .map(({ lastEventAt: _lastEventAt, ...session }) => session);
+}
+
+export type CommunicationAnalyticsInput = CommunicationSessionFilters & {
+  teamId?: number;
+};
+
+export async function getCommunicationAnalytics(input: CommunicationAnalyticsInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+
+  const filters = [inArray(incidentEvents.eventType, communicationEventTypes)];
+  if (input.teamId) filters.push(eq(incidents.assignedTeamId, input.teamId));
+
+  const rows = await db
+    .select({
+      eventType: incidentEvents.eventType,
+      createdAt: incidentEvents.createdAt,
+      metadata: incidentEvents.metadata,
+    })
+    .from(incidentEvents)
+    .innerJoin(incidents, eq(incidentEvents.incidentId, incidents.id))
+    .where(and(...filters))
+    .orderBy(incidentEvents.createdAt);
+
+  const sessions = aggregateCommunicationEventRows(rows);
+  return summarizeFilteredCommunicationSessions(sessions, {
+    startDate: input.startDate,
+    endDate: input.endDate,
+    channel: input.channel,
+    status: input.status,
+  });
 }
