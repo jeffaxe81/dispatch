@@ -1,6 +1,8 @@
 # Deploy conteinerizado do AXE Dispatch
 
-**Versão de referência:** 1.15.0  
+> **Situação dos artefatos:** este documento preserva uma arquitetura de referência. `Dockerfile`, `docker-compose.yml` e `.env.container.example` não estão presentes neste pacote e não devem ser presumidos como entregues. Use somente o mecanismo de publicação efetivamente homologado.
+
+**Versão de referência:** 1.15.4
 **Responsável pelo documento:** Manus AI
 
 ## Objetivo e arquitetura
@@ -52,6 +54,7 @@ docker compose down -v
 | Proxy         | `TRUST_PROXY`                                                                   | Confiar no primeiro proxy para HTTPS/IP       |
 | OAuth         | `VITE_APP_ID`, `OAUTH_SERVER_URL`, `VITE_OAUTH_PORTAL_URL`                      | Autenticação e retorno de login               |
 | Administração | `OWNER_OPEN_ID`, `OWNER_NAME`                                                   | Identidade inicial de administração           |
+| Saúde         | `STORAGE_HEALTHCHECK_KEY`                                                       | Objeto sentinela não vazio para readiness      |
 | S3            | `STORAGE_S3_BUCKET`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | Armazenamento de evidências e fotos           |
 | S3 opcional   | `STORAGE_S3_ENDPOINT`, `STORAGE_S3_REGION`, `STORAGE_S3_FORCE_PATH_STYLE`       | Endpoint MinIO ou outro fornecedor compatível |
 
@@ -91,16 +94,23 @@ https://dispatch.seu-dominio.example/api/oauth/callback
 
 ## 5. Verificação pós-deploy
 
-Verifique se o serviço iniciou, se a página inicial responde e se o callback OAuth não retorna erro. Faça um teste controlado de upload de foto de perfil ou evidência para confirmar o bucket, e revise o Log de operações para confirmar a auditoria.
+Antes da primeira publicação, crie pelo mecanismo autorizado do armazenamento um objeto permanente e não vazio, por exemplo `health/ready.txt`, e configure `STORAGE_HEALTHCHECK_KEY=health/ready.txt` no ambiente. A aplicação apenas solicita uma URL temporária e lê o primeiro byte; o healthcheck nunca cria, altera ou exclui o objeto.
+
+Após a publicação, confirme liveness, readiness e a aplicação completa. Use uma URL pública ou interna expressamente autorizada e não inclua credenciais no comando.
 
 ```bash
-docker logs --tail 100 axe-dispatch
-curl -I http://127.0.0.1:3000/
+curl --fail --silent https://seu-dominio.example/health/live
+curl --fail --silent https://seu-dominio.example/health/ready
+SMOKE_BASE_URL=https://seu-dominio.example corepack pnpm smoke:post-deploy
 ```
+
+Liveness `200` prova somente que o processo responde. Readiness `200` exige banco e sentinela; `503` deve impedir a entrada de novo tráfego até o diagnóstico. O smoke também exige que a página inicial responda `200` como `text/html`.
 
 ## 6. Atualização e reversão
 
 Em cada versão, faça backup do banco e confirme que o bucket está protegido por política de retenção apropriada. Publique a nova imagem com uma tag versionada, aplique a migração antes de trocar o contêiner e mantenha a imagem anterior disponível para reversão de aplicação. Migrações que removam ou transformem dados exigem backup e plano de reversão próprios.
+
+O procedimento controlado e independente do provedor está em [`ROLLBACK_OPERACIONAL.md`](./ROLLBACK_OPERACIONAL.md). Não reverta a aplicação quando a versão anterior for incompatível com os dados atuais; restauração de banco pertence ao D-005 e exige autorização própria.
 
 | Ordem | Ação                                                        |
 | ----- | ----------------------------------------------------------- |
