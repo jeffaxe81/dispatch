@@ -274,3 +274,25 @@ A troca deve ocorrer por configuração, permitindo rollback imediato durante a 
 ## 16. Próximo documento
 
 Após o D-005, o próximo artefato recomendado é o **D-006 — Arquitetura de Tempo Real, Telemetria e Operação Offline**, cobrindo WebSocket/SSE, sincronização, perda de conectividade, filas locais, reconciliação e rastreabilidade.
+
+
+## Reconciliação com o checkpoint D-005A — 03/09/2026
+
+A GIS-1 foi reconciliada sobre a base segura `checkpoint/d005a-v1.15.5` sem substituir nem apagar a branch GIS original. A linha combinada está preservada em `checkpoint/d005a-gis1-reconciled-20260903` e no PR draft #8.
+
+### Portões de qualidade aprovados
+
+Na execução GitHub Actions **Qualidade #6** foram aprovados:
+
+- instalação com lockfile congelado e pnpm canônico via Corepack;
+- verificação de segurança;
+- TypeScript;
+- suíte local completa, incluindo os testes GIS incorporados à configuração D-005A;
+- build de produção.
+
+### Limites desta evidência
+
+- não houve merge nem deploy;
+- não houve uso de banco, storage ou credenciais de produção;
+- as suítes de integração/recovery que dependem de infraestrutura real permanecem separadas;
+- a homologação visual GIS-1 em desktop/mobile continua pendente antes do fechamento funcional.
