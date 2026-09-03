@@ -301,3 +301,45 @@ Para a homologação NEO, será necessário confirmar:
 - compartilhar credenciais entre aplicações;
 - substituir integrações API quando API for necessária para dados de negócio.
 
+
+
+## 13. Implementação D-006A — Fundação validada em 03/09/2026
+
+A fundação funcional foi implementada na branch `feature/d006a-embedded-app-foundation`, mantendo o PR #10 em rascunho e sem merge/deploy.
+
+### Entregue
+
+- contrato tipado em `shared/embeddedApplications.ts`;
+- allowlist inicial contendo somente o NEO Interact;
+- URL `https://gscprj.saas.digitro.cloud/neo/`;
+- origin exato `https://gscprj.saas.digitro.cloud`;
+- componente `EmbeddedApplicationFrame`;
+- `width=100%` e altura inicial de 800 px;
+- limites de expansão por container, `maxWidth`, `minHeight` e `maxHeight`;
+- `postMessage` sem wildcard, validando origin, source e schema;
+- mensagem `init` enviada exclusivamente ao origin autorizado;
+- recepção de `TOGGLE_IFRAME_SIZE`;
+- permissões declarativas `camera; microphone; clipboard-write`;
+- loading, timeout, erro e retry;
+- consulta de aplicações protegida por `integrations.view`;
+- rota `/integracoes/aplicacoes-incorporadas`;
+- entrada no catálogo de Integrações.
+
+### Evidência de qualidade
+
+Commit funcional validado: `354d6a8396605117a0ca6bc840034fbaa5f7720e`.
+
+- **Qualidade #14:** sucesso — instalação congelada, segurança, TypeScript, testes locais e build;
+- **GIS visual #9:** sucesso — confirma que a evolução D-006A não regrediu a homologação GIS existente;
+- testes específicos novos validam URL/origin, bloqueio de HTTP/origin com path, payload desconhecido, allow explícito, sizing e rejeição de mensagem de origem inválida.
+
+### Pendências deliberadamente separadas
+
+A fundação não conclui a homologação externa do NEO. Permanecem para D-006B:
+
+- verificar CSP `frame-ancestors` e `X-Frame-Options`;
+- verificar sessão, login, logout e cookies em iframe;
+- validar câmera/microfone no navegador;
+- homologar comportamento real de `TOGGLE_IFRAME_SIZE`;
+- criar evidência visual desktop/mobile específica do iframe;
+- validar a experiência operacional lado a lado com ocorrência/mapa.
