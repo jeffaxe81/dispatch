@@ -47,7 +47,7 @@ function VisualHarness() {
   return (
     <main className="min-h-screen bg-slate-100 p-4">
       <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
-        Harness D-006B — a janela operacional deve estar aberta sobre este conteúdo.
+        Harness D-006C — validar modos Lado a lado, Foco NEO, Dock inferior e responsividade.
       </div>
       <NeoOperationalWorkspace
         open
