@@ -26,7 +26,7 @@ describe("CommunicationAnalyticsPanel", () => {
     expect(screen.getByText("5")).toBeTruthy();
     expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("13m 0s")).toBeTruthy();
-    expect(screen.getByText(/voz/i)).toBeTruthy();
+    expect(screen.getByText((_, element) => element?.textContent === "Voz · 4")).toBeTruthy();
   });
 
   it("allows filtering by channel and technical status", () => {
