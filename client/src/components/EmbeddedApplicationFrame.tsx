@@ -1,4 +1,5 @@
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildEmbeddedApplicationAllow,
