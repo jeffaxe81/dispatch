@@ -12,6 +12,36 @@ O módulo deve permitir que o operador utilize a aplicação integrada sem aband
 
 ## 2. Escopo funcional
 
+
+## 2.0 Aplicação de referência homologável — NEO Interact
+
+Para a primeira implementação do módulo, considerar:
+
+- **URL do iFrame:** `https://gscprj.saas.digitro.cloud/neo/`
+- **Origin autorizado para postMessage:** `https://gscprj.saas.digitro.cloud`
+- **Permissões inicialmente previstas:** `camera; microphone; clipboard-write`
+- **Largura inicial:** `100%`
+- **Altura inicial de referência:** `800px`
+- **Modo inicial:** página completa, com suporte a expansão.
+
+Importante: o caminho `/neo/` pertence ao `src` do iframe, mas não faz parte de `event.origin`. A validação de origem deverá usar correspondência exata com `https://gscprj.saas.digitro.cloud`.
+
+Exemplo de configuração de referência:
+
+```ts
+export const neoInteractEmbeddedApp = {
+  id: "neo-interact",
+  name: "NEO Interact",
+  src: "https://gscprj.saas.digitro.cloud/neo/",
+  origin: "https://gscprj.saas.digitro.cloud",
+  width: "100%",
+  defaultHeight: 800,
+  allow: "camera; microphone; clipboard-write",
+  enabled: true,
+};
+```
+
+
 ### 2.1 Aplicações incorporadas
 
 Criar uma área administrativa para cadastrar aplicações permitidas, contendo no mínimo:
@@ -253,8 +283,8 @@ A primeira implementação deve entregar Página completa + Tela cheia. Os demai
 
 Para a homologação NEO, será necessário confirmar:
 
-- URL real de homologação/produção;
-- origem permitida;
+- confirmar que a URL informada `https://gscprj.saas.digitro.cloud/neo/` é a URL definitiva do ambiente a ser homologado;
+- confirmar que a origem permitida é `https://gscprj.saas.digitro.cloud`;
 - headers CSP/X-Frame-Options;
 - política de cookies;
 - contrato definitivo de `postMessage`;
