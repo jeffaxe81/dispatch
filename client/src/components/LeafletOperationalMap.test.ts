@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { geoJsonLineStringToLeafletPositions } from "./LeafletOperationalMap";
+import { geoJsonLineStringToLeafletPositions } from "./leafletGeometry";
 
 describe("LeafletOperationalMap GIS adapter", () => {
   it("converte GeoJSON [longitude, latitude] para posições Leaflet [latitude, longitude]", () => {
