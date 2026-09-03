@@ -18,7 +18,7 @@ env:
 
 jobs:
   validate:
-    name: CP-016 tests, typecheck and build
+    name: CP-016 tests, typecheck, build and migration
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -49,3 +49,17 @@ jobs:
 
       - name: Gerar build
         run: corepack pnpm build
+
+      - name: Gerar migration Drizzle CP-016
+        env:
+          DATABASE_URL: mysql://cp016:cp016@127.0.0.1:3306/dispatch_cp016
+        run: corepack pnpm exec drizzle-kit generate --config drizzle.config.ts
+
+      - name: Publicar migration gerada para revisão
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cp016-drizzle-generation
+          path: drizzle
+          if-no-files-found: error
+          retention-days: 7
