@@ -4,7 +4,7 @@ import { accessRoles, auditLogs, userProfiles, userRoleAssignments, users } from
 import { getDb } from "./db";
 import { setUserLocalCredentials } from "./db";
 import { getEffectiveAccess } from "./accessControl";
-import { authenticateLocalRequest, createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, verifyLocalSessionToken } from "./localAuth";
+import { authenticateLocalRequest, createLocalSessionToken, ensureLocalAdministrator, hashLocalPassword, loginWithLocalCredentials, verifyLocalSessionToken } from "./localAuth";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
@@ -54,6 +54,7 @@ async function callerForCredentials(username: string, password: string) {
 
 describe("integração de credenciais locais por perfil", () => {
   beforeAll(async () => {
+    await ensureLocalAdministrator();
     const db = await getDb();
     if (!db) throw new Error("Banco indisponível para teste integrado.");
     const passwordHash = await hashLocalPassword(password);
