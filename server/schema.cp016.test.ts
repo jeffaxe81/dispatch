@@ -8,7 +8,7 @@ import {
   routeTracks,
   routeTrackPoints,
   embeddedIntegrations,
-} from "../drizzle/schema";
+} from "../drizzle/schema.cp016";
 
 describe("CP-016 database schema", () => {
   it("exports all additive CP-016 tables", () => {
