@@ -48,10 +48,12 @@ export function EmbeddedApplicationFrame({
   application,
   timeoutMs = 20_000,
   onSecurityEvent,
+  onLifecycleEvent,
 }: {
   application: EmbeddedApplication;
   timeoutMs?: number;
   onSecurityEvent?: (event: EmbeddedFrameSecurityEvent) => void;
+  onLifecycleEvent?: (event: "ready" | "timeout" | "error") => void;
 }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -73,9 +75,12 @@ export function EmbeddedApplicationFrame({
 
   useEffect(() => {
     if (status !== "loading") return;
-    const timer = window.setTimeout(() => setStatus("timeout"), timeoutMs);
+    const timer = window.setTimeout(() => {
+      setStatus("timeout");
+      onLifecycleEvent?.("timeout");
+    }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [reloadKey, status, timeoutMs]);
+  }, [reloadKey, status, timeoutMs, onLifecycleEvent]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent<unknown>) => {
@@ -111,6 +116,7 @@ export function EmbeddedApplicationFrame({
 
   const sendInit = () => {
     setStatus("ready");
+    onLifecycleEvent?.("ready");
     iframeRef.current?.contentWindow?.postMessage(
       { type: "init", timestamp: Date.now() },
       application.origin,
@@ -170,7 +176,10 @@ export function EmbeddedApplicationFrame({
             maxWidth: "100%",
           }}
           onLoad={sendInit}
-          onError={() => setStatus("error")}
+          onError={() => {
+            setStatus("error");
+            onLifecycleEvent?.("error");
+          }}
         />
       </div>
     </div>
