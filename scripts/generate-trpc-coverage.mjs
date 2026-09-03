@@ -8,7 +8,7 @@ const routerSource = fs.readFileSync(routerPath, "utf8");
 
 const coverageRules = [
   { prefix: "auth", suites: ["server/auth.logout.test.ts", "server/_core/cookies.test.ts", "server/localAuth.test.ts", "server/localAuth.bootstrap.test.ts", "server/localAuth.integration.test.ts"], evidence: "Login local, sessão, contexto autenticado, logout, cookie seguro, bloqueio de tentativas e perfis operacionais." },
-  { prefix: "help", suites: ["server/helpCenter.test.ts", "client/src/pages/ManualsHelpPage.test.tsx"], evidence: "Central de ajuda, favoritos e sugestões." },
+  { prefix: "help", suites: ["server/helpCenter.test.ts", "client/src/pages/ManualsHelpPage.test.tsx", "server/accessCatalog.test.ts"], evidence: "Central de ajuda, favoritos, sugestões e glossário de privilégios." },
   { prefix: "dashboard", suites: ["server/operationalReports.test.ts", "client/src/hooks/useRefreshSettings.test.ts"], evidence: "Consultas operacionais, filtros e atualização configurável." },
   { prefix: "reports", suites: ["server/operationalReports.test.ts"], evidence: "Visão geral, exportação auditada e filtros salvos são chamados diretamente pela suíte." },
   { prefix: "integrations", suites: ["server/integrations.test.ts", "server/openapi.test.ts", "server/alrtIngress.test.ts", "server/homologationMatrix.test.ts", "client/src/pages/IntegrationResourcePages.test.tsx", "client/src/pages/ApiDocsPage.test.tsx", "client/src/pages/ExternalIncidentReviewsPage.test.tsx"], evidence: "Conexões, webhooks, credenciais, OpenAPI, ALRT, logs e revisão externa." },
@@ -19,7 +19,7 @@ const coverageRules = [
   { prefix: "vehicles", suites: ["server/authorization.test.ts", "server/accessControl.test.ts"], evidence: "Permissões de frota e escopo preservados; camada tRPC/db idêntica ao pacote-fonte." },
   { prefix: "administration", suites: ["server/userManagement.test.ts", "server/accessControl.test.ts", "server/accessPolicies.test.ts"], evidence: "Administração de usuários e vínculos operacionais." },
   { prefix: "access", suites: ["server/accessControl.test.ts", "server/accessPolicies.test.ts", "server/authorization.test.ts", "server/scopeHierarchy.test.ts", "server/profilePhoto.test.ts", "server/localAuth.integration.test.ts", "client/src/components/ProfilePhotoControl.test.ts"], evidence: "Papéis, permissões, escopos, atribuições, perfis, credenciais locais e fotos." },
-  { prefix: "settings", suites: ["server/solutionReset.test.ts", "server/solutionReset.transactions.test.ts", "client/src/pages/GeneralSettingsPage.test.tsx", "client/src/components/OperationalMap.test.ts", "client/src/components/OpenStreetMapFallback.test.ts"], evidence: "Mapa, configurações futuras e reinicialização controlada." },
+  { prefix: "settings", suites: ["server/solutionReset.test.ts", "server/solutionReset.transactions.test.ts", "client/src/pages/GeneralSettingsPage.test.tsx", "client/src/components/OperationalMap.test.ts", "client/src/components/LeafletMap.test.ts"], evidence: "Mapa, configurações futuras e reinicialização controlada." },
 ];
 
 const procedures = [];
@@ -44,8 +44,8 @@ for (const line of routerSource.split("\n")) {
   procedures.push({ path: [...routerStack.map(item => item.name), name].join("."), procedureType });
 }
 
-if (procedures.length !== 97) {
-  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 97.`);
+if (procedures.length !== 98) {
+  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 98.`);
 }
 
 const rows = procedures.map(procedure => {

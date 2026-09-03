@@ -17,6 +17,12 @@ export const ENV = {
     process.env.ALRT_TIMESTAMP_TOLERANCE_SECONDS ?? "300",
   alrtIngressRateLimit: process.env.ALRT_RATE_LIMIT ?? "60",
   trustProxy: process.env.TRUST_PROXY === "true",
+  storageS3Bucket: process.env.STORAGE_S3_BUCKET ?? "",
+  storageS3AccessKeyId: process.env.STORAGE_S3_ACCESS_KEY_ID ?? "",
+  storageS3SecretAccessKey: process.env.STORAGE_S3_SECRET_ACCESS_KEY ?? "",
+  storageS3Endpoint: process.env.STORAGE_S3_ENDPOINT ?? "",
+  storageS3Region: process.env.STORAGE_S3_REGION ?? "us-east-1",
+  storageS3ForcePathStyle: process.env.STORAGE_S3_FORCE_PATH_STYLE === "true",
 };
 
 type RuntimeEnv = typeof ENV;

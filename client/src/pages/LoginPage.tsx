@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { Loader2, LockKeyhole, RadioTower } from "lucide-react";
+import { Axe, Loader2, LockKeyhole } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -22,7 +22,7 @@ export default function LoginPage() {
   return <main className="min-h-screen bg-slate-950 px-5 py-10 text-white flex items-center justify-center">
     <section className="w-full max-w-md overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06] shadow-2xl shadow-black/40">
       <div className="bg-gradient-to-br from-cyan-950 via-teal-800 to-emerald-700 p-9">
-        <div className="mb-7 flex size-12 items-center justify-center rounded-2xl bg-white/15"><RadioTower className="size-6" /></div>
+        <div className="mb-7 flex size-12 items-center justify-center rounded-2xl bg-white/15"><Axe className="size-6" /></div>
         <p className="text-xs font-bold tracking-[0.22em] text-cyan-100">AXE SISTEMAS</p>
         <h1 className="mt-2 text-3xl font-semibold">AXE Dispatch</h1>
         <p className="mt-3 text-sm leading-6 text-cyan-50/85">Acesso operacional protegido por credenciais locais.</p>

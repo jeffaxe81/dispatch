@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { ensureLocalAdministrator } from "../localAuth";
+import { ensureDefaultAccessCatalog } from "../accessCatalog";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { alrtIngressJsonErrorHandler, registerAlrtIngressRoutes } from "../alrtIngress";
@@ -33,6 +34,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   if (ENV.isProduction) validateRuntimeEnv();
   await ensureLocalAdministrator();
+  await ensureDefaultAccessCatalog();
   const app = express();
   // Trust exactly one forwarding hop only when deployment explicitly opts in.
   // This makes req.secure/request.ip reliable without trusting spoofed headers.
