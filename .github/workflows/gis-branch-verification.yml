@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - roadmap/d005-gis-open-source
+  pull_request:
+    branches:
+      - main
 
 jobs:
   verify:
@@ -22,3 +25,4 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test -- client/src/components/LeafletOperationalMap.test.ts
       - run: pnpm check
+      - run: pnpm build
