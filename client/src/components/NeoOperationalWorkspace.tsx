@@ -158,7 +158,7 @@ export function NeoOperationalWorkspace({
           </DialogDescription>
         </DialogHeader>
 
-        <div className={layoutClasses}>
+        <div className={layoutClasses} data-neo-workspace-layout={layout}>
           {contextPanel}
 
           <section className={layout === "dock" ? "min-w-0 p-4 lg:overflow-y-auto" : "min-w-0 p-4 lg:overflow-y-auto"}>
