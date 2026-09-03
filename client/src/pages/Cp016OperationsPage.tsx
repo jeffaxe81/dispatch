@@ -2,7 +2,10 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { trpc } from "@/lib/trpc";
 import { Clock3, ExternalLink, MonitorUp, Pause, Play, Radio, Square, UsersRound } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 export type Cp016ShiftAction = "start" | "pause" | "resume" | "end";
 
@@ -25,6 +28,14 @@ type EmbeddedIntegrationView = {
   displayMode: "embedded" | "fullscreen" | "split";
 };
 
+const NEO_INTEGRATION: EmbeddedIntegrationView = {
+  code: "neo-interact",
+  name: "NEO Interact",
+  url: "https://gscprj.saas.digitro.cloud/neo/",
+  enabled: true,
+  displayMode: "split",
+};
+
 const shiftLabels = {
   not_started: "Jornada não iniciada",
   open: "Jornada em andamento",
@@ -45,6 +56,22 @@ function formatDuration(seconds: number) {
   const hours = Math.floor(safe / 3600);
   const minutes = Math.floor((safe % 3600) / 60);
   return `${hours}h ${String(minutes).padStart(2, "0")}min`;
+}
+
+function deriveShiftStatus(team: { shiftStartedAt: Date | null; shiftPausedAt: Date | null; shiftEndsAt: Date | null }): TeamView["shiftStatus"] {
+  if (!team.shiftStartedAt) return "not_started";
+  if (team.shiftEndsAt) return "closed";
+  if (team.shiftPausedAt) return "paused";
+  return "open";
+}
+
+function derivePresence(team: { status: string; shiftStartedAt: Date | null; shiftPausedAt: Date | null; shiftEndsAt: Date | null }) {
+  const inShift = Boolean(team.shiftStartedAt && !team.shiftEndsAt);
+  if (!inShift) return { presenceStatus: "out_of_shift" as const, availableForDispatch: false };
+  if (team.shiftPausedAt || team.status === "pausada") return { presenceStatus: "paused" as const, availableForDispatch: false };
+  if (team.status === "indisponivel") return { presenceStatus: "offline" as const, availableForDispatch: false };
+  if (team.status === "em_atendimento" || team.status === "em_deslocamento") return { presenceStatus: "busy" as const, availableForDispatch: false };
+  return { presenceStatus: "available" as const, availableForDispatch: true };
 }
 
 export function Cp016OperationsView({
@@ -145,9 +172,51 @@ export function Cp016OperationsView({
 }
 
 export default function Cp016OperationsPage() {
+  const teams = trpc.teams.list.useQuery();
+  const utils = trpc.useUtils();
+  const updateShift = trpc.teams.updateShift.useMutation({ onSuccess: () => void utils.teams.list.invalidate() });
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (selectedTeamId !== null || !teams.data?.length) return;
+    setSelectedTeamId(teams.data[0].team.id);
+  }, [selectedTeamId, teams.data]);
+
+  const selected = useMemo(() => teams.data?.find(item => item.team.id === selectedTeamId)?.team ?? null, [selectedTeamId, teams.data]);
+  const teamView = useMemo<TeamView | null>(() => {
+    if (!selected) return null;
+    const presence = derivePresence(selected);
+    return {
+      code: selected.code,
+      name: selected.name,
+      shiftStatus: deriveShiftStatus(selected),
+      presenceStatus: presence.presenceStatus,
+      availableForDispatch: presence.availableForDispatch,
+      startedAt: selected.shiftStartedAt,
+      pausedAt: selected.shiftPausedAt,
+      totalPauseSeconds: selected.shiftPausedTotalSeconds,
+    };
+  }, [selected]);
+
+  const performShiftAction = (action: Cp016ShiftAction) => {
+    if (!selectedTeamId) return;
+    updateShift.mutate({ teamId: selectedTeamId, action });
+  };
+
   return (
     <DashboardLayout>
-      <Cp016OperationsView team={null} integration={null} onShiftAction={() => undefined} />
+      <div className="mx-auto mb-4 max-w-[1900px]">
+        <div className="flex flex-col gap-2 sm:max-w-md">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Equipe exibida</span>
+          <Select value={selectedTeamId ? String(selectedTeamId) : undefined} onValueChange={value => setSelectedTeamId(Number(value))}>
+            <SelectTrigger><SelectValue placeholder={teams.isLoading ? "Carregando equipes..." : "Selecionar equipe"} /></SelectTrigger>
+            <SelectContent>{(teams.data ?? []).map(({ team }) => <SelectItem key={team.id} value={String(team.id)}>{team.code} · {team.name}</SelectItem>)}</SelectContent>
+          </Select>
+          {teams.error && <p role="alert" className="text-sm text-rose-700">{teams.error.message}</p>}
+          {updateShift.error && <p role="alert" className="text-sm text-rose-700">{updateShift.error.message}</p>}
+        </div>
+      </div>
+      <Cp016OperationsView team={teamView} integration={NEO_INTEGRATION} onShiftAction={performShiftAction} />
     </DashboardLayout>
   );
 }
