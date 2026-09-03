@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { NEO_INTERACT_EMBEDDED_APPLICATION } from "@shared/embeddedApplications";
 import { NeoOperationalWorkspace } from "./NeoOperationalWorkspace";
+
+afterEach(() => cleanup());
 
 const incident = {
   code: "OC-2026-127",
