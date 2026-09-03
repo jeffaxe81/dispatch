@@ -66,7 +66,7 @@ function chromeArgs(width, height) {
   ];
 }
 
-function assertDom(dom, label, expectedLayout) {
+function assertDom(dom, label, expectedLayout, viewportWidth) {
   const required = [
     'data-neo-overflow="ok"',
     'data-neo-iframe="configured"',
@@ -80,6 +80,18 @@ function assertDom(dom, label, expectedLayout) {
   const missing = required.filter(token => !dom.includes(token));
   if (missing.length > 0) {
     throw new Error(`${label}: evidência visual incompleta: ${missing.join(", ")}`);
+  }
+
+  const dialogWidth = Number(dom.match(/data-neo-dialog-width="(\d+)"/)?.[1] ?? 0);
+  const iframeWidth = Number(dom.match(/data-neo-iframe-width="(\d+)"/)?.[1] ?? 0);
+  if (!dialogWidth || dialogWidth > viewportWidth - 4) {
+    throw new Error(`${label}: diálogo excede a viewport (${dialogWidth}px > ${viewportWidth}px).`);
+  }
+  if (!iframeWidth || iframeWidth > dialogWidth) {
+    throw new Error(`${label}: iframe excede o diálogo (${iframeWidth}px > ${dialogWidth}px).`);
+  }
+  if (expectedLayout === "desktop-split" && dialogWidth < 1000) {
+    throw new Error(`${label}: workspace desktop estreito demais (${dialogWidth}px).`);
   }
 }
 
@@ -96,7 +108,7 @@ async function capture(chrome, name, width, height, expectedLayout) {
     "--dump-dom",
     URL,
   ]);
-  assertDom(dom, name, expectedLayout);
+  assertDom(dom, name, expectedLayout, width);
   await writeFile(resolve(outputDir, `${name}.dom.html`), dom, "utf8");
 
   const dialogWidth = dom.match(/data-neo-dialog-width="(\d+)"/)?.[1] ?? null;
