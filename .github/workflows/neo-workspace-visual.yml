@@ -1,0 +1,51 @@
+name: NEO workspace visual homologation
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neo-workspace-visual-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+
+jobs:
+  visual:
+    name: Desktop and mobile NEO workspace evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Obter código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Habilitar Corepack
+        run: corepack enable
+
+      - name: Instalar dependências congeladas
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Gerar evidência visual do workspace NEO
+        run: corepack pnpm test:neo-visual
+
+      - name: Publicar capturas e relatório
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: d006b-neo-workspace-visual
+          path: artifacts/neo-workspace-homologation
+          if-no-files-found: warn
+          retention-days: 14
