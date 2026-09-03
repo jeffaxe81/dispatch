@@ -38,6 +38,20 @@ function cookieName(setCookie: string): string {
   return name || "<unnamed>";
 }
 
+function sanitizeLocation(location?: string): string | null {
+  if (!location) return null;
+
+  try {
+    const isAbsolute = /^[a-z][a-z0-9+.-]*:/i.test(location);
+    const parsed = new URL(location, "https://sanitizer.invalid");
+
+    if (isAbsolute) return `${parsed.origin}${parsed.pathname}`;
+    return parsed.pathname || "/";
+  } catch {
+    return "<unparseable>";
+  }
+}
+
 export function resolveSafeNeoRedirect(
   currentUrl: string,
   location: string,
@@ -67,7 +81,7 @@ export function summarizeNeoProbeResponse(input: {
     url: input.url,
     status: input.status,
     contentType: headers["content-type"] ?? null,
-    location: headers.location ?? null,
+    location: sanitizeLocation(headers.location),
     embedding: classifyEmbeddingHeaders(headers),
     cookies: input.setCookies.map(setCookie => ({
       name: cookieName(setCookie),
