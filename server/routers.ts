@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
-import { EMBEDDED_APPLICATIONS } from "@shared/embeddedApplications";
+import { EMBEDDED_APPLICATIONS, embeddedCommunicationCorrelationSchema } from "@shared/embeddedApplications";
 import { INCIDENT_PRIORITIES, INCIDENT_STATUSES, INCIDENT_TRANSITIONS, OPERATIONAL_ROLES } from "../shared/operations";
 import {
   assertCanEditIncident,
@@ -89,6 +89,7 @@ import {
   listUsersWithAccess,
   listVehicles,
   listUsersForAdministration,
+  recordIncidentCommunicationEvent,
   recordTeamLocation,
   respondToAssignment,
   transitionIncident,
@@ -194,6 +195,25 @@ export const appRouter = router({
       create: operationalProcedure.input(z.object({ question: z.string().trim().min(10).max(280), detail: z.string().trim().max(2000).optional() })).mutation(({ ctx, input }) => createFaqSuggestion({ userId: ctx.user.id, ...input })),
     }),
   }),
+  communications: router({
+    recordIncidentEvent: operationalProcedure
+      .input(embeddedCommunicationCorrelationSchema.extend({
+        incidentId: z.number().int().positive(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await assertPermission(ctx.user, "integrations.view");
+        const incident = requireIncident(await getIncidentById(input.incidentId));
+        await assertCanReadIncident(ctx.user, incident);
+        return recordIncidentCommunicationEvent({
+          incidentId: input.incidentId,
+          actorUserId: ctx.user.id,
+          correlationId: input.correlationId,
+          applicationId: input.applicationId,
+          eventType: input.eventType,
+        });
+      }),
+  }),
+
   integrations: router({
     overview: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "integrations.view");
