@@ -5,6 +5,17 @@ export type CommunicationSessionSummary = {
   durationSeconds: number | null;
 };
 
+export type FilterableCommunicationSessionSummary = CommunicationSessionSummary & {
+  startedAt: Date | null;
+};
+
+export type CommunicationSessionFilters = {
+  startDate?: Date;
+  endDate?: Date;
+  channel?: CommunicationSessionSummary["channel"];
+  status?: CommunicationSessionSummary["status"];
+};
+
 export function summarizeCommunicationSessions(sessions: readonly CommunicationSessionSummary[]) {
   const byChannel: Record<CommunicationSessionSummary["channel"], number> = {
     nao_informado: 0,
@@ -38,4 +49,19 @@ export function summarizeCommunicationSessions(sessions: readonly CommunicationS
     averageDurationSeconds: completedSessions > 0 ? Math.round(totalDurationSeconds / completedSessions) : 0,
     byChannel,
   };
+}
+
+export function summarizeFilteredCommunicationSessions(
+  sessions: readonly FilterableCommunicationSessionSummary[],
+  filters: CommunicationSessionFilters,
+) {
+  const filtered = sessions.filter(session => {
+    if (filters.channel && session.channel !== filters.channel) return false;
+    if (filters.status && session.status !== filters.status) return false;
+    if (filters.startDate && (!session.startedAt || session.startedAt < filters.startDate)) return false;
+    if (filters.endDate && (!session.startedAt || session.startedAt > filters.endDate)) return false;
+    return true;
+  });
+
+  return summarizeCommunicationSessions(filtered);
 }
