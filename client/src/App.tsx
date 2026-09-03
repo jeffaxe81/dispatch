@@ -23,6 +23,7 @@ import ExternalIncidentReviewsPage from "@/pages/ExternalIncidentReviewsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
 import DashboardsReportsPage from "@/pages/DashboardsReportsPage";
 import ManualsHelpPage from "@/pages/ManualsHelpPage";
+import Cp016OperationsPage from "@/pages/Cp016OperationsPage";
 import LoginPage from "@/pages/LoginPage";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { isFieldAgent } from "@/lib/operationalAccess";
@@ -53,6 +54,7 @@ function Router() {
       <Route path={"/kanban"} component={() => <FieldRestrictedRoute component={KanbanPage} />} />
       <Route path={"/agente"} component={AgentPage} />
       <Route path={"/viaturas"} component={VehiclesPage} />
+      <Route path={"/operacao-integrada"} component={() => <FieldRestrictedRoute component={Cp016OperationsPage} />} />
       <Route path={"/integracoes"} component={IntegrationsPage} />
       <Route path={"/integracoes/workflows"} component={WorkflowsPage} />
       <Route path={"/integracoes/workflows/:id"} component={WorkflowBuilderPage} />
