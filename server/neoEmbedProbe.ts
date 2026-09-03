@@ -38,6 +38,23 @@ function cookieName(setCookie: string): string {
   return name || "<unnamed>";
 }
 
+export function resolveSafeNeoRedirect(
+  currentUrl: string,
+  location: string,
+): string | null {
+  try {
+    const current = new URL(currentUrl);
+    const next = new URL(location, current);
+
+    if (current.protocol !== "https:" || next.protocol !== "https:") return null;
+    if (next.origin !== current.origin) return null;
+
+    return next.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function summarizeNeoProbeResponse(input: {
   url: string;
   status: number;
