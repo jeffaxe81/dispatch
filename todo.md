@@ -112,6 +112,7 @@
 
 - [x] Formalizar arquitetura e requisitos do módulo iFrame responsivo.
 - [x] Registrar NEO Interact como primeira aplicação de referência.
+- [x] Registrar URL do iframe `https://gscprj.saas.digitro.cloud/neo/` e origin `https://gscprj.saas.digitro.cloud`.
 - [ ] Criar modelo de configuração de aplicações incorporadas.
 - [ ] Criar RBAC para visualizar e administrar aplicações incorporadas.
 - [ ] Implementar componente `EmbeddedApplicationFrame`.
