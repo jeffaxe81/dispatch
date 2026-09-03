@@ -28,14 +28,6 @@ type EmbeddedIntegrationView = {
   displayMode: "embedded" | "fullscreen" | "split";
 };
 
-const NEO_INTEGRATION: EmbeddedIntegrationView = {
-  code: "neo-interact",
-  name: "NEO Interact",
-  url: "https://gscprj.saas.digitro.cloud/neo/",
-  enabled: true,
-  displayMode: "split",
-};
-
 const shiftLabels = {
   not_started: "Jornada não iniciada",
   open: "Jornada em andamento",
@@ -173,8 +165,9 @@ export function Cp016OperationsView({
 
 export default function Cp016OperationsPage() {
   const teams = trpc.teams.list.useQuery();
+  const embeddedIntegrations = trpc.cp016.embeddedIntegrations.listMine.useQuery();
   const utils = trpc.useUtils();
-  const updateShift = trpc.teams.updateShift.useMutation({ onSuccess: () => void utils.teams.list.invalidate() });
+  const updateShift = trpc.cp016.shift.update.useMutation({ onSuccess: () => void utils.teams.list.invalidate() });
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -198,6 +191,18 @@ export default function Cp016OperationsPage() {
     };
   }, [selected]);
 
+  const neoIntegration = useMemo<EmbeddedIntegrationView | null>(() => {
+    const integration = embeddedIntegrations.data?.find(item => item.code === "neo-interact");
+    if (!integration) return null;
+    return {
+      code: integration.code,
+      name: integration.name,
+      url: integration.url,
+      enabled: integration.enabled,
+      displayMode: integration.displayMode,
+    };
+  }, [embeddedIntegrations.data]);
+
   const performShiftAction = (action: Cp016ShiftAction) => {
     if (!selectedTeamId) return;
     updateShift.mutate({ teamId: selectedTeamId, action });
@@ -213,10 +218,11 @@ export default function Cp016OperationsPage() {
             <SelectContent>{(teams.data ?? []).map(({ team }) => <SelectItem key={team.id} value={String(team.id)}>{team.code} · {team.name}</SelectItem>)}</SelectContent>
           </Select>
           {teams.error && <p role="alert" className="text-sm text-rose-700">{teams.error.message}</p>}
+          {embeddedIntegrations.error && <p role="alert" className="text-sm text-rose-700">{embeddedIntegrations.error.message}</p>}
           {updateShift.error && <p role="alert" className="text-sm text-rose-700">{updateShift.error.message}</p>}
         </div>
       </div>
-      <Cp016OperationsView team={teamView} integration={NEO_INTEGRATION} onShiftAction={performShiftAction} />
+      <Cp016OperationsView team={teamView} integration={neoIntegration} onShiftAction={performShiftAction} />
     </DashboardLayout>
   );
 }
