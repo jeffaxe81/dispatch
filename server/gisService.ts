@@ -24,7 +24,7 @@ export async function rankTeamCandidates(
     throw new Error("Coordenada da ocorrência inválida.");
   }
 
-  const valid = candidates
+  const valid: RankedTeamCandidate[] = candidates
     .filter(candidate => isValidGeoPoint(candidate.position))
     .map(candidate => ({
       ...candidate,
@@ -32,7 +32,7 @@ export async function rankTeamCandidates(
     }))
     .sort((a, b) => a.straightLineDistanceMeters - b.straightLineDistanceMeters);
 
-  const routed = await Promise.all(valid.slice(0, maxRouteCandidates).map(async candidate => {
+  const routed: RankedTeamCandidate[] = await Promise.all(valid.slice(0, maxRouteCandidates).map(async candidate => {
     try {
       const route = await routeProvider.calculateRoute({
         origin: candidate.position,
@@ -48,7 +48,7 @@ export async function rankTeamCandidates(
     }
   }));
 
-  const untouched = valid.slice(maxRouteCandidates);
+  const untouched: RankedTeamCandidate[] = valid.slice(maxRouteCandidates);
   return [...routed, ...untouched].sort((a, b) => {
     const aEta = a.route?.durationSeconds ?? Number.POSITIVE_INFINITY;
     const bEta = b.route?.durationSeconds ?? Number.POSITIVE_INFINITY;
