@@ -110,18 +110,20 @@
 
 ## D-006 — Módulo iFrame Responsivo e Aplicações Incorporadas
 
+- [x] Validar D-006A em CI: Qualidade #14 e GIS visual #9 aprovados no commit `354d6a8396605117a0ca6bc840034fbaa5f7720e`.
+
 - [x] Formalizar arquitetura e requisitos do módulo iFrame responsivo.
 - [x] Registrar NEO Interact como primeira aplicação de referência.
 - [x] Registrar URL do iframe `https://gscprj.saas.digitro.cloud/neo/` e origin `https://gscprj.saas.digitro.cloud`.
-- [ ] Criar modelo de configuração de aplicações incorporadas.
+- [x] Criar modelo tipado de configuração de aplicações incorporadas, com NEO Interact na allowlist inicial.
 - [ ] Criar RBAC para visualizar e administrar aplicações incorporadas.
-- [ ] Implementar componente `EmbeddedApplicationFrame`.
-- [ ] Implementar allowlist de URL/origin e bloqueio de URL arbitrária.
-- [ ] Implementar comunicação bidirecional via `postMessage`.
-- [ ] Validar mensagens com schema tipado e rejeitar payload desconhecido.
-- [ ] Implementar `TOGGLE_IFRAME_SIZE` com limites de viewport/container.
-- [ ] Implementar loading, timeout, erro e fallback.
-- [ ] Implementar permissões configuráveis de câmera, microfone e clipboard.
+- [x] Implementar componente `EmbeddedApplicationFrame`.
+- [x] Implementar allowlist de URL/origin e bloqueio de URL arbitrária.
+- [x] Implementar comunicação bidirecional via `postMessage` (`init` + recepção controlada).
+- [x] Validar mensagens com schema tipado e rejeitar payload desconhecido.
+- [x] Implementar `TOGGLE_IFRAME_SIZE` com limites de viewport/container.
+- [x] Implementar loading, timeout, erro e retry/fallback controlado.
+- [x] Implementar permissões declarativas de câmera, microfone e clipboard na configuração da aplicação.
 - [ ] Verificar CSP `frame-src`, `frame-ancestors` e X-Frame-Options.
 - [ ] Homologar sessão/login/cookies no contexto incorporado.
 - [ ] Validar desktop e mobile sem overflow horizontal.
