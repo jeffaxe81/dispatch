@@ -105,4 +105,4 @@
 - [x] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
 - [x] Desenhar a geometria GeoJSON da rota no mapa Leaflet do fluxo de despacho.
 - [x] Substituir o embed OSM por renderização Leaflet nativa com carregamento lazy e rollback Google preservado.
-- [ ] Validar GIS-1 em desktop/mobile e criar checkpoint de homologação.
+- [x] Validar GIS-1 em desktop/mobile com o componente real `OperationalMap`, evidência Chrome 1440×900 e 390×844, sem overflow horizontal; checkpoint de homologação preparado.
