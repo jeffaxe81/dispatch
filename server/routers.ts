@@ -114,6 +114,7 @@ import {
 import { getInternalOpenapiCatalog } from "./openapi";
 import { OsrmRouteProvider } from "./routingProvider";
 import { rankTeamCandidates } from "./gisService";
+import { getCommunicationAnalytics } from "./communicationAnalytics";
 
 const roleEnum = z.enum(OPERATIONAL_ROLES);
 const statusEnum = z.enum(INCIDENT_STATUSES);
@@ -197,6 +198,19 @@ export const appRouter = router({
     }),
   }),
   communications: router({
+    analytics: operationalProcedure
+      .input(z.object({
+        startDate: z.coerce.date().optional(),
+        endDate: z.coerce.date().optional(),
+        teamId: z.number().int().positive().optional(),
+        channel: z.enum(["nao_informado", "voz", "chat", "whatsapp", "email", "video", "outro"]).optional(),
+        status: z.enum(["iniciada", "disponivel", "falhou", "encerrada"]).optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        await assertPermission(ctx.user, "integrations.view");
+        const teamId = await resolveAuthorizedTeamFilter(ctx.user, input.teamId, "reports.view");
+        return getCommunicationAnalytics({ ...input, teamId });
+      }),
     history: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive() }))
       .query(async ({ ctx, input }) => {
