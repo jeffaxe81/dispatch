@@ -343,3 +343,64 @@ A fundação não conclui a homologação externa do NEO. Permanecem para D-006B
 - homologar comportamento real de `TOGGLE_IFRAME_SIZE`;
 - criar evidência visual desktop/mobile específica do iframe;
 - validar a experiência operacional lado a lado com ocorrência/mapa.
+
+
+## 14. D-006B — Workspace operacional Ocorrência + NEO — 03/09/2026
+
+A evolução D-006B foi implementada sobre o checkpoint D-006A, sem alteração do `main`, deploy ou ambiente produtivo.
+
+### Experiência operacional entregue
+
+No detalhe da ocorrência, usuários que possuem `integrations.view` recebem a ação **Comunicação NEO**.
+
+Ao abrir:
+
+- o AXE Dispatch mantém o contexto operacional da ocorrência;
+- desktop utiliza composição lado a lado;
+- mobile utiliza composição empilhada;
+- são apresentados localmente categoria, prioridade, situação, descrição, endereço, solicitante, equipe e viatura;
+- o NEO Interact ocupa a área de comunicação por meio do `EmbeddedApplicationFrame`;
+- nenhum dado da ocorrência é automaticamente transmitido ao NEO nesta fase;
+- a consulta da aplicação continua protegida por RBAC;
+- o destino continua fixado na allowlist.
+
+### Homologação visual reproduzível
+
+Commit validado: `b34798782ce1f95971d711ee5af1c78abe376f8a`.
+
+Workflows aprovados:
+
+- **Qualidade #30** — instalação congelada, segurança, TypeScript, testes e build;
+- **GIS visual homologation #25** — nenhuma regressão no módulo GIS;
+- **NEO workspace visual homologation #5** — layout desktop/mobile aprovado usando emulação de viewport via Chrome DevTools.
+
+Resultado medido:
+
+| Viewport | Layout | Workspace | iFrame | Overflow horizontal |
+| --- | --- | ---: | ---: | --- |
+| 1440×900 | desktop-split | 1382 px | 834 px | não |
+| 390×844 | mobile-stack | 374 px | 338 px | não |
+
+Artefato da homologação visual:
+
+- nome: `d006b-neo-workspace-visual`;
+- artifact id: `9905623200`;
+- digest: `sha256:4018ef23d8d350ef2b1885596e6e8c737a0d756ed39ce6384462664fa2cda86c`.
+
+A revisão manual das capturas confirmou que a composição do AXE Dispatch permanece íntegra em desktop e mobile.
+
+### Limite ainda não homologado
+
+O evento de carga do elemento `iframe` foi recebido pelo navegador do runner, mas a captura não comprova a renderização funcional da interface NEO dentro do frame. A área externa aparece sem a interface do produto.
+
+Por isso, **não considerar ainda homologados**:
+
+- CSP `frame-ancestors`;
+- `X-Frame-Options`;
+- sessão/login/logout no contexto incorporado;
+- cookies `SameSite` / Secure e políticas de terceiros;
+- câmera e microfone;
+- comportamento real do `TOGGLE_IFRAME_SIZE` emitido pelo NEO;
+- uso operacional autenticado do NEO dentro do AXE Dispatch.
+
+Esses pontos permanecem na D-006B como homologação externa específica do ambiente `https://gscprj.saas.digitro.cloud/neo/`.
