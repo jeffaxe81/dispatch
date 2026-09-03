@@ -21,4 +21,8 @@ describe("CP-016 database schema", () => {
     expect(routeTrackPoints).toBeDefined();
     expect(embeddedIntegrations).toBeDefined();
   });
+
+  it("stores the current pause marker required by the work-session state machine", () => {
+    expect(workSessions.pausedAt).toBeDefined();
+  });
 });
