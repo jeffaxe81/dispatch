@@ -17,6 +17,7 @@ import { formatDateTime, priorityClasses, priorityLabels, statusClasses, statusL
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, MapPin, MonitorSmartphone, Navigation, Send, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { useState } from "react";
+import { nanoid } from "nanoid";
 import { useLocation, useRoute } from "wouter";
 
 const allowedTransitions: Record<string, string[]> = {
@@ -41,6 +42,7 @@ function IncidentDetailContent() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [neoOpen, setNeoOpen] = useState(false);
+  const [neoCorrelationId, setNeoCorrelationId] = useState<string | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleteReason, setDeleteReason] = useState("");
   const [teamId, setTeamId] = useState("");
@@ -85,9 +87,35 @@ function IncidentDetailContent() {
   const transition = trpc.incidents.transition.useMutation({ onSuccess: () => { utils.incidents.get.invalidate({ incidentId }); utils.incidents.timeline.invalidate({ incidentId }); utils.incidents.list.invalidate(); utils.dashboard.summary.invalidate(); setTransitionOpen(false); setNote(""); } });
   const update = trpc.incidents.update.useMutation({ onSuccess: () => { utils.incidents.get.invalidate({ incidentId }); utils.incidents.timeline.invalidate({ incidentId }); utils.incidents.list.invalidate(); setEditOpen(false); } });
   const permanentlyDelete = trpc.incidents.permanentlyDelete.useMutation({ onSuccess: () => { utils.incidents.list.invalidate(); utils.dashboard.summary.invalidate(); setDeleteOpen(false); navigate("/ocorrencias"); } });
+  const recordCommunication = trpc.communications.recordIncidentEvent.useMutation({ onSuccess: () => { utils.incidents.timeline.invalidate({ incidentId }); if (canAudit) utils.incidents.audit.invalidate({ incidentId }); } });
   const canTransition = user?.operationalRole !== "agente" && incident && allowedTransitions[incident.status].length > 0;
   const canEdit = ["operador", "despachador", "supervisor", "administrador"].includes(user?.operationalRole ?? "");
   const canPermanentlyDelete = Boolean(access.data?.isSuperAdministrator);
+  const recordNeoCommunicationEvent = (eventType: "communication_started" | "communication_ready" | "communication_failed" | "communication_ended", correlationId = neoCorrelationId) => {
+    if (!correlationId) return;
+    recordCommunication.mutate({
+      incidentId,
+      correlationId,
+      applicationId: "neo-interact",
+      eventType,
+    });
+  };
+
+  const openNeoWorkspace = () => {
+    const correlationId = nanoid(20);
+    setNeoCorrelationId(correlationId);
+    setNeoOpen(true);
+    recordNeoCommunicationEvent("communication_started", correlationId);
+  };
+
+  const changeNeoWorkspaceOpen = (open: boolean) => {
+    if (!open && neoCorrelationId) {
+      recordNeoCommunicationEvent("communication_ended", neoCorrelationId);
+      setNeoCorrelationId(null);
+    }
+    setNeoOpen(open);
+  };
+
   const openEdit = () => {
     if (!incident) return;
     setEdit({ category: incident.category, priority: incident.priority, requesterName: incident.requesterName ?? "", requesterContact: incident.requesterContact ?? "", description: incident.description, address: incident.address, latitude: incident.latitude, longitude: incident.longitude });
@@ -100,7 +128,7 @@ function IncidentDetailContent() {
   return (
     <div className="mx-auto max-w-[1400px] space-y-5 pb-8">
       <Button variant="ghost" onClick={() => navigate("/ocorrencias")} className="-ml-3 text-slate-600"><ArrowLeft className="mr-2 h-4 w-4" />Voltar às ocorrências</Button>
-      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-start md:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge className={`border-0 ring-1 ${priorityClasses[incident.priority]}`}>{priorityLabels[incident.priority]}</Badge><Badge className={`border-0 ring-1 ${statusClasses[incident.status]}`}>{statusLabels[incident.status]}</Badge></div><h1 className="mt-3 text-2xl font-semibold text-slate-950">{incident.category}</h1><p className="mt-1 text-sm text-slate-500">{incident.code} · Registrada em {formatDateTime(incident.createdAt)}</p></div><div className="flex flex-wrap justify-end gap-2"><RefreshControls compact interval={refresh.interval} onIntervalChange={refresh.setInterval} onRefresh={() => Promise.all([detail.refetch(), timeline.refetch()])} refreshing={detail.isFetching || timeline.isFetching} />{canEdit && <Button variant="outline" onClick={openEdit}>Editar dados</Button>}{canOpenNeo && <Button variant="outline" onClick={() => setNeoOpen(true)}><MonitorSmartphone className="mr-2 h-4 w-4" />Comunicação NEO</Button>}{canDispatch && (incident.status === "triagem" || incident.status === "aguardando_despacho") && <Button onClick={() => setAssignOpen(true)}><Send className="mr-2 h-4 w-4" />Despachar equipe</Button>}{canTransition && <Button variant="outline" onClick={() => setTransitionOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />Atualizar situação</Button>}{canPermanentlyDelete && <Button variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-4 w-4" />Excluir permanentemente</Button>}</div></header>
+      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-start md:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge className={`border-0 ring-1 ${priorityClasses[incident.priority]}`}>{priorityLabels[incident.priority]}</Badge><Badge className={`border-0 ring-1 ${statusClasses[incident.status]}`}>{statusLabels[incident.status]}</Badge></div><h1 className="mt-3 text-2xl font-semibold text-slate-950">{incident.category}</h1><p className="mt-1 text-sm text-slate-500">{incident.code} · Registrada em {formatDateTime(incident.createdAt)}</p></div><div className="flex flex-wrap justify-end gap-2"><RefreshControls compact interval={refresh.interval} onIntervalChange={refresh.setInterval} onRefresh={() => Promise.all([detail.refetch(), timeline.refetch()])} refreshing={detail.isFetching || timeline.isFetching} />{canEdit && <Button variant="outline" onClick={openEdit}>Editar dados</Button>}{canOpenNeo && <Button variant="outline" onClick={openNeoWorkspace}><MonitorSmartphone className="mr-2 h-4 w-4" />Comunicação NEO</Button>}{canDispatch && (incident.status === "triagem" || incident.status === "aguardando_despacho") && <Button onClick={() => setAssignOpen(true)}><Send className="mr-2 h-4 w-4" />Despachar equipe</Button>}{canTransition && <Button variant="outline" onClick={() => setTransitionOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />Atualizar situação</Button>}{canPermanentlyDelete && <Button variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-4 w-4" />Excluir permanentemente</Button>}</div></header>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_390px]">
         <div className="space-y-5"><Card className="border-slate-200 shadow-sm"><CardContent className="grid gap-6 p-6 md:grid-cols-2"><div><p className="text-xs font-semibold uppercase tracking-[.12em] text-slate-400">Local</p><p className="mt-2 flex items-start gap-2 text-sm text-slate-800"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />{incident.address}</p><p className="mt-2 text-xs text-slate-500">{incident.latitude}, {incident.longitude}</p></div><div><p className="text-xs font-semibold uppercase tracking-[.12em] text-slate-400">Solicitante</p><p className="mt-2 flex items-center gap-2 text-sm text-slate-800"><UserRound className="h-4 w-4 text-sky-700" />{incident.requesterName ?? "Não informado"}</p><p className="mt-2 text-xs text-slate-500">{incident.requesterContact ?? "Sem contato cadastrado"}</p></div><div className="md:col-span-2"><p className="text-xs font-semibold uppercase tracking-[.12em] text-slate-400">Descrição inicial</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{incident.description}</p></div></CardContent></Card>
           <Card className="border-slate-200 shadow-sm"><CardContent className="p-0"><div className="border-b border-slate-100 px-6 py-4"><h2 className="font-semibold text-slate-950">Cronologia</h2></div><ol className="divide-y divide-slate-100">{(timeline.data ?? []).map(({ event, actorName, teamCode }) => <li key={event.id} className="flex gap-4 px-6 py-4"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-600" /><div><p className="text-sm text-slate-800">{event.message}</p><p className="mt-1 text-xs text-slate-500">{formatDateTime(event.createdAt)} · {actorName ?? "Sistema"}{teamCode ? ` · ${teamCode}` : ""}</p></div></li>)}{!timeline.isLoading && (timeline.data?.length ?? 0) === 0 && <li className="px-6 py-10 text-center text-sm text-slate-500">Ainda não há eventos para esta ocorrência.</li>}</ol></CardContent></Card>
@@ -111,7 +139,7 @@ function IncidentDetailContent() {
       </div>
       <NeoOperationalWorkspace
         open={neoOpen}
-        onOpenChange={setNeoOpen}
+        onOpenChange={changeNeoWorkspaceOpen}
         application={embeddedApplications.data?.find(application => application.id === "neo-interact") ?? null}
         incident={{
           code: incident.code,
@@ -125,6 +153,10 @@ function IncidentDetailContent() {
         }}
         teamCode={detail.data?.teamCode}
         vehiclePrefix={detail.data?.vehiclePrefix}
+        onCommunicationLifecycle={event => {
+          if (event === "ready") recordNeoCommunicationEvent("communication_ready");
+          else recordNeoCommunicationEvent("communication_failed");
+        }}
       />
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}><DialogContent><DialogHeader><DialogTitle>Despachar equipe</DialogTitle><DialogDescription>O despacho criará um evento, uma atribuição pendente e uma auditoria da operação.</DialogDescription></DialogHeader><div className="grid gap-4 py-2">
         {rankedTeams.isLoading && <div className="rounded-lg border border-sky-100 bg-sky-50 p-3 text-sm text-sky-900">Calculando proximidade e ETA das equipes posicionadas...</div>}
