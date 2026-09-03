@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { EMBEDDED_APPLICATIONS } from "@shared/embeddedApplications";
 import { INCIDENT_PRIORITIES, INCIDENT_STATUSES, INCIDENT_TRANSITIONS, OPERATIONAL_ROLES } from "../shared/operations";
 import {
   assertCanEditIncident,
@@ -197,6 +198,12 @@ export const appRouter = router({
     overview: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "integrations.view");
       return getSimulatedIntegrationsOverview(await getSimulatedIntegrationMetrics());
+    }),
+    embeddedApplications: router({
+      list: operationalProcedure.query(async ({ ctx }) => {
+        await assertPermission(ctx.user, "integrations.view");
+        return EMBEDDED_APPLICATIONS.filter(application => application.enabled);
+      }),
     }),
     events: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "integrations.view");
