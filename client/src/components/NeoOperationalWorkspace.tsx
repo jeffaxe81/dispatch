@@ -33,7 +33,7 @@ export function NeoOperationalWorkspace({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[94vh] w-[96vw] max-w-[1700px] flex-col overflow-hidden p-0">
+      <DialogContent className="flex h-[94vh] w-[96vw] max-w-[1700px] flex-col overflow-hidden p-0 sm:max-w-[1700px]">
         <DialogHeader className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 pr-12">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-800">
