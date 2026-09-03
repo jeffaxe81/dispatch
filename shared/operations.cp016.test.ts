@@ -11,6 +11,7 @@ import {
 describe("CP-016 operational contracts", () => {
   it("declares the supported shift template kinds", () => {
     expect(SHIFT_TEMPLATE_KINDS).toEqual(["fixed", "12x36", "custom"]);
+    // Compile-time assignment also proves the readonly-array union is exported.
     const kind: ShiftTemplateKind = "12x36";
     expect(kind).toBe("12x36");
   });
