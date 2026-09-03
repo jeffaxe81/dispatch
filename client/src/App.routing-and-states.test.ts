@@ -15,6 +15,7 @@ const routes = [
   "/kanban",
   "/agente",
   "/viaturas",
+  "/operacao-integrada",
   "/integracoes",
   "/integracoes/workflows",
   "/integracoes/workflows/:id",
@@ -49,7 +50,7 @@ const primaryPages = [
 ];
 
 describe("roteamento e estados principais preservados", () => {
-  it("mantém as 28 rotas explícitas e o fallback sem becos sem saída", () => {
+  it("mantém as rotas explícitas e o fallback sem becos sem saída", () => {
     const app = read("client/src/App.tsx");
 
     for (const route of routes) expect(app).toContain(`path={"${route}"}`);
