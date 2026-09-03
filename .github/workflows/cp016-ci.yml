@@ -12,12 +12,29 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: cp016-ci-mysql-password
+          MYSQL_DATABASE: dispatch_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pcp016-ci-mysql-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     env:
       NODE_ENV: test
+      DATABASE_URL: mysql://root:cp016-ci-mysql-password@127.0.0.1:3306/dispatch_test
       JWT_SECRET: cp016-ci-jwt-secret-with-at-least-32-characters
       LOCAL_AUTH_BOOTSTRAP_USERNAME: cp016-admin
       LOCAL_AUTH_BOOTSTRAP_PASSWORD: cp016-ci-password-12345
       MYSQL_PASSWORD: cp016-ci-mysql-password
+      VITE_APP_TITLE: AXE Dispatch
+      BUILT_IN_FORGE_API_URL: https://forge.test
+      BUILT_IN_FORGE_API_KEY: cp016-ci-forge-key
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,6 +52,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Apply existing database migrations
+        run: pnpm exec drizzle-kit migrate
 
       - name: TypeScript check
         run: pnpm check
