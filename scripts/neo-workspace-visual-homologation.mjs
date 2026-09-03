@@ -255,7 +255,33 @@ try {
   throw error;
 } finally {
   socket?.close();
-  chrome?.kill("SIGTERM");
-  vite.kill("SIGTERM");
-  await rm(chromeProfile, { recursive: true, force: true });
+
+  if (chrome && chrome.exitCode === null) {
+    chrome.kill("SIGTERM");
+    await new Promise(resolvePromise => {
+      const timeout = setTimeout(resolvePromise, 3000);
+      chrome.once("exit", () => {
+        clearTimeout(timeout);
+        resolvePromise();
+      });
+    });
+  }
+
+  if (vite.exitCode === null) {
+    vite.kill("SIGTERM");
+    await new Promise(resolvePromise => {
+      const timeout = setTimeout(resolvePromise, 2000);
+      vite.once("exit", () => {
+        clearTimeout(timeout);
+        resolvePromise();
+      });
+    });
+  }
+
+  await rm(chromeProfile, {
+    recursive: true,
+    force: true,
+    maxRetries: 8,
+    retryDelay: 250,
+  });
 }
