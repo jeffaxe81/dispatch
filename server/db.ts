@@ -223,6 +223,160 @@ export async function createIncident(input: {
   });
 }
 
+
+export async function recordIncidentCommunicationEvent(input: {
+  incidentId: number;
+  actorUserId: number;
+  correlationId: string;
+  applicationId: string;
+  eventType: "communication_started" | "communication_ready" | "communication_failed" | "communication_ended";
+  channel: "nao_informado" | "voz" | "chat" | "whatsapp" | "email" | "video" | "outro";
+  classification: "sessao_integrada" | "contato_ativo" | "contato_receptivo" | "apoio_operacional" | "outro";
+}) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const incident = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
+    if (!incident) throw new Error("Ocorrência não encontrada.");
+
+    const messages = {
+      communication_started: "Comunicação vinculada à ocorrência foi iniciada.",
+      communication_ready: "Canal de comunicação vinculado à ocorrência ficou disponível.",
+      communication_failed: "Falha técnica registrada na comunicação vinculada à ocorrência.",
+      communication_ended: "Comunicação vinculada à ocorrência foi encerrada.",
+    } as const;
+
+    const metadata = {
+      correlationId: input.correlationId,
+      applicationId: input.applicationId,
+      dataSharing: "none",
+      channel: input.channel,
+      classification: input.classification,
+    };
+
+    const [event] = await tx.insert(incidentEvents).values({
+      incidentId: incident.id,
+      actorUserId: input.actorUserId,
+      eventType: input.eventType,
+      previousStatus: incident.status,
+      nextStatus: incident.status,
+      message: messages[input.eventType],
+      metadata,
+    }).$returningId();
+
+    await tx.insert(auditLogs).values({
+      resourceType: "incident_communication",
+      resourceId: event.id,
+      action: input.eventType,
+      actorUserId: input.actorUserId,
+      beforeData: null,
+      afterData: {
+        incidentId: incident.id,
+        incidentCode: incident.code,
+        correlationId: input.correlationId,
+        applicationId: input.applicationId,
+        dataSharing: "none",
+        channel: input.channel,
+        classification: input.classification,
+      },
+    });
+
+    return {
+      eventId: event.id,
+      correlationId: input.correlationId,
+      eventType: input.eventType,
+    };
+  });
+}
+
+
+export async function listIncidentCommunicationSessions(incidentId: number) {
+  const db = await requireDb();
+  const rows = await db
+    .select()
+    .from(incidentEvents)
+    .where(and(
+      eq(incidentEvents.incidentId, incidentId),
+      inArray(incidentEvents.eventType, [
+        "communication_started",
+        "communication_ready",
+        "communication_failed",
+        "communication_ended",
+      ]),
+    ))
+    .orderBy(incidentEvents.createdAt);
+
+  const sessions = new Map<string, {
+    correlationId: string;
+    applicationId: string;
+    channel: "nao_informado" | "voz" | "chat" | "whatsapp" | "email" | "video" | "outro";
+    classification: "sessao_integrada" | "contato_ativo" | "contato_receptivo" | "apoio_operacional" | "outro";
+    startedAt: Date | null;
+    readyAt: Date | null;
+    endedAt: Date | null;
+    failedAt: Date | null;
+    lastEventAt: Date;
+    status: "iniciada" | "disponivel" | "falhou" | "encerrada";
+  }>();
+
+  for (const row of rows) {
+    const metadata = row.metadata;
+    if (!metadata || typeof metadata !== "object") continue;
+    const correlationId = (metadata as Record<string, unknown>).correlationId;
+    const applicationId = (metadata as Record<string, unknown>).applicationId;
+    const rawChannel = (metadata as Record<string, unknown>).channel;
+    const rawClassification = (metadata as Record<string, unknown>).classification;
+    if (typeof correlationId !== "string" || typeof applicationId !== "string") continue;
+    const channel = ["nao_informado", "voz", "chat", "whatsapp", "email", "video", "outro"].includes(String(rawChannel))
+      ? rawChannel as "nao_informado" | "voz" | "chat" | "whatsapp" | "email" | "video" | "outro"
+      : "nao_informado";
+    const classification = ["sessao_integrada", "contato_ativo", "contato_receptivo", "apoio_operacional", "outro"].includes(String(rawClassification))
+      ? rawClassification as "sessao_integrada" | "contato_ativo" | "contato_receptivo" | "apoio_operacional" | "outro"
+      : "sessao_integrada";
+
+    const current = sessions.get(correlationId) ?? {
+      correlationId,
+      applicationId,
+      channel,
+      classification,
+      startedAt: null,
+      readyAt: null,
+      endedAt: null,
+      failedAt: null,
+      lastEventAt: row.createdAt,
+      status: "iniciada" as const,
+    };
+
+    current.lastEventAt = row.createdAt;
+    current.channel = channel;
+    current.classification = classification;
+    if (row.eventType === "communication_started") {
+      current.startedAt ??= row.createdAt;
+      current.status = "iniciada";
+    } else if (row.eventType === "communication_ready") {
+      current.readyAt ??= row.createdAt;
+      current.status = "disponivel";
+    } else if (row.eventType === "communication_failed") {
+      current.failedAt ??= row.createdAt;
+      current.status = "falhou";
+    } else if (row.eventType === "communication_ended") {
+      current.endedAt ??= row.createdAt;
+      current.status = "encerrada";
+    }
+
+    sessions.set(correlationId, current);
+  }
+
+  return Array.from(sessions.values())
+    .map(session => ({
+      ...session,
+      durationSeconds: session.startedAt && session.endedAt
+        ? Math.max(0, Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 1000))
+        : null,
+      dataSharing: "none" as const,
+    }))
+    .sort((a, b) => b.lastEventAt.getTime() - a.lastEventAt.getTime());
+}
+
 export async function updateIncident(input: {
   incidentId: number;
   actorUserId: number;
