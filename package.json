@@ -23,7 +23,8 @@
     "test:recovery": "vitest run --config vitest.recovery.config.ts",
     "test:all": "vitest run --config vitest.config.ts && vitest run --config vitest.integration.config.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
-    "test:gis-visual": "node scripts/gis-visual-homologation.mjs"
+    "test:gis-visual": "node scripts/gis-visual-homologation.mjs",
+    "test:neo-visual": "node scripts/neo-workspace-visual-homologation.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1117.0",
