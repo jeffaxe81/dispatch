@@ -96,10 +96,11 @@
 - [x] Implementar adapter OSRM desacoplado do domínio.
 - [x] Tratar coordenada inválida, indisponibilidade de rede, timeout e resposta inválida.
 - [x] Adicionar testes unitários do adapter OSRM.
-- [ ] Executar `pnpm check`, Vitest e build em ambiente com dependências disponíveis.
+- [x] Executar testes GIS direcionados (11/11), `pnpm check` e build em CI com dependências instaladas via lockfile congelado.
+- [ ] Reexecutar a suíte Vitest completa em ambiente com banco/segredos/storage de teste configurados; a CI genérica ainda depende dessas variáveis externas.
 - [x] Integrar o provider OSRM a uma procedure autenticada do backend.
 - [x] Exibir distância e ETA da equipe candidata no fluxo de despacho.
 - [x] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
-- [ ] Desenhar a geometria da rota no mapa operacional.
-- [ ] Substituir o embed OSM por renderização Leaflet nativa após inclusão controlada da dependência.
+- [x] Desenhar a geometria GeoJSON da rota no mapa Leaflet do fluxo de despacho.
+- [x] Substituir o embed OSM por renderização Leaflet nativa com carregamento lazy e rollback Google preservado.
 - [ ] Validar GIS-1 em desktop/mobile e criar checkpoint de homologação.
