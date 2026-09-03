@@ -22,6 +22,13 @@
       "when": 1787700292309,
       "tag": "0002_aromatic_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1788476001956,
+      "tag": "0003_panoramic_ma_gnuci",
+      "breakpoints": true
     }
   ]
 }
