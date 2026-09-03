@@ -33,7 +33,7 @@ export function NeoOperationalWorkspace({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[94vh] w-[96vw] max-w-[1700px] flex-col overflow-hidden p-0 sm:max-w-[1700px]">
+      <DialogContent className="flex h-[94vh] min-w-0 flex-col overflow-hidden p-0" style={{ width: "min(96vw, 1700px)", maxWidth: "calc(100vw - 16px)" }}>
         <DialogHeader className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 pr-12">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-800">
@@ -52,8 +52,8 @@ export function NeoOperationalWorkspace({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid min-h-0 flex-1 overflow-y-auto bg-slate-50 lg:grid-cols-[minmax(340px,0.72fr)_minmax(0,1.28fr)] lg:overflow-hidden">
-          <aside className="space-y-4 border-b border-slate-200 p-4 lg:overflow-y-auto lg:border-b-0 lg:border-r">
+        <div className="grid min-h-0 min-w-0 flex-1 overflow-y-auto bg-slate-50 lg:grid-cols-[minmax(340px,0.72fr)_minmax(0,1.28fr)] lg:overflow-hidden">
+          <aside className="min-w-0 space-y-4 border-b border-slate-200 p-4 lg:overflow-y-auto lg:border-b-0 lg:border-r">
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[.14em] text-slate-400">
                 Ocorrência em atendimento
