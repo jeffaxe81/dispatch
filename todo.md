@@ -110,6 +110,8 @@
 
 ## D-006 — Módulo iFrame Responsivo e Aplicações Incorporadas
 
+- [x] Validar workspace D-006B em CI: Qualidade #30, GIS visual #25 e NEO workspace visual #5 aprovados no commit `b34798782ce1f95971d711ee5af1c78abe376f8a`.
+
 - [x] Validar D-006A em CI: Qualidade #14 e GIS visual #9 aprovados no commit `354d6a8396605117a0ca6bc840034fbaa5f7720e`.
 
 - [x] Formalizar arquitetura e requisitos do módulo iFrame responsivo.
@@ -126,7 +128,7 @@
 - [x] Implementar permissões declarativas de câmera, microfone e clipboard na configuração da aplicação.
 - [ ] Verificar CSP `frame-src`, `frame-ancestors` e X-Frame-Options.
 - [ ] Homologar sessão/login/cookies no contexto incorporado.
-- [ ] Validar desktop e mobile sem overflow horizontal.
-- [ ] Criar teste visual automatizado para iframe responsivo.
+- [x] Validar layout D-006B em desktop 1440×900 e mobile real 390×844 sem overflow horizontal.
+- [x] Criar teste visual automatizado com Chrome DevTools para o workspace responsivo e evidências PNG/DOM/relatório.
 - [ ] Homologar NEO Interact em ambiente autorizado.
-- [ ] Planejar painel lateral/dock e janela desacoplada para dois monitores.
+- [x] Implementar primeira composição operacional lado a lado Ocorrência + NEO em desktop e empilhada em mobile; dock/janela desacoplada permanecem evolução posterior.
