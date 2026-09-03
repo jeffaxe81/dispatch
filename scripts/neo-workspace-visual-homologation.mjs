@@ -1,10 +1,9 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const HOST = "127.0.0.1";
 const PORT = 4174;
-const DEBUG_PORT = 9223;
 const URL = `http://${HOST}:${PORT}/`;
 const outputDir = resolve("artifacts/neo-workspace-homologation");
 const chromeProfile = resolve(`.tmp-neo-visual-chrome-${process.pid}`);
@@ -39,6 +38,38 @@ async function waitForHttp(url, label) {
     await new Promise(resolvePromise => setTimeout(resolvePromise, 150));
   }
   throw new Error(`${label} não iniciou: ${String(lastError)}`);
+}
+
+async function waitForDevTools(profilePath, chromeProcess, getChromeOutput) {
+  const activePortFile = resolve(profilePath, "DevToolsActivePort");
+  let lastError;
+
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (chromeProcess.exitCode !== null) {
+      throw new Error(
+        `Chrome encerrou antes do DevTools iniciar (exit=${chromeProcess.exitCode}). ${getChromeOutput()}`,
+      );
+    }
+
+    try {
+      const value = await readFile(activePortFile, "utf8");
+      const [portLine] = value.trim().split(/\r?\n/);
+      const port = Number(portLine);
+      if (Number.isInteger(port) && port > 0) {
+        await waitForHttp(`http://127.0.0.1:${port}/json/version`, "Chrome DevTools");
+        return port;
+      }
+      lastError = new Error(`Porta inválida em DevToolsActivePort: ${portLine}`);
+    } catch (error) {
+      lastError = error;
+    }
+
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 150));
+  }
+
+  throw new Error(
+    `Chrome DevTools não iniciou: ${String(lastError)}. ${getChromeOutput()}`,
+  );
 }
 
 function createCdpClient(socket) {
@@ -197,20 +228,27 @@ try {
   await waitForHttp(URL, "Servidor visual NEO");
 
   const chromeBin = findChrome();
+  let chromeOutput = "";
   chrome = spawn(chromeBin, [
     "--headless=new",
     "--no-sandbox",
     "--disable-dev-shm-usage",
     "--disable-gpu",
-    `--remote-debugging-port=${DEBUG_PORT}`,
+    "--remote-debugging-port=0",
     `--user-data-dir=${chromeProfile}`,
     "about:blank",
   ], { stdio: ["ignore", "pipe", "pipe"] });
+  chrome.stdout.on("data", chunk => { chromeOutput += chunk.toString(); });
+  chrome.stderr.on("data", chunk => { chromeOutput += chunk.toString(); });
 
-  await waitForHttp(`http://127.0.0.1:${DEBUG_PORT}/json/version`, "Chrome DevTools");
+  const debugPort = await waitForDevTools(
+    chromeProfile,
+    chrome,
+    () => chromeOutput.slice(-4000),
+  );
 
   const created = await fetch(
-    `http://127.0.0.1:${DEBUG_PORT}/json/new?${encodeURIComponent(URL)}`,
+    `http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(URL)}`,
     { method: "PUT" },
   );
   if (!created.ok) throw new Error("Não foi possível abrir a página de homologação NEO.");
