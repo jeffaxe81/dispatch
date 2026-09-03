@@ -1,3 +1,4 @@
+import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, CheckCircle2, Clock3, MessageSquareMore, Radio, Timer } from "lucide-react";
 
