@@ -79,6 +79,7 @@ export const workSessions = mysqlTable(
     teamId: int("team_id").references(() => teams.id, { onDelete: "set null" }),
     startedAt: timestamp("started_at").notNull(),
     endedAt: timestamp("ended_at"),
+    pausedAt: timestamp("paused_at"),
     totalPauseSeconds: int("total_pause_seconds").notNull().default(0),
     status: workSessionStatusEnum.notNull().default("open"),
     source: workSessionSourceEnum.notNull().default("manual"),
