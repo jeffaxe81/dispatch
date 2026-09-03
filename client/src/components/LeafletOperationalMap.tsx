@@ -3,6 +3,7 @@ import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "
 import { useEffect } from "react";
 import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
 import type { GeoJsonLineString } from "@shared/gis";
+import { geoJsonLineStringToLeafletPositions } from "./leafletGeometry";
 
 type GeoPoint = { latitude: string | number | null; longitude: string | number | null };
 
@@ -48,19 +49,6 @@ function asLatLng(point: GeoPoint): LatLngExpression | null {
     || longitude > 180
   ) return null;
   return [latitude, longitude];
-}
-
-export function geoJsonLineStringToLeafletPositions(line: GeoJsonLineString): [number, number][] {
-  return line.coordinates
-    .filter(([longitude, latitude]) =>
-      Number.isFinite(longitude)
-      && Number.isFinite(latitude)
-      && latitude >= -90
-      && latitude <= 90
-      && longitude >= -180
-      && longitude <= 180,
-    )
-    .map(([longitude, latitude]) => [latitude, longitude]);
 }
 
 function AutoFit({
