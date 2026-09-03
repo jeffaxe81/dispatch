@@ -143,12 +143,12 @@ function assertMetrics(metrics, label, expectedLayout, viewportWidth) {
   if (!metrics.iframeWidth || metrics.iframeWidth > metrics.dialogWidth) {
     throw new Error(`${label}: iframe excede o diálogo (${metrics.iframeWidth}px > ${metrics.dialogWidth}px).`);
   }
-  if (expectedLayout === "desktop-split" && metrics.dialogWidth < 1000) {
+  if (!expectedLayout.startsWith("mobile-") && metrics.dialogWidth < 1000) {
     throw new Error(`${label}: workspace desktop estreito demais (${metrics.dialogWidth}px).`);
   }
 }
 
-async function capture(client, name, width, height, expectedLayout) {
+async function capture(client, name, width, height, expectedLayout, modeLabel) {
   await client.call("Emulation.setDeviceMetricsOverride", {
     width,
     height,
@@ -286,7 +286,7 @@ try {
   );
 
   console.log(
-    "neo_workspace_visual=layout-approved desktop=desktop-split mobile=mobile-stack viewport=cdp overflow=ok iframe=configured",
+    "neo_workspace_visual=layout-approved modes=split,communication,dock notebook=1366x768 mobile=390x844 viewport=cdp overflow=ok iframe=configured",
   );
 } catch (error) {
   console.error(viteOutput);
