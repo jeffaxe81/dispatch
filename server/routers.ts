@@ -220,6 +220,8 @@ export const appRouter = router({
           correlationId: input.correlationId,
           applicationId: input.applicationId,
           eventType: input.eventType,
+          channel: input.channel,
+          classification: input.classification,
         });
       }),
   }),
