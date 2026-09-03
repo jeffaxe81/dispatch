@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Cp016OperationsView } from "./Cp016OperationsPage";
 
 const team = {
@@ -22,6 +22,8 @@ const integration = {
   enabled: true,
   displayMode: "split" as const,
 };
+
+afterEach(() => cleanup());
 
 describe("Cp016OperationsView", () => {
   it("exibe jornada e presença operacional da equipe", () => {
