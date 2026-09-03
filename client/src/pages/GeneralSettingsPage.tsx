@@ -42,9 +42,9 @@ const resetScopeDetails: Record<ResetScope, { confirmation: string; title: strin
 };
 const mapTypeLabels: Record<MapForm["mapType"], string> = { roadmap: "Mapa padrão", satellite: "Satélite", terrain: "Terreno", hybrid: "Híbrido" };
 const fallbackModeLabels: Record<MapForm["fallbackMode"], { title: string; description: string }> = {
-  automatic: { title: "Automático (recomendado)", description: "Usa Google Maps e muda para OpenStreetMap somente em falha." },
-  openstreetmap: { title: "OpenStreetMap manual", description: "Mantém o mapa de contingência ativo, sem carregar Google Maps." },
-  google_only: { title: "Somente Google Maps", description: "Desativa a contingência online; use apenas para diagnóstico controlado." },
+  automatic: { title: "OpenStreetMap preferencial (recomendado)", description: "Usa OpenStreetMap como provider padrão. Google Maps permanece disponível somente como opção de transição controlada." },
+  openstreetmap: { title: "Somente OpenStreetMap", description: "Mantém o provider open source ativo e não carrega Google Maps." },
+  google_only: { title: "Google Maps (transição)", description: "Mantém o provider legado ativo somente para diagnóstico, comparação ou rollback controlado." },
 };
 const resetImpactLabels: Record<string, string> = {
   occurrences: "Ocorrências",
@@ -156,7 +156,7 @@ function GeneralSettingsContent() {
         <Card className="border-sky-100 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><MapPinned className="h-5 w-5 text-sky-700" />Mapa operacional</CardTitle>
-            <CardDescription>Defina o ponto de abertura, zoom padrão, camadas e a contingência do mapa da central de despacho.</CardDescription>
+            <CardDescription>Defina o ponto de abertura, zoom padrão, camadas e o provider do mapa da central de despacho.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
@@ -170,7 +170,7 @@ function GeneralSettingsContent() {
               <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3"><div><Label htmlFor="map-fit">Ajuste automático</Label><p className="mt-1 text-xs text-slate-500">Reservado para ajuste por dados.</p></div><Switch id="map-fit" checked={form.autoFitEnabled} onCheckedChange={value => setForm(current => ({ ...current, autoFitEnabled: value }))} /></div>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" /><div className="flex-1"><Label htmlFor="map-fallback-mode" className="text-amber-950">Contingência de mapa</Label><p className="mt-1 text-xs leading-5 text-amber-900">Escolha como a central deve usar o Google Maps e o OpenStreetMap. Esta definição é global e auditada.</p><Select value={form.fallbackMode} onValueChange={value => setForm(current => ({ ...current, fallbackMode: value as MapForm["fallbackMode"] }))}><SelectTrigger id="map-fallback-mode" className="mt-3 max-w-md border-amber-300 bg-white"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(fallbackModeLabels).map(([value, entry]) => <SelectItem key={value} value={value}>{entry.title}</SelectItem>)}</SelectContent></Select><p className="mt-2 text-xs font-medium text-amber-950">{fallbackModeLabels[form.fallbackMode].description}</p></div></div>
+              <div className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" /><div className="flex-1"><Label htmlFor="map-fallback-mode" className="text-amber-950">Provider de mapa</Label><p className="mt-1 text-xs leading-5 text-amber-900">Escolha o provider cartográfico da central. OpenStreetMap é o padrão recomendado; Google Maps fica disponível apenas durante a transição. Esta definição é global e auditada.</p><Select value={form.fallbackMode} onValueChange={value => setForm(current => ({ ...current, fallbackMode: value as MapForm["fallbackMode"] }))}><SelectTrigger id="map-fallback-mode" className="mt-3 max-w-md border-amber-300 bg-white"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(fallbackModeLabels).map(([value, entry]) => <SelectItem key={value} value={value}>{entry.title}</SelectItem>)}</SelectContent></Select><p className="mt-2 text-xs font-medium text-amber-950">{fallbackModeLabels[form.fallbackMode].description}</p></div></div>
             </div>
             <div className="rounded-xl bg-sky-50 p-4 text-sm leading-6 text-sky-900">O centro e o zoom definidos serão aplicados na abertura do mapa operacional. O ajuste automático permanece preparado para a próxima evolução de enquadramento por ocorrências e equipes ativas.</div>
           </CardContent>

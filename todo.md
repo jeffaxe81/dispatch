@@ -83,3 +83,24 @@
 - [x] Comparar o HTML e os bundles do domínio publicado com a revisão de autenticação local atual; o domínio respondeu 503 sem assets e sem cache, confirmando implantação inativa.
 - [x] Acionar nova publicação automática da revisão validada para restaurar uma implantação ativa.
 - [x] Preparar a confirmação pública do login local após a nova publicação automática.
+
+
+## GIS-1 — Fundação open source
+
+- [x] Formalizar D-005 — Arquitetura GIS Open Source e Despacho Georreferenciado.
+- [x] Isolar a evolução em branch própria sem alterar a `main`.
+- [x] Tornar OpenStreetMap o provider preferencial no modo automático.
+- [x] Manter Google Maps somente como opção explícita de transição/rollback.
+- [x] Criar contratos GIS portáveis em `shared/gis.ts`.
+- [x] Padronizar geometria de rota como GeoJSON LineString.
+- [x] Implementar adapter OSRM desacoplado do domínio.
+- [x] Tratar coordenada inválida, indisponibilidade de rede, timeout e resposta inválida.
+- [x] Adicionar testes unitários do adapter OSRM.
+- [x] Executar testes GIS direcionados (11/11), `pnpm check` e build em CI com dependências instaladas via lockfile congelado.
+- [ ] Reexecutar a suíte Vitest completa em ambiente com banco/segredos/storage de teste configurados; a CI genérica ainda depende dessas variáveis externas.
+- [x] Integrar o provider OSRM a uma procedure autenticada do backend.
+- [x] Exibir distância e ETA da equipe candidata no fluxo de despacho.
+- [x] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
+- [x] Desenhar a geometria GeoJSON da rota no mapa Leaflet do fluxo de despacho.
+- [x] Substituir o embed OSM por renderização Leaflet nativa com carregamento lazy e rollback Google preservado.
+- [ ] Validar GIS-1 em desktop/mobile e criar checkpoint de homologação.
