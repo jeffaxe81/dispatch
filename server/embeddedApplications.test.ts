@@ -3,6 +3,7 @@ import {
   NEO_INTERACT_EMBEDDED_APPLICATION,
   buildEmbeddedApplicationAllow,
   embeddedApplicationSchema,
+  embeddedCommunicationCorrelationSchema,
   parseEmbeddedFrameMessage,
 } from "../shared/embeddedApplications";
 
@@ -41,6 +42,27 @@ describe("contratos de aplicações incorporadas", () => {
       type: "TOGGLE_IFRAME_SIZE",
       isExpanded: true,
       width: "1200",
+    }).success).toBe(false);
+  });
+
+  it("aplica canal e classificação neutros quando o provedor ainda não informa o canal real", () => {
+    const parsed = embeddedCommunicationCorrelationSchema.parse({
+      correlationId: "corr123456789012",
+      applicationId: "neo-interact",
+      eventType: "communication_started",
+    });
+
+    expect(parsed.channel).toBe("nao_informado");
+    expect(parsed.classification).toBe("sessao_integrada");
+  });
+
+  it("rejeita canal e classificação fora do catálogo controlado", () => {
+    expect(embeddedCommunicationCorrelationSchema.safeParse({
+      correlationId: "corr123456789012",
+      applicationId: "neo-interact",
+      eventType: "communication_started",
+      channel: "telegram",
+      classification: "livre",
     }).success).toBe(false);
   });
 
