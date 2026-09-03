@@ -51,6 +51,22 @@ describe("summarizeNeoProbeResponse", () => {
     expect(JSON.stringify(result)).not.toContain(secret);
   });
 
+  it("remove query e fragmento potencialmente sensíveis do Location registrado", () => {
+    const secret = "authorization-code-that-must-not-leak";
+    const result = summarizeNeoProbeResponse({
+      url: "https://gscprj.saas.digitro.cloud/neo/",
+      status: 302,
+      headers: {
+        location: `/neo/callback?code=${secret}&state=opaque#fragment`,
+      },
+      setCookies: [],
+    });
+
+    expect(result.location).toBe("/neo/callback");
+    expect(JSON.stringify(result)).not.toContain(secret);
+    expect(JSON.stringify(result)).not.toContain("state=opaque");
+  });
+
   it("trata cookie sem nome válido como entrada anônima sem vazar valor", () => {
     const result = summarizeNeoProbeResponse({
       url: "https://gscprj.saas.digitro.cloud/neo/",
