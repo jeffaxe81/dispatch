@@ -455,7 +455,7 @@ export const appRouter = router({
         assertCanReadIncident(ctx.user, incident);
         return listIncidentEvidence(input.incidentId);
       }),
-      upload: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).input(z.object({ incidentId: z.number().int().positive(), fileName: z.string().trim().min(1).max(255), contentType: z.enum(["image/jpeg", "image/png", "image/webp", "application/pdf"]), description: z.string().trim().max(1000).nullable().optional(), dataBase64: z.string().min(4).max(11_200_000) })).mutation(async ({ ctx, input }) => {
+      upload: operationalProcedure.input(z.object({ incidentId: z.number().int().positive(), fileName: z.string().trim().min(1).max(255), contentType: z.enum(["image/jpeg", "image/png", "image/webp", "application/pdf"]), description: z.string().trim().max(1000).nullable().optional(), dataBase64: z.string().min(4).max(11_200_000) })).mutation(async ({ ctx, input }) => {
         if (!ctx.user.teamId) throw new TRPCError({ code: "FORBIDDEN", message: "Agente sem equipe vinculada." });
         await assertPermission(ctx.user, "occurrences.view");
         const incident = requireIncident(await getIncidentById(input.incidentId));
