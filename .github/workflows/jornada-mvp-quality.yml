@@ -43,8 +43,20 @@ jobs:
       - name: Instalar dependências congeladas
         run: pnpm install --frozen-lockfile
 
-      - name: Executar testes da Jornada
-        run: pnpm exec vitest run server/workShift*.test.ts
+      - name: Executar testes de domínio e persistência
+        run: |
+          pnpm exec tsx --test \
+            server/workShiftDomain.test.ts \
+            server/workShiftApplicationService.test.ts \
+            server/workShiftGateway.test.ts \
+            server/workShiftPersistenceAdapter.test.ts \
+            server/workShiftPersistencePlan.test.ts \
+            server/workShiftRuntime.test.ts \
+            server/workShiftSchema.test.ts \
+            server/workShiftService.test.ts
+
+      - name: Executar testes do router
+        run: pnpm exec vitest run server/workShiftRouter.test.ts server/workShiftRouter.errors.test.ts
 
       - name: Validar tipos
         run: pnpm check
