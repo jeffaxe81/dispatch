@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EMBEDDED_APPLICATIONS } from "@shared/embeddedApplications";
 import {
   buildEmbeddedApplicationFrameSrcDirective,
+  createEmbeddedApplicationCspMiddleware,
   mergeEmbeddedApplicationFrameSrcCsp,
 } from "./embeddedAppCsp";
 
@@ -46,5 +47,30 @@ describe("CSP de aplicações incorporadas", () => {
     );
     expect(merged).not.toContain("old.invalid");
     expect(merged).not.toContain("frame-src *");
+  });
+
+  it("aplica frame-src sem apagar uma política CSP já existente", () => {
+    const headers = new Map<string, string | number | readonly string[]>([
+      ["Content-Security-Policy", "default-src 'self'; img-src 'self' data:"],
+    ]);
+    const response = {
+      getHeader: (name: string) => headers.get(name),
+      setHeader: (name: string, value: string | number | readonly string[]) => {
+        headers.set(name, value);
+        return response;
+      },
+    };
+    const next = vi.fn();
+
+    createEmbeddedApplicationCspMiddleware(EMBEDDED_APPLICATIONS)(
+      {} as never,
+      response as never,
+      next,
+    );
+
+    expect(headers.get("Content-Security-Policy")).toBe(
+      "default-src 'self'; img-src 'self' data:; frame-src 'self' https://gscprj.saas.digitro.cloud;",
+    );
+    expect(next).toHaveBeenCalledTimes(1);
   });
 });
