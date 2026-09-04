@@ -50,4 +50,20 @@ describe("RBAC de aplicações incorporadas", () => {
       "embedded_apps.view",
     );
   });
+
+  it("exige permissão de administração para consultar o catálogo completo", async () => {
+    const caller = appRouter.createCaller(context());
+    const embeddedApplications = caller.integrations.embeddedApplications as unknown as {
+      adminList: () => Promise<Array<{ id: string; enabled: boolean }>>;
+    };
+
+    expect(embeddedApplications.adminList).toBeTypeOf("function");
+    const result = await embeddedApplications.adminList();
+
+    expect(result.some(application => application.id === "neo-interact")).toBe(true);
+    expect(mocks.assertPermission).toHaveBeenCalledWith(
+      expect.objectContaining({ operationalRole: "operador" }),
+      "embedded_apps.manage",
+    );
+  });
 });
