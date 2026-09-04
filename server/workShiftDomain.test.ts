@@ -53,3 +53,20 @@ test("resumes a work shift from break", () => {
     endedAt: null,
   });
 });
+
+test("ends an active work shift", () => {
+  const startedAt = new Date("2026-09-04T08:00:00.000Z");
+  const endedAt = new Date("2026-09-04T17:00:00.000Z");
+
+  const result = transitionWorkShift(
+    { state: "em_jornada", startedAt, breakStartedAt: null, endedAt: null },
+    { type: "encerrar", at: endedAt },
+  );
+
+  assert.deepEqual(result, {
+    state: "encerrada",
+    startedAt,
+    breakStartedAt: null,
+    endedAt,
+  });
+});
