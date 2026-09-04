@@ -32,3 +32,24 @@ test("starts a break from an active work shift", () => {
     endedAt: null,
   });
 });
+
+test("resumes a work shift from break", () => {
+  const startedAt = new Date("2026-09-04T08:00:00.000Z");
+
+  const result = transitionWorkShift(
+    {
+      state: "em_intervalo",
+      startedAt,
+      breakStartedAt: new Date("2026-09-04T12:00:00.000Z"),
+      endedAt: null,
+    },
+    { type: "retomar", at: new Date("2026-09-04T13:00:00.000Z") },
+  );
+
+  assert.deepEqual(result, {
+    state: "em_jornada",
+    startedAt,
+    breakStartedAt: null,
+    endedAt: null,
+  });
+});
