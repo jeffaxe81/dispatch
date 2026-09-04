@@ -7,7 +7,7 @@ const root = process.cwd();
 const coveragePath = path.join(root, "docs/TRPC_CONTRACT_COVERAGE.md");
 
 describe("inventário de contratos tRPC", () => {
-  it("regenera a cobertura incluindo os três contratos de jornada", () => {
+  it("regenera a cobertura incluindo os sete contratos adicionados ao inventário", () => {
     const originalCoverage = fs.readFileSync(coveragePath, "utf8");
 
     try {
@@ -22,7 +22,11 @@ describe("inventário de contratos tRPC", () => {
       expect(coverage).toContain("`workShifts.current`");
       expect(coverage).toContain("`workShifts.history`");
       expect(coverage).toContain("`workShifts.control`");
-      expect(coverage).toContain("| Procedimentos inventariados | 100 |");
+      expect(coverage).toContain("`integrations.embeddedApplications.list`");
+      expect(coverage).toContain("`integrations.embeddedApplications.adminList`");
+      expect(coverage).toContain("`gis.route`");
+      expect(coverage).toContain("`gis.rankCandidates`");
+      expect(coverage).toContain("| Procedimentos inventariados | 104 |");
     } finally {
       fs.writeFileSync(coveragePath, originalCoverage);
     }
