@@ -10,6 +10,10 @@ on:
       - "server/rootRouter.ts"
       - "server/_core/index.ts"
       - "client/src/lib/trpc.ts"
+      - "client/src/pages/WorkShiftPage*.tsx"
+      - "client/src/App.tsx"
+      - "client/src/components/DashboardLayout*.ts"
+      - "client/src/components/DashboardLayout*.tsx"
       - ".github/workflows/jornada-mvp-quality.yml"
   workflow_dispatch: {}
 
@@ -58,22 +62,31 @@ jobs:
       - name: Executar testes do router
         run: pnpm exec vitest run server/workShiftRouter.test.ts server/workShiftRouter.errors.test.ts
 
+      - name: Executar testes da interface de Jornada
+        run: pnpm exec vitest run client/src/pages/WorkShiftPage.test.tsx client/src/components/DashboardLayout.test.ts
+
       - name: Validar tipos
         run: pnpm check
 
-      - name: Gerar migração Drizzle para validação
+      - name: Verificar sincronismo da migração Drizzle
+        id: drizzle
         env:
           DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci
         run: |
           pnpm exec drizzle-kit generate
           git status --short drizzle drizzle.config.ts
           git diff -- drizzle drizzle.config.ts > jornada-migration.patch
-          test -s jornada-migration.patch
           git status --porcelain drizzle | awk '{print $2}' > /tmp/jornada-generated-files.txt
-          test -s /tmp/jornada-generated-files.txt
-          tar -cf /tmp/jornada-generated.tar -T /tmp/jornada-generated-files.txt
+          if test -s /tmp/jornada-generated-files.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            tar -cf /tmp/jornada-generated.tar -T /tmp/jornada-generated-files.txt
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Schema Drizzle sincronizado; nenhuma nova migração necessária."
+          fi
 
       - name: Publicar migração gerada
+        if: steps.drizzle.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: jornada-mvp-drizzle-generated
@@ -84,7 +97,7 @@ jobs:
           retention-days: 7
 
       - name: Versionar artefatos oficiais do Drizzle no branch do PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: steps.drizzle.outputs.changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
