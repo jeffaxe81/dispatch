@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: jornada-visual-${{ github.workflow }}-${{ github.ref }}
+  group: jornada-visual-${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
