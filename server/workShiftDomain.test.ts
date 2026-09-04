@@ -26,8 +26,16 @@ describe("work shift domain", () => {
     });
   });
 
-  it("acumula pausas em resume e calcula tempo líquido ao encerrar", () => {
+  it("pausa, acumula pausas em resume e calcula tempo líquido ao encerrar", () => {
     const pauseAt = new Date("2026-09-04T10:00:00.000Z");
+    const paused = resolveWorkShiftTransition(active, "pause", pauseAt);
+    expect(paused).toMatchObject({
+      mode: "update",
+      eventType: "paused",
+      sessionPatch: { status: "paused", pausedAt: pauseAt },
+      legacyPatch: { shiftPausedAt: pauseAt },
+    });
+
     const resumeAt = new Date("2026-09-04T10:15:30.000Z");
     const resumed = resolveWorkShiftTransition({ ...active, status: "paused", pausedAt: pauseAt }, "resume", resumeAt);
     expect(resumed.sessionPatch).toEqual({ status: "active", pausedAt: null, pausedSeconds: 930 });
