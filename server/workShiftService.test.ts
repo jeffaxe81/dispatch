@@ -4,6 +4,7 @@ import {
   executeOwnWorkShiftAction,
   type WorkShiftCreateSession,
   type WorkShiftEventSnapshot,
+  type WorkShiftPlanningResolver,
   type WorkShiftStore,
 } from "./workShiftService";
 
@@ -55,6 +56,12 @@ describe("executeOwnWorkShiftAction", () => {
       status: "active",
       pausedSeconds: 0,
       workedSeconds: 0,
+      scheduleAssignmentId: null,
+      scheduledStartAt: null,
+      scheduledEndAt: null,
+      lateStartSeconds: 0,
+      earlyEndSeconds: 0,
+      overtimeSeconds: 0,
     });
     expect(appendEvent).toHaveBeenCalledTimes(1);
     expect(appendEvent.mock.calls[0]?.[0]).toMatchObject({
@@ -72,6 +79,40 @@ describe("executeOwnWorkShiftAction", () => {
       shiftPausedAt: null,
       shiftPausedTotalSeconds: 0,
     });
+  });
+
+  it("materializa o planejamento resolvido no start e calcula atraso", async () => {
+    const scheduledStartAt = new Date("2026-09-04T08:00:00.000Z");
+    const scheduledEndAt = new Date("2026-09-04T20:00:00.000Z");
+    const now = new Date("2026-09-04T08:10:00.000Z");
+    const { store, createSession } = makeStore(null);
+    const planningResolver: WorkShiftPlanningResolver = {
+      resolveForUser: vi.fn(async () => ({
+        assignmentId: 55,
+        scheduleId: 10,
+        plannedStartAt: scheduledStartAt,
+        plannedEndAt: scheduledEndAt,
+        inPlannedWindow: true,
+        source: "schedule" as const,
+      })),
+    };
+
+    await executeOwnWorkShiftAction(store, {
+      userId: 7,
+      teamId: 3,
+      action: "start",
+      now,
+    }, planningResolver);
+
+    expect(planningResolver.resolveForUser).toHaveBeenCalledWith(7, now);
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      scheduleAssignmentId: 55,
+      scheduledStartAt,
+      scheduledEndAt,
+      lateStartSeconds: 600,
+      earlyEndSeconds: 0,
+      overtimeSeconds: 0,
+    }));
   });
 
   it("não espelha equipe quando o usuário não possui teamId", async () => {
@@ -162,6 +203,8 @@ describe("executeOwnWorkShiftAction", () => {
       endedAt: endAt,
       pausedSeconds: 930,
       workedSeconds: 13470,
+      earlyEndSeconds: 0,
+      overtimeSeconds: 0,
     });
     expect(appendEvent).toHaveBeenCalledTimes(1);
     expect(appendEvent.mock.calls[0]?.[0].eventType).toBe("ended");
@@ -170,5 +213,61 @@ describe("executeOwnWorkShiftAction", () => {
       shiftPausedAt: null,
       shiftPausedTotalSeconds: 930,
     });
+  });
+
+  it("calcula saída antecipada a partir do snapshot planejado salvo", async () => {
+    const active = {
+      id: 10,
+      startedAt: new Date("2026-09-04T08:00:00.000Z"),
+      pausedAt: null,
+      endedAt: null,
+      status: "active" as const,
+      pausedSeconds: 0,
+      scheduleAssignmentId: 55,
+      scheduledStartAt: new Date("2026-09-04T08:00:00.000Z"),
+      scheduledEndAt: new Date("2026-09-04T20:00:00.000Z"),
+    } as OpenWorkShiftSnapshot;
+    const { store, updateSession } = makeStore(active);
+    const endAt = new Date("2026-09-04T19:45:00.000Z");
+
+    await executeOwnWorkShiftAction(store, {
+      userId: 7,
+      teamId: 3,
+      action: "end",
+      now: endAt,
+    });
+
+    expect(updateSession).toHaveBeenCalledWith(10, expect.objectContaining({
+      earlyEndSeconds: 900,
+      overtimeSeconds: 0,
+    }));
+  });
+
+  it("calcula hora extra pelo trabalho realizado além da duração planejada", async () => {
+    const active = {
+      id: 10,
+      startedAt: new Date("2026-09-04T08:00:00.000Z"),
+      pausedAt: null,
+      endedAt: null,
+      status: "active" as const,
+      pausedSeconds: 0,
+      scheduleAssignmentId: 55,
+      scheduledStartAt: new Date("2026-09-04T08:00:00.000Z"),
+      scheduledEndAt: new Date("2026-09-04T20:00:00.000Z"),
+    } as OpenWorkShiftSnapshot;
+    const { store, updateSession } = makeStore(active);
+    const endAt = new Date("2026-09-04T20:30:00.000Z");
+
+    await executeOwnWorkShiftAction(store, {
+      userId: 7,
+      teamId: 3,
+      action: "end",
+      now: endAt,
+    });
+
+    expect(updateSession).toHaveBeenCalledWith(10, expect.objectContaining({
+      earlyEndSeconds: 0,
+      overtimeSeconds: 1800,
+    }));
   });
 });
