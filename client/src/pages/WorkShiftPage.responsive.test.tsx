@@ -17,9 +17,10 @@ vi.mock("@/components/DashboardLayout", () => ({ default: ({ children }: { child
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ workShift: { current: { invalidate: vi.fn() } } }),
+    useUtils: () => ({ workShift: { current: { invalidate: vi.fn() }, history: { invalidate: vi.fn() } } }),
     workShift: {
       current: { useQuery: () => ({ data: mocks.current, isLoading: false, error: null }) },
+      history: { useQuery: () => ({ data: [], isLoading: false, error: null }) },
       start: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false, error: null }) },
       break: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false, error: null }) },
       resume: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false, error: null }) },
