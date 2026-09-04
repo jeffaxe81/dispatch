@@ -50,6 +50,28 @@ function elapsedSeconds(from: Date, to: Date) {
   return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 1000));
 }
 
+async function resolvePlanningForStart(
+  planningResolver: WorkShiftPlanningResolver | undefined,
+  userId: number,
+  now: Date,
+) {
+  if (planningResolver) return planningResolver.resolveForUser(userId, now);
+  const { resolveRuntimeWorkShiftPlan } = await import("./workShiftPlanningRuntime");
+  return resolveRuntimeWorkShiftPlan(userId, now);
+}
+
+async function hydratePlanningSnapshot(current: OpenWorkShiftSnapshot) {
+  const adapterAlreadySelectedSnapshot =
+    current.scheduleAssignmentId !== undefined ||
+    current.scheduledStartAt !== undefined ||
+    current.scheduledEndAt !== undefined;
+  if (adapterAlreadySelectedSnapshot) return current;
+
+  const { loadRuntimeWorkShiftPlanningSnapshot } = await import("./workShiftPlanningRuntime");
+  const persisted = await loadRuntimeWorkShiftPlanningSnapshot(current.id);
+  return persisted ? { ...current, ...persisted } : current;
+}
+
 function resolveStartPlanningSnapshot(plan: ResolvedUserWorkShiftPlan | null, now: Date) {
   const scheduledStartAt = plan?.plannedStartAt ?? null;
   const scheduledEndAt = plan?.plannedEndAt ?? null;
@@ -165,7 +187,7 @@ export async function executeOwnWorkShiftAction(
   const transition = resolveWorkShiftTransition(current, input.action, now);
 
   if (transition.mode === "create") {
-    const plan = planningResolver ? await planningResolver.resolveForUser(input.userId, now) : null;
+    const plan = await resolvePlanningForStart(planningResolver, input.userId, now);
     const createInput: WorkShiftCreateSession = {
       userId: input.userId,
       teamId: input.teamId,
@@ -193,20 +215,24 @@ export async function executeOwnWorkShiftAction(
 
   if (!current) throw new Error("Sessão de jornada ausente durante atualização.");
 
-  const sessionPatch = enrichEndPatch(current, transition.sessionPatch, now);
-  await store.updateSession(current.id, sessionPatch);
+  const effectiveCurrent =
+    transition.sessionPatch.status === "ended"
+      ? await hydratePlanningSnapshot(current)
+      : current;
+  const sessionPatch = enrichEndPatch(effectiveCurrent, transition.sessionPatch, now);
+  await store.updateSession(effectiveCurrent.id, sessionPatch);
   await store.appendEvent({
-    sessionId: current.id,
+    sessionId: effectiveCurrent.id,
     eventType: transition.eventType,
     actorUserId: input.userId,
     occurredAt: now,
-    beforeData: snapshotOpenSession(current),
-    afterData: snapshotUpdatedSession(current, sessionPatch),
+    beforeData: snapshotOpenSession(effectiveCurrent),
+    afterData: snapshotUpdatedSession(effectiveCurrent, sessionPatch),
   });
 
   if (input.teamId !== null) {
     await store.mirrorTeam(input.teamId, transition.legacyPatch);
   }
 
-  return { sessionId: current.id, eventType: transition.eventType };
+  return { sessionId: effectiveCurrent.id, eventType: transition.eventType };
 }
