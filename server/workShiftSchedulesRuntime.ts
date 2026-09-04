@@ -2,6 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { workShiftSchedules } from "../drizzle/workShiftSchema";
 import { getEffectiveAccess } from "./accessControl";
 import { getDb } from "./db";
+import { loadWorkShiftCoverageData } from "./workShiftCoverageDb";
+import { listWorkShiftCoverage } from "./workShiftCoverageService";
 import { createWorkShiftScheduleDbStore } from "./workShiftScheduleDbStore";
 import { createWorkShiftScheduleService, type WorkShiftScheduleActor } from "./workShiftScheduleService";
 import type { WorkShiftSchedulesRouterDependencies } from "./workShiftSchedulesRouter";
@@ -121,7 +123,45 @@ export const workShiftSchedulesRouterDependencies: WorkShiftSchedulesRouterDepen
     return resolved;
   },
 
-  async coverage() {
-    throw new Error("Cobertura planejada versus realizada será implementada na Task 6 da D-007B.");
+  async coverage(input, actor) {
+    if (input.from >= input.until) throw new Error("from deve ser anterior a until.");
+    if (!isWildcard(actor) && (!actor.organizationId || actor.organizationId < 1 || actor.organizationalUnitId === -1)) {
+      throw new Error("Escopo organizacional ambíguo para consulta de cobertura.");
+    }
+
+    const requestedOrganizationId = input.organizationId ?? actor.organizationId ?? undefined;
+    const requestedUnitId = input.organizationalUnitId ?? (
+      actor.organizationalUnitId !== null && actor.organizationalUnitId > 0
+        ? actor.organizationalUnitId
+        : undefined
+    );
+
+    if (!isWildcard(actor)) {
+      if (!requestedOrganizationId) throw new Error("Escopo organizacional obrigatório para consulta de cobertura.");
+      assertActorScope(actor, requestedOrganizationId, requestedUnitId ?? null);
+    } else if (requestedOrganizationId && requestedUnitId !== undefined) {
+      assertActorScope(actor, requestedOrganizationId, requestedUnitId);
+    }
+
+    const db = await requireScheduleDb();
+    const data = await loadWorkShiftCoverageData(db, {
+      from: input.from,
+      until: input.until,
+      ...(requestedOrganizationId === undefined ? {} : { organizationId: requestedOrganizationId }),
+      ...(requestedUnitId === undefined ? {} : { organizationalUnitId: requestedUnitId }),
+      ...(input.teamId === undefined ? {} : { teamId: input.teamId }),
+    });
+
+    for (const assignment of data.assignments) {
+      assertActorScope(actor, assignment.schedule.organizationId, assignment.schedule.organizationalUnitId);
+    }
+
+    return listWorkShiftCoverage({
+      from: input.from,
+      until: input.until,
+      assignments: data.assignments,
+      exceptions: data.exceptions,
+      sessions: data.sessions,
+    });
   },
 };
