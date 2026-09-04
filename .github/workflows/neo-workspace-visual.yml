@@ -69,6 +69,10 @@ jobs:
         if: env.NEO_AUTH_USERNAME != '' && env.NEO_AUTH_PASSWORD != ''
         run: node scripts/neo-auth-cookie-policy-smoke.mjs
 
+      - name: Diagnosticar armazenamento da sessão NEO
+        if: env.NEO_AUTH_USERNAME != '' && env.NEO_AUTH_PASSWORD != ''
+        run: node scripts/neo-auth-storage-policy-smoke.mjs
+
       - name: Validar sessão autenticada dentro do iframe NEO
         if: env.NEO_AUTH_USERNAME != '' && env.NEO_AUTH_PASSWORD != ''
         run: node scripts/neo-authenticated-iframe-smoke.mjs
