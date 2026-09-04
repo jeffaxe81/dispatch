@@ -21,6 +21,9 @@ jobs:
     name: Desktop and mobile NEO workspace evidence
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      NEO_AUTH_USERNAME: ${{ secrets.NEO_AUTH_USERNAME }}
+      NEO_AUTH_PASSWORD: ${{ secrets.NEO_AUTH_PASSWORD }}
 
     steps:
       - name: Obter código
@@ -38,6 +41,15 @@ jobs:
       - name: Instalar dependências congeladas
         run: corepack pnpm install --frozen-lockfile
 
+      - name: Informar modo de homologação
+        shell: bash
+        run: |
+          if [[ -n "${NEO_AUTH_USERNAME}" && -n "${NEO_AUTH_PASSWORD}" ]]; then
+            echo "neo_auth_mode=authenticated"
+          else
+            echo "neo_auth_mode=anonymous"
+          fi
+
       - name: Gerar evidência visual do workspace NEO
         run: corepack pnpm test:neo-visual
 
@@ -45,7 +57,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: d006b-neo-workspace-visual
+          name: d006c-neo-workspace-visual
           path: artifacts/neo-workspace-homologation
           if-no-files-found: warn
           retention-days: 14
