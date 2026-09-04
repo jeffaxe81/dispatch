@@ -111,14 +111,15 @@
 ## D-006 — Módulo iFrame Responsivo e Aplicações Incorporadas
 
 - [x] Validar workspace D-006B em CI: Qualidade #30, GIS visual #25 e NEO workspace visual #5 aprovados no commit `b34798782ce1f95971d711ee5af1c78abe376f8a`.
-
 - [x] Validar D-006A em CI: Qualidade #14 e GIS visual #9 aprovados no commit `354d6a8396605117a0ca6bc840034fbaa5f7720e`.
+- [x] Validar D-006D RBAC no commit `8854eba41d4c35080464093c6eddb73ea023d229`: Qualidade #115, GIS visual #110, NEO external #47 e NEO visual #90 aprovados; checkpoint `checkpoint/d006d-embedded-app-rbac-20260904`.
+- [x] Validar D-006E CSP no commit `7b71fcd24fcb290c9e5bfa42165df2bd3f2e7d4f`: Qualidade #121, GIS visual #116, NEO external #53 e NEO visual #96 aprovados.
 
 - [x] Formalizar arquitetura e requisitos do módulo iFrame responsivo.
 - [x] Registrar NEO Interact como primeira aplicação de referência.
 - [x] Registrar URL do iframe `https://gscprj.saas.digitro.cloud/neo/` e origin `https://gscprj.saas.digitro.cloud`.
 - [x] Criar modelo tipado de configuração de aplicações incorporadas, com NEO Interact na allowlist inicial.
-- [ ] Criar RBAC para visualizar e administrar aplicações incorporadas.
+- [x] Criar RBAC específico: `embedded_apps.view` para visualizar/abrir e `embedded_apps.manage` para administração, preservando wildcard administrativo legado.
 - [x] Implementar componente `EmbeddedApplicationFrame`.
 - [x] Implementar allowlist de URL/origin e bloqueio de URL arbitrária.
 - [x] Implementar comunicação bidirecional via `postMessage` (`init` + recepção controlada).
@@ -126,7 +127,7 @@
 - [x] Implementar `TOGGLE_IFRAME_SIZE` com limites de viewport/container.
 - [x] Implementar loading, timeout, erro e retry/fallback controlado.
 - [x] Implementar permissões declarativas de câmera, microfone e clipboard na configuração da aplicação.
-- [ ] Verificar CSP `frame-src`, `frame-ancestors` e X-Frame-Options.
+- [x] Verificar CSP `frame-src`, `frame-ancestors` e X-Frame-Options: o AXE Dispatch restringe `frame-src` a `'self'` + `https://gscprj.saas.digitro.cloud`; no HTTP externo observado do NEO não houve `frame-ancestors` nem X-Frame-Options, portanto a classificação externa permanece `undetermined` e não constitui autorização comprovada de embedding autenticado.
 - [ ] Homologar sessão/login/cookies no contexto incorporado.
 - [x] Validar layout D-006B em desktop 1440×900 e mobile real 390×844 sem overflow horizontal.
 - [x] Criar teste visual automatizado com Chrome DevTools para o workspace responsivo e evidências PNG/DOM/relatório.
