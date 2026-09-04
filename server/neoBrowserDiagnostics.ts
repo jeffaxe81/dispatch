@@ -15,6 +15,25 @@ type NeoNetworkFailureInput = {
   canceled?: boolean;
 };
 
+type CdpRequestWillBeSent = {
+  requestId: string;
+  type?: string;
+  request: { url: string };
+};
+
+type CdpResponseReceived = {
+  requestId: string;
+  type?: string;
+  response: NeoDocumentResponseInput;
+};
+
+type CdpLoadingFailed = {
+  requestId: string;
+  errorText?: string;
+  blockedReason?: string;
+  canceled?: boolean;
+};
+
 const ALLOWED_NETWORK_ERRORS = new Set([
   "net::ERR_ABORTED",
   "net::ERR_BLOCKED_BY_CLIENT",
@@ -42,6 +61,11 @@ function getHeader(headers: HeaderMap, name: string): string | undefined {
     if (key.toLowerCase() === target) return value;
   }
   return undefined;
+}
+
+function pushBounded<T>(target: T[], value: T, maxEntries: number) {
+  target.push(value);
+  while (target.length > maxEntries) target.shift();
 }
 
 export function sanitizeBrowserDiagnosticUrl(value: string): string {
@@ -114,5 +138,58 @@ export function summarizeNeoNetworkFailure(
     ...(input.blockedReason ? { blockedReason: input.blockedReason } : {}),
     ...(input.resourceType ? { resourceType: input.resourceType } : {}),
     canceled: Boolean(input.canceled),
+  };
+}
+
+export function createNeoCdpDiagnosticCollector(
+  neoOrigin: string,
+  options: { maxEntries?: number } = {},
+) {
+  const maxEntries = Math.max(1, options.maxEntries ?? 50);
+  const requests = new Map<string, { url: string; resourceType?: string }>();
+  const documents: NonNullable<ReturnType<typeof summarizeNeoDocumentResponse>>[] = [];
+  const failures: NonNullable<ReturnType<typeof summarizeNeoNetworkFailure>>[] = [];
+  let neoDocumentObserved = false;
+
+  return {
+    onRequestWillBeSent(event: CdpRequestWillBeSent) {
+      requests.set(event.requestId, {
+        url: event.request.url,
+        resourceType: event.type,
+      });
+    },
+
+    onResponseReceived(event: CdpResponseReceived) {
+      if (event.type !== "Document") return;
+      const summary = summarizeNeoDocumentResponse(event.response, neoOrigin);
+      if (!summary) return;
+      neoDocumentObserved = true;
+      pushBounded(documents, summary, maxEntries);
+    },
+
+    onLoadingFailed(event: CdpLoadingFailed) {
+      const request = requests.get(event.requestId);
+      if (!request) return;
+      requests.delete(event.requestId);
+      const summary = summarizeNeoNetworkFailure(
+        {
+          url: request.url,
+          errorText: event.errorText,
+          blockedReason: event.blockedReason,
+          resourceType: request.resourceType,
+          canceled: event.canceled,
+        },
+        neoOrigin,
+      );
+      if (summary) pushBounded(failures, summary, maxEntries);
+    },
+
+    snapshot() {
+      return {
+        neoDocumentObserved,
+        documents: [...documents],
+        failures: [...failures],
+      };
+    },
   };
 }
