@@ -48,6 +48,10 @@ jobs:
         continue-on-error: true
         run: node scripts/neo-auth-preflight.mjs
 
+      - name: Pré-diagnóstico de navegação Chrome NEO
+        continue-on-error: true
+        run: node scripts/neo-chrome-navigation-preflight.mjs
+
       - name: Informar modo de homologação
         shell: bash
         run: |
