@@ -14,9 +14,12 @@ test("maps work shift writes to one database transaction", async () => {
             where: async () => calls.push({ operation: "session:update", value }),
           }),
         }),
-        insert: (table: { [key: symbol]: unknown }) => ({
-          values: async (value: unknown) => {
+        insert: () => ({
+          values: (value: unknown) => {
             calls.push({ operation: "insert", value });
+            return {
+              $returningId: async () => [{ id: 99 }],
+            };
           },
         }),
       };
@@ -28,6 +31,9 @@ test("maps work shift writes to one database transaction", async () => {
 
   const persistence = createWorkShiftPersistenceAdapter(db as never, 42);
   await persistence.transaction(async tx => {
+    const createdId = await tx.createSession({ userId: 7 });
+    assert.equal(createdId, 99);
+
     await tx.updateSession({
       state: "em_jornada",
       startedAt: new Date("2026-09-04T08:00:00.000Z"),
@@ -55,7 +61,8 @@ test("maps work shift writes to one database transaction", async () => {
   });
 
   assert.equal(calls[0]?.operation, "transaction:start");
-  assert.equal(calls[1]?.operation, "session:update");
-  assert.equal(calls.filter(call => call.operation === "insert").length, 2);
+  assert.equal(calls[1]?.operation, "insert");
+  assert.equal(calls[2]?.operation, "session:update");
+  assert.equal(calls.filter(call => call.operation === "insert").length, 3);
   assert.equal(calls.at(-1)?.operation, "transaction:commit");
 });
