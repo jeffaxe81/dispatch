@@ -83,3 +83,52 @@
 - [x] Comparar o HTML e os bundles do domínio publicado com a revisão de autenticação local atual; o domínio respondeu 503 sem assets e sem cache, confirmando implantação inativa.
 - [x] Acionar nova publicação automática da revisão validada para restaurar uma implantação ativa.
 - [x] Preparar a confirmação pública do login local após a nova publicação automática.
+
+
+## GIS-1 — Fundação open source
+
+- [x] Reconciliar a GIS-1 com o checkpoint D-005A 1.15.5 em `checkpoint/d005a-gis1-reconciled-20260903`, preservando recuperação, segurança e testes anteriores.
+
+- [x] Formalizar D-005 — Arquitetura GIS Open Source e Despacho Georreferenciado.
+- [x] Isolar a evolução em branch própria sem alterar a `main`.
+- [x] Tornar OpenStreetMap o provider preferencial no modo automático.
+- [x] Manter Google Maps somente como opção explícita de transição/rollback.
+- [x] Criar contratos GIS portáveis em `shared/gis.ts`.
+- [x] Padronizar geometria de rota como GeoJSON LineString.
+- [x] Implementar adapter OSRM desacoplado do domínio.
+- [x] Tratar coordenada inválida, indisponibilidade de rede, timeout e resposta inválida.
+- [x] Adicionar testes unitários do adapter OSRM.
+- [x] Executar testes GIS direcionados (11/11), `pnpm check` e build em CI com dependências instaladas via lockfile congelado.
+- [x] Reexecutar a suíte local Vitest completa sobre a base D-005A reconciliada; integração e recovery com infraestrutura real permanecem suítes separadas e não foram simuladas.
+- [x] Integrar o provider OSRM a uma procedure autenticada do backend.
+- [x] Exibir distância e ETA da equipe candidata no fluxo de despacho.
+- [x] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
+- [x] Desenhar a geometria GeoJSON da rota no mapa Leaflet do fluxo de despacho.
+- [x] Substituir o embed OSM por renderização Leaflet nativa com carregamento lazy e rollback Google preservado.
+- [x] Validar GIS-1 em desktop/mobile com o componente real `OperationalMap`, evidência Chrome 1440×900 e 390×844, sem overflow horizontal; checkpoint de homologação preparado.
+
+
+## D-006 — Módulo iFrame Responsivo e Aplicações Incorporadas
+
+- [x] Validar workspace D-006B em CI: Qualidade #30, GIS visual #25 e NEO workspace visual #5 aprovados no commit `b34798782ce1f95971d711ee5af1c78abe376f8a`.
+
+- [x] Validar D-006A em CI: Qualidade #14 e GIS visual #9 aprovados no commit `354d6a8396605117a0ca6bc840034fbaa5f7720e`.
+
+- [x] Formalizar arquitetura e requisitos do módulo iFrame responsivo.
+- [x] Registrar NEO Interact como primeira aplicação de referência.
+- [x] Registrar URL do iframe `https://gscprj.saas.digitro.cloud/neo/` e origin `https://gscprj.saas.digitro.cloud`.
+- [x] Criar modelo tipado de configuração de aplicações incorporadas, com NEO Interact na allowlist inicial.
+- [ ] Criar RBAC para visualizar e administrar aplicações incorporadas.
+- [x] Implementar componente `EmbeddedApplicationFrame`.
+- [x] Implementar allowlist de URL/origin e bloqueio de URL arbitrária.
+- [x] Implementar comunicação bidirecional via `postMessage` (`init` + recepção controlada).
+- [x] Validar mensagens com schema tipado e rejeitar payload desconhecido.
+- [x] Implementar `TOGGLE_IFRAME_SIZE` com limites de viewport/container.
+- [x] Implementar loading, timeout, erro e retry/fallback controlado.
+- [x] Implementar permissões declarativas de câmera, microfone e clipboard na configuração da aplicação.
+- [ ] Verificar CSP `frame-src`, `frame-ancestors` e X-Frame-Options.
+- [ ] Homologar sessão/login/cookies no contexto incorporado.
+- [x] Validar layout D-006B em desktop 1440×900 e mobile real 390×844 sem overflow horizontal.
+- [x] Criar teste visual automatizado com Chrome DevTools para o workspace responsivo e evidências PNG/DOM/relatório.
+- [ ] Homologar NEO Interact em ambiente autorizado.
+- [x] Implementar primeira composição operacional lado a lado Ocorrência + NEO em desktop e empilhada em mobile; dock/janela desacoplada permanecem evolução posterior.

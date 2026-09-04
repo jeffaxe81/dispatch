@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
-import { Activity, BookOpenCheck, Braces, Cable, Clock3, FileKey2, FileText, ListChecks, PlugZap, RefreshCw, ShieldCheck, Webhook, Workflow, ClipboardCheck } from "lucide-react";
+import { Activity, AppWindow, BookOpenCheck, Braces, Cable, Clock3, FileKey2, FileText, ListChecks, PlugZap, RefreshCw, ShieldCheck, Webhook, Workflow, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -24,6 +24,7 @@ function Metric({ label, value, detail, icon: Icon, accent }: { label: string; v
 }
 
 const moduleAreas = [
+  { label: "Aplicações incorporadas", description: "Abra interfaces externas autorizadas em iFrame responsivo e seguro.", icon: AppWindow, phase: "D-006A", path: "/integracoes/aplicacoes-incorporadas" },
   { label: "Workflows", description: "Desenhe regras operacionais e mantenha versões controladas.", icon: Workflow, phase: "Fase 2", path: "/integracoes/workflows" },
   { label: "Conexões", description: "Registre endpoints de referência com validação HTTPS e proteção anti-SSRF.", icon: PlugZap, phase: "Fase 5", path: "/integracoes/conexoes" },
   { label: "APIs", description: "Organize operações internas e futuras APIs de parceiros.", icon: Braces, phase: "Fase 5" },
@@ -108,7 +109,7 @@ function IntegrationsContent() {
                 </div>
               </div>
               <ul className="mt-4 space-y-2 text-xs leading-5 text-amber-950/80">
-                <li>Não realiza chamadas para serviços externos.</li>
+                <li>As áreas simuladas não realizam chamadas externas; aplicações incorporadas só carregam o destino autorizado quando abertas.</li>
                 <li>Não coleta, exibe ou persiste credenciais.</li>
                 <li>As áreas futuras continuam protegidas pelo RBAC do AXE Dispatch.</li>
               </ul>

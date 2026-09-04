@@ -15,6 +15,7 @@ import RolesPermissionsPage from "@/pages/RolesPermissionsPage";
 import GeneralSettingsPage from "@/pages/GeneralSettingsPage";
 import OperationsLogPage from "@/pages/OperationsLogPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
+import EmbeddedApplicationsPage from "@/pages/EmbeddedApplicationsPage";
 import WorkflowsPage from "@/pages/WorkflowsPage";
 import WorkflowBuilderPage from "@/pages/WorkflowBuilderPage";
 import ExecutionsPage from "@/pages/ExecutionsPage";
@@ -54,6 +55,7 @@ function Router() {
       <Route path={"/agente"} component={AgentPage} />
       <Route path={"/viaturas"} component={VehiclesPage} />
       <Route path={"/integracoes"} component={IntegrationsPage} />
+      <Route path={"/integracoes/aplicacoes-incorporadas"} component={EmbeddedApplicationsPage} />
       <Route path={"/integracoes/workflows"} component={WorkflowsPage} />
       <Route path={"/integracoes/workflows/:id"} component={WorkflowBuilderPage} />
       <Route path={"/integracoes/execucoes"} component={ExecutionsPage} />
