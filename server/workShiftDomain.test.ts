@@ -70,3 +70,62 @@ test("ends an active work shift", () => {
     endedAt,
   });
 });
+
+test("rejects starting an already active work shift", () => {
+  assert.throws(
+    () =>
+      transitionWorkShift(
+        {
+          state: "em_jornada",
+          startedAt: new Date("2026-09-04T08:00:00.000Z"),
+          breakStartedAt: null,
+          endedAt: null,
+        },
+        { type: "iniciar", at: new Date("2026-09-04T09:00:00.000Z") },
+      ),
+    /transicao_invalida:em_jornada->iniciar/,
+  );
+});
+
+test("rejects starting a break while already on break", () => {
+  assert.throws(
+    () =>
+      transitionWorkShift(
+        {
+          state: "em_intervalo",
+          startedAt: new Date("2026-09-04T08:00:00.000Z"),
+          breakStartedAt: new Date("2026-09-04T12:00:00.000Z"),
+          endedAt: null,
+        },
+        { type: "iniciar_intervalo", at: new Date("2026-09-04T12:05:00.000Z") },
+      ),
+    /transicao_invalida:em_intervalo->iniciar_intervalo/,
+  );
+});
+
+test("rejects resuming without an active break", () => {
+  assert.throws(
+    () =>
+      transitionWorkShift(
+        {
+          state: "em_jornada",
+          startedAt: new Date("2026-09-04T08:00:00.000Z"),
+          breakStartedAt: null,
+          endedAt: null,
+        },
+        { type: "retomar", at: new Date("2026-09-04T13:00:00.000Z") },
+      ),
+    /transicao_invalida:em_jornada->retomar/,
+  );
+});
+
+test("rejects ending while outside jornada", () => {
+  assert.throws(
+    () =>
+      transitionWorkShift(
+        { state: "fora_jornada", startedAt: null, breakStartedAt: null, endedAt: null },
+        { type: "encerrar", at: new Date("2026-09-04T17:00:00.000Z") },
+      ),
+    /transicao_invalida:fora_jornada->encerrar/,
+  );
+});
