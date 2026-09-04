@@ -7,6 +7,7 @@ describe("navegação por perfil operacional", () => {
     expect(labels).not.toContain("Central");
     expect(labels).not.toContain("Kanban");
     expect(labels).toContain("Aplicativo Agente");
+    expect(labels).toContain("Jornada");
     expect(labels).toContain("Equipes");
   });
 
@@ -15,6 +16,7 @@ describe("navegação por perfil operacional", () => {
     expect(labels).not.toContain("Central");
     expect(labels).not.toContain("Kanban");
     expect(labels).toContain("Aplicativo Agente");
+    expect(labels).toContain("Jornada");
   });
 
   it("preserva Central e Kanban para perfis da central com permissões correspondentes", () => {
@@ -22,13 +24,14 @@ describe("navegação por perfil operacional", () => {
     expect(labels).toContain("Central");
     expect(labels).toContain("Kanban");
     expect(labels).toContain("Dashboards e Relatórios");
+    expect(labels).toContain("Jornada");
   });
 
   it("exibe todos os grupos laterais para o superadministrador", () => {
     const labels = getMenuItems([], "administrador", true).map(item => item.label);
     expect(labels).toEqual(expect.arrayContaining([
       "Central", "Ocorrências", "Dashboards e Relatórios", "Equipes", "Kanban",
-      "Aplicativo Agente", "Viaturas", "Integrações", "Administração", "Usuários",
+      "Aplicativo Agente", "Jornada", "Viaturas", "Integrações", "Administração", "Usuários",
       "Perfis", "Escopos", "Log de operações", "Configurações",
     ]));
   });
@@ -36,7 +39,7 @@ describe("navegação por perfil operacional", () => {
   it("exibe todos os itens para o curinga administrativo devolvido pelo fallback legado", () => {
     const labels = getMenuItems(["*"], "administrador").map(item => item.label);
     expect(labels).toEqual(expect.arrayContaining([
-      "Central", "Ocorrências", "Dashboards e Relatórios", "Equipes", "Kanban",
+      "Central", "Ocorrências", "Dashboards e Relatórios", "Equipes", "Kanban", "Jornada",
       "Viaturas", "Integrações", "Administração", "Usuários", "Perfis", "Escopos", "Log de operações",
     ]));
   });

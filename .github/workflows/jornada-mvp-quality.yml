@@ -1,0 +1,115 @@
+name: Jornada MVP quality
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "server/workShift*.ts"
+      - "drizzle/workShiftSchema.ts"
+      - "drizzle.config.ts"
+      - "server/rootRouter.ts"
+      - "server/_core/index.ts"
+      - "client/src/lib/trpc.ts"
+      - "client/src/pages/WorkShiftPage*.tsx"
+      - "client/src/App.tsx"
+      - "client/src/components/DashboardLayout*.ts"
+      - "client/src/components/DashboardLayout*.tsx"
+      - ".github/workflows/jornada-mvp-quality.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jornada-mvp-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Testes, tipos e migração da Jornada
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obter código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Habilitar Corepack e pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.4.1 --activate
+          pnpm --version
+
+      - name: Instalar dependências congeladas
+        run: pnpm install --frozen-lockfile
+
+      - name: Executar testes de domínio e persistência
+        run: |
+          pnpm exec tsx --test \
+            server/workShiftDomain.test.ts \
+            server/workShiftApplicationService.test.ts \
+            server/workShiftGateway.test.ts \
+            server/workShiftPersistenceAdapter.test.ts \
+            server/workShiftPersistencePlan.test.ts \
+            server/workShiftRuntime.test.ts \
+            server/workShiftSchema.test.ts \
+            server/workShiftService.test.ts
+
+      - name: Executar testes do router
+        run: pnpm exec vitest run server/workShiftRouter.test.ts server/workShiftRouter.errors.test.ts
+
+      - name: Executar testes da interface de Jornada
+        run: pnpm exec vitest run client/src/pages/WorkShiftPage.test.tsx client/src/components/DashboardLayout.test.ts
+
+      - name: Validar tipos
+        run: pnpm check
+
+      - name: Verificar sincronismo da migração Drizzle
+        id: drizzle
+        env:
+          DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci
+        run: |
+          pnpm exec drizzle-kit generate
+          git status --short drizzle drizzle.config.ts
+          git diff -- drizzle drizzle.config.ts > jornada-migration.patch
+          git status --porcelain drizzle | awk '{print $2}' > /tmp/jornada-generated-files.txt
+          if test -s /tmp/jornada-generated-files.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            tar -cf /tmp/jornada-generated.tar -T /tmp/jornada-generated-files.txt
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Schema Drizzle sincronizado; nenhuma nova migração necessária."
+          fi
+
+      - name: Publicar migração gerada
+        if: steps.drizzle.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jornada-mvp-drizzle-generated
+          path: |
+            drizzle/
+            jornada-migration.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Versionar artefatos oficiais do Drizzle no branch do PR
+        if: steps.drizzle.outputs.changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$HEAD_REF"
+          git checkout -B "$HEAD_REF" "origin/$HEAD_REF"
+          tar -xf /tmp/jornada-generated.tar
+          xargs git add -- < /tmp/jornada-generated-files.txt
+          if git diff --cached --quiet; then
+            echo "Nenhum artefato Drizzle novo para versionar."
+            exit 0
+          fi
+          git commit -m "chore(jornada): versionar migração Drizzle gerada"
+          git push origin "HEAD:$HEAD_REF"

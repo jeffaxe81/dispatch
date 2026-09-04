@@ -17,7 +17,7 @@ import { trpc } from "@/lib/trpc";
 import { isFieldAgent, type AccessAssignmentLike } from "@/lib/operationalAccess";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { BarChart3, CarFront, CircleHelp, ClipboardList, DoorOpen, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
+import { BarChart3, CarFront, CircleHelp, ClipboardList, Clock3, DoorOpen, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
 import React, { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -33,6 +33,7 @@ export function getMenuItems(permissions: string[] | undefined, role?: string, i
   if (can("teams.view")) items.push({ icon: UsersRound, label: "Equipes", path: "/equipes" });
   if (!fieldAgent && can("dispatch.view")) items.push({ icon: ClipboardList, label: "Kanban", path: "/kanban" });
   if (fieldAgent || can("occurrences.transition")) items.push({ icon: Radio, label: "Aplicativo Agente", path: "/agente" });
+  items.push({ icon: Clock3, label: "Jornada", path: "/jornada" });
   if (can("vehicles.manage")) items.push({ icon: CarFront, label: "Viaturas", path: "/viaturas" });
   if (can("integrations.view") || can("workflow.view")) items.push({ icon: PlugZap, label: "Integrações", path: "/integracoes" });
   if (can("users.view") || can("roles.view")) items.push({ icon: ShieldCheck, label: "Administração", path: "/administracao" });

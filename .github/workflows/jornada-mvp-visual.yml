@@ -1,0 +1,114 @@
+name: Jornada MVP visual homologation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "client/src/pages/WorkShiftPage*.tsx"
+      - "client/src/App.tsx"
+      - "client/src/components/DashboardLayout*.tsx"
+      - "client/src/components/DashboardLayout*.ts"
+      - "server/workShift*.ts"
+      - "server/localAuth.ts"
+      - "drizzle/workShiftSchema.ts"
+      - "scripts/jornada-visual-homologation.mjs"
+      - ".github/workflows/jornada-mvp-visual.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jornada-visual-${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    name: Captura real desktop e mobile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/dispatch_ci
+      LOCAL_AUTH_SMOKE_URL: http://127.0.0.1:3000
+      NODE_ENV: development
+
+    steps:
+      - name: Obter código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Gerar credenciais exclusivamente efêmeras
+        run: |
+          echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "LOCAL_AUTH_BOOTSTRAP_USERNAME=jornada_ci" >> "$GITHUB_ENV"
+          echo "LOCAL_AUTH_BOOTSTRAP_PASSWORD=JornadaVisual-${GITHUB_RUN_ID}!" >> "$GITHUB_ENV"
+
+      - name: Preparar MySQL efêmero do runner
+        run: |
+          sudo systemctl start mysql
+          mysql -h 127.0.0.1 -uroot -proot -e "CREATE DATABASE IF NOT EXISTS dispatch_ci;"
+          mysqladmin ping -h 127.0.0.1 -uroot -proot
+
+      - name: Habilitar Corepack e pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.4.1 --activate
+          pnpm --version
+
+      - name: Instalar dependências congeladas
+        run: pnpm install --frozen-lockfile
+
+      - name: Aplicar migrações em banco efêmero
+        run: pnpm exec drizzle-kit migrate
+
+      - name: Iniciar aplicação local
+        run: |
+          nohup pnpm dev > jornada-app.log 2>&1 &
+          echo $! > /tmp/jornada-app.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/login >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat jornada-app.log
+          exit 1
+
+      - name: Iniciar Chrome headless com CDP
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -n "$CHROME_BIN"
+          nohup "$CHROME_BIN" \
+            --headless=new \
+            --no-sandbox \
+            --disable-dev-shm-usage \
+            --remote-debugging-port=9222 \
+            --user-data-dir=/tmp/jornada-chrome-profile \
+            about:blank > jornada-chrome.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9222/json/version >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat jornada-chrome.log
+          exit 1
+
+      - name: Capturar Jornada em desktop e mobile
+        run: node scripts/jornada-visual-homologation.mjs
+
+      - name: Publicar evidências visuais
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jornada-mvp-visual-evidence
+          path: |
+            artifacts/jornada-visual/
+            jornada-app.log
+            jornada-chrome.log
+          if-no-files-found: warn
+          retention-days: 14

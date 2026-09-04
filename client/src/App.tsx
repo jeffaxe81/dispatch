@@ -18,6 +18,7 @@ import IntegrationsPage from "@/pages/IntegrationsPage";
 import WorkflowsPage from "@/pages/WorkflowsPage";
 import WorkflowBuilderPage from "@/pages/WorkflowBuilderPage";
 import ExecutionsPage from "@/pages/ExecutionsPage";
+import WorkShiftPage from "@/pages/WorkShiftPage";
 import { ConnectionsPage, CredentialsPage, IntegrationLogsPage, WebhooksPage } from "@/pages/IntegrationResourcePages";
 import ExternalIncidentReviewsPage from "@/pages/ExternalIncidentReviewsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
@@ -52,6 +53,7 @@ function Router() {
       <Route path={"/equipes"} component={TeamsPage} />
       <Route path={"/kanban"} component={() => <FieldRestrictedRoute component={KanbanPage} />} />
       <Route path={"/agente"} component={AgentPage} />
+      <Route path={"/jornada"} component={WorkShiftPage} />
       <Route path={"/viaturas"} component={VehiclesPage} />
       <Route path={"/integracoes"} component={IntegrationsPage} />
       <Route path={"/integracoes/workflows"} component={WorkflowsPage} />
