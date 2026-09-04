@@ -27,22 +27,8 @@ jobs:
     name: Captura real desktop e mobile
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-          MYSQL_DATABASE: dispatch_ci
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=20
-
     env:
-      DATABASE_URL: mysql://root@127.0.0.1:3306/dispatch_ci
+      DATABASE_URL: mysql://dispatch_ci@127.0.0.1:3306/dispatch_ci
       LOCAL_AUTH_SMOKE_URL: http://127.0.0.1:3000
       NODE_ENV: development
 
@@ -60,6 +46,17 @@ jobs:
           echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
           echo "LOCAL_AUTH_BOOTSTRAP_USERNAME=jornada_ci" >> "$GITHUB_ENV"
           echo "LOCAL_AUTH_BOOTSTRAP_PASSWORD=JornadaVisual-${GITHUB_RUN_ID}!" >> "$GITHUB_ENV"
+
+      - name: Preparar MySQL efêmero do runner
+        run: |
+          sudo systemctl start mysql
+          sudo mysql <<'SQL'
+          CREATE DATABASE IF NOT EXISTS dispatch_ci;
+          CREATE USER IF NOT EXISTS 'dispatch_ci'@'127.0.0.1' IDENTIFIED BY '';
+          GRANT ALL PRIVILEGES ON dispatch_ci.* TO 'dispatch_ci'@'127.0.0.1';
+          FLUSH PRIVILEGES;
+          SQL
+          mysqladmin ping -h 127.0.0.1 -u dispatch_ci
 
       - name: Habilitar Corepack e pnpm
         run: |
