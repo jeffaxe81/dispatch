@@ -39,10 +39,11 @@ import {
   integrationOpenapiSpecs,
   integrationWebhooks,
 } from "../drizzle/schema";
-import { workSessions, workSessionEvents } from "../drizzle/cp016Schema";
+import { operationalPresence, workSessions, workSessionEvents } from "../drizzle/cp016Schema";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
+import { resolveOperationalPresenceState } from "./operationalPresence";
 import { parseOpenapiDocument } from "./openapi";
 import { storageGet, storagePut } from "./storage";
 
@@ -941,12 +942,79 @@ export async function listTeams(teamId?: number) {
   return db.select({ team: teams, vehiclePrefix: vehicles.prefix, vehicleType: vehicles.type, vehicleStatus: vehicles.status }).from(teams).leftJoin(vehicles, eq(vehicles.teamId, teams.id)).where(where).orderBy(teams.code);
 }
 
+type OperationalPresenceSyncInput = {
+  teamId: number;
+  userId: number | null;
+  workSessionId: number | null;
+  teamStatus: typeof teams.$inferSelect.status;
+  inShift: boolean;
+  shiftPaused: boolean;
+  changedAt: Date;
+};
+
+async function syncOperationalPresenceTx(tx: any, input: OperationalPresenceSyncInput) {
+  const state = resolveOperationalPresenceState({
+    inShift: input.inShift,
+    shiftPaused: input.shiftPaused,
+    teamStatus: input.teamStatus,
+  });
+  const existing = (await tx
+    .select({ id: operationalPresence.id })
+    .from(operationalPresence)
+    .where(eq(operationalPresence.teamId, input.teamId))
+    .orderBy(desc(operationalPresence.lastChangedAt))
+    .limit(1))[0];
+  const values = {
+    userId: input.userId,
+    teamId: input.teamId,
+    workSessionId: input.workSessionId,
+    status: state.status,
+    availableForDispatch: state.availableForDispatch,
+    lastChangedAt: input.changedAt,
+  };
+  if (existing) {
+    await tx.update(operationalPresence).set(values).where(eq(operationalPresence.id, existing.id));
+  } else {
+    await tx.insert(operationalPresence).values(values);
+  }
+  return state;
+}
+
+export async function upsertOperationalPresence(input: OperationalPresenceSyncInput) {
+  const db = await requireDb();
+  return db.transaction(async tx => syncOperationalPresenceTx(tx, input));
+}
+
+export async function getEligibleTeamCandidates() {
+  const db = await requireDb();
+  return db
+    .select({ team: teams, presence: operationalPresence })
+    .from(operationalPresence)
+    .innerJoin(teams, eq(operationalPresence.teamId, teams.id))
+    .where(and(
+      eq(teams.active, true),
+      eq(operationalPresence.status, "available"),
+      eq(operationalPresence.availableForDispatch, true),
+    ))
+    .orderBy(teams.code);
+}
+
 export async function updateTeamStatus(input: { teamId: number; status: typeof teams.$inferInsert.status; actorUserId: number }) {
   const db = await requireDb();
   await db.transaction(async tx => {
     const before = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
     if (!before) throw new Error("Equipe não encontrada.");
     await tx.update(teams).set({ status: input.status }).where(eq(teams.id, input.teamId));
+    const session = (await tx.select().from(workSessions).where(and(eq(workSessions.teamId, input.teamId), inArray(workSessions.status, ["open", "paused"]))).orderBy(desc(workSessions.startedAt)).limit(1))[0];
+    await syncOperationalPresenceTx(tx, {
+      teamId: input.teamId,
+      userId: session?.userId ?? null,
+      workSessionId: session?.id ?? null,
+      teamStatus: input.status,
+      inShift: Boolean(before.shiftStartedAt && !before.shiftEndsAt),
+      shiftPaused: Boolean(before.shiftPausedAt),
+      changedAt: new Date(),
+    });
     await tx.insert(auditLogs).values({ resourceType: "team", resourceId: input.teamId, action: "status_updated", actorUserId: input.actorUserId, beforeData: { status: before.status }, afterData: { status: input.status } });
   });
 }
@@ -1022,6 +1090,15 @@ export async function updateTeamShift(input: { teamId: number; action: TeamShift
       actorUserId: input.actorUserId,
       reason: null,
       metadata: { teamId: input.teamId, legacySnapshotPreserved: true },
+    });
+    await syncOperationalPresenceTx(tx, {
+      teamId: input.teamId,
+      userId: session.userId,
+      workSessionId: session.id,
+      teamStatus: before.status,
+      inShift: input.action !== "end",
+      shiftPaused: input.action === "pause",
+      changedAt: now,
     });
 
     await tx.insert(auditLogs).values({
