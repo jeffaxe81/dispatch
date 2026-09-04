@@ -1,4 +1,4 @@
-import { getTableName } from "drizzle-orm";
+import { getTableColumns, getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   shiftTemplates,
@@ -43,5 +43,14 @@ describe("CP-016 database schema", () => {
       "route_track_points",
       "embedded_integrations",
     ]);
+  });
+
+  it("keeps credentials and secrets out of embedded integration configuration", () => {
+    const physicalColumns = Object.values(getTableColumns(embeddedIntegrations)).map(column => column.name);
+    const forbiddenFragments = ["password", "secret", "token", "credential", "api_key"];
+
+    for (const fragment of forbiddenFragments) {
+      expect(physicalColumns.some(column => column.toLowerCase().includes(fragment))).toBe(false);
+    }
   });
 });
