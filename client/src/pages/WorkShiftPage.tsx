@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
-import { Clock3, Coffee, LogIn, LogOut, PlayCircle } from "lucide-react";
+import { Clock3, Coffee, History, LogIn, LogOut, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 
 type WorkShiftState = "fora_jornada" | "em_jornada" | "em_intervalo" | "encerrada";
@@ -32,6 +32,7 @@ function formatDateTime(value: Date | string | null | undefined) {
 export default function WorkShiftPage() {
   const utils = trpc.useUtils();
   const current = trpc.workShift.current.useQuery(undefined, { retry: false });
+  const history = trpc.workShift.history.useQuery({ limit: 7 }, { retry: false });
   const start = trpc.workShift.start.useMutation();
   const startBreak = trpc.workShift.break.useMutation();
   const resume = trpc.workShift.resume.useMutation();
@@ -50,7 +51,10 @@ export default function WorkShiftPage() {
       if (action === "break") await startBreak.mutateAsync();
       if (action === "resume") await resume.mutateAsync();
       if (action === "end") await end.mutateAsync();
-      await utils.workShift.current.invalidate();
+      await Promise.all([
+        utils.workShift.current.invalidate(),
+        utils.workShift.history.invalidate(),
+      ]);
       toast.success("Jornada atualizada com sucesso.");
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : "Não foi possível atualizar a jornada.");
@@ -122,6 +126,34 @@ export default function WorkShiftPage() {
                 </Button>
               ) : null}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg text-slate-950">
+              <History className="h-5 w-5 text-sky-700" /> Histórico recente
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {history.isLoading ? <p className="text-sm text-slate-500">Carregando histórico...</p> : null}
+            {history.error ? <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{history.error.message}</p> : null}
+            {!history.isLoading && !history.error && (history.data?.length ?? 0) === 0 ? (
+              <p className="text-sm text-slate-500">Nenhuma jornada anterior registrada.</p>
+            ) : null}
+            {(history.data ?? []).length > 0 ? (
+              <div className="space-y-3" aria-label="Histórico de jornadas">
+                {(history.data ?? []).map(item => (
+                  <div key={item.id} className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{formatDateTime(item.startedAt)}</p>
+                      <p className="mt-1 text-xs text-slate-500">Término: {formatDateTime(item.endedAt)}</p>
+                    </div>
+                    <Badge variant="outline" className="w-fit">{STATE_LABELS[item.state as WorkShiftState]}</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </main>
