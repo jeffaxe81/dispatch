@@ -9,6 +9,7 @@ test("work shift sessions persist user, state and timestamps", () => {
   assert.ok(columns.id);
   assert.ok(columns.userId);
   assert.ok(columns.state);
+  assert.equal(columns.state.name, "state");
   assert.ok(columns.startedAt);
   assert.ok(columns.breakStartedAt);
   assert.ok(columns.endedAt);
@@ -23,8 +24,12 @@ test("work shift events persist immutable transition history", () => {
   assert.ok(columns.sessionId);
   assert.ok(columns.userId);
   assert.ok(columns.eventType);
+  assert.equal(columns.eventType.name, "event_type");
   assert.ok(columns.previousState);
+  assert.equal(columns.previousState.name, "previous_state");
   assert.ok(columns.nextState);
+  assert.equal(columns.nextState.name, "next_state");
+  assert.notEqual(columns.previousState.name, columns.nextState.name);
   assert.ok(columns.occurredAt);
   assert.ok(columns.actorUserId);
   assert.ok(columns.metadata);
