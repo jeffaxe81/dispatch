@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { EMBEDDED_APPLICATIONS } from "@shared/embeddedApplications";
 import {
@@ -72,5 +73,28 @@ describe("CSP de aplicações incorporadas", () => {
       "default-src 'self'; img-src 'self' data:; frame-src 'self' https://gscprj.saas.digitro.cloud;",
     );
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("registra o middleware CSP no servidor antes das rotas tRPC", () => {
+    const source = readFileSync(
+      new URL("./_core/index.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      'import { EMBEDDED_APPLICATIONS } from "@shared/embeddedApplications";',
+    );
+    expect(source).toContain(
+      'import { createEmbeddedApplicationCspMiddleware } from "../embeddedAppCsp";',
+    );
+
+    const middlewareIndex = source.indexOf(
+      "app.use(createEmbeddedApplicationCspMiddleware(EMBEDDED_APPLICATIONS));",
+    );
+    const trpcIndex = source.indexOf('app.use(\n    "/api/trpc"');
+
+    expect(middlewareIndex).toBeGreaterThan(-1);
+    expect(trpcIndex).toBeGreaterThan(-1);
+    expect(middlewareIndex).toBeLessThan(trpcIndex);
   });
 });
