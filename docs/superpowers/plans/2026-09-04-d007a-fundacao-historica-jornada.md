@@ -1,79 +1,72 @@
-# D-007A — Fundação Histórica da Jornada Implementation Plan
+# D-007A — Fundação Histórica da Jornada — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to execute this plan task-by-task. Every production change follows RED → GREEN → review → commit.
 
-**Goal:** Criar a fonte histórica e auditável da jornada individual no AXE Dispatch, preservando o controle legado de equipe e preparando a base para escalas, despacho e relatórios das fases D-007B/C/D.
+**Goal:** criar a fonte histórica e auditável da jornada individual no AXE Dispatch, preservando o controle legado de equipe e preparando D-007B (escalas/12x36), D-007C (elegibilidade de despacho) e D-007D (ajustes/relatórios/alertas).
 
-**Architecture:** A D-007A introduz `work_shift_sessions` e `work_shift_events`, um domínio puro para transições `start/pause/resume/end`, um serviço transacional orientado a uma porta de persistência e três contratos tRPC para consultar/controlar a própria jornada. O estado legado de `teams` continua existindo como cache/compatibilidade e é espelhado somente quando a nova jornada individual possui `teamId`; o endpoint legado `teams.updateShift` não é removido nesta fase.
+**Architecture:** D-007A introduz `work_shift_sessions` e `work_shift_events`, uma máquina de estados pura, um serviço transacional atrás de uma porta `WorkShiftStore` e três contratos tRPC de autoatendimento. Os campos `teams.*shift*` continuam existindo como compatibilidade/cache operacional e são espelhados apenas quando a sessão individual possui `teamId`. O endpoint legado `teams.updateShift` não é removido nesta fase.
 
 **Tech Stack:** TypeScript 5.9, Node 24, Express/tRPC 11, Drizzle ORM 0.45 + MySQL, Zod 4, Vitest 2, pnpm 10.4.1.
 
-**Spec:** `docs/superpowers/specs/2026-09-04-d007-controle-jornada-design.md`
+**Spec aprovada:** `docs/superpowers/specs/2026-09-04-d007-controle-jornada-design.md`
 
-## Global Constraints
+## Restrições globais
 
-- Basear a implementação em `checkpoint/d006e-csp-frame-src-20260904` / design aprovado da D-007.
-- Manter `teams.shiftStartedAt`, `teams.shiftEndsAt`, `teams.shiftPausedAt` e `teams.shiftPausedTotalSeconds`; não remover nem renomear nesta fase.
-- Não alterar automaticamente `teams.status` ao iniciar, pausar, retomar ou encerrar jornada.
-- Uma única sessão não encerrada por usuário; concorrência deve ser serializada no banco antes de decidir `start`.
-- O servidor define o timestamp efetivo das ações; a API de controle não aceita timestamp arbitrário do cliente.
-- Eventos de jornada são append-only no fluxo normal.
-- D-007A não implementa escalas, 12x36, exceções, ajustes, alertas, relatórios administrativos nem filtro de despacho; estes pertencem às D-007B/C/D.
-- Não criar `work_shift_schedules`, `work_shift_assignments`, `work_shift_schedule_exceptions` ou `work_shift_adjustments` nesta entrega.
-- Não conceder as novas permissões a papéis existentes automaticamente. Criar somente o catálogo `work_shifts.view` e `work_shifts.control`; `role_permissions` não recebe grants nesta migration.
-- O administrador legado com wildcard `*` continua compatível.
-- Nenhum `db:push`, migration contra banco real, merge em `main` ou deploy durante a execução deste plano.
-- Cada task usa TDD: RED observado antes do GREEN e commit pequeno após os testes correspondentes.
-- Ao final, executar os mesmos gates do workflow `Qualidade`: `security:check`, `check`, `test`, `build`, além dos workflows GIS/NEO já existentes para regressão.
+- Base funcional: `checkpoint/d006e-csp-frame-src-20260904`; documentação aprovada está em `design/d007-work-shift-control-20260904`.
+- Preservar `teams.shiftStartedAt`, `teams.shiftEndsAt`, `teams.shiftPausedAt`, `teams.shiftPausedTotalSeconds` e `teams.updateShift`.
+- Não alterar automaticamente `teams.status` em transições de jornada.
+- Uma única sessão não encerrada por usuário; o fluxo de escrita deve serializar pelo usuário no banco antes de decidir `start`.
+- O servidor define o instante das ações; a API `control` não aceita timestamp, `userId` ou `teamId` arbitrário do cliente.
+- Eventos de jornada são append-only no fluxo normal e não devem ser apagados por cascade da sessão.
+- D-007A não cria `work_shift_schedules`, `work_shift_assignments`, `work_shift_schedule_exceptions` nem `work_shift_adjustments`.
+- D-007A não implementa 12x36, filtro de despacho, ajustes, relatórios administrativos ou alertas.
+- Criar no catálogo somente `work_shifts.view` e `work_shifts.control`; não inserir grants em `role_permissions`.
+- Administrador legado com wildcard `*` permanece compatível.
+- Não executar `pnpm db:push`, `drizzle-kit migrate`, migration em banco real, merge em `main` ou deploy.
+- Cada task encerra com testes direcionados e commit pequeno.
+- No final, executar os mesmos gates do workflow `Qualidade`: `security:check`, `check`, `test`, `build`, além dos workflows GIS/NEO de regressão.
+
+## Mapa de arquivos
+
+**Criar**
+- `shared/workShifts.ts`
+- `server/workShiftDomain.ts`
+- `server/workShiftDomain.test.ts`
+- `server/workShiftSchema.test.ts`
+- `server/workShiftService.ts`
+- `server/workShiftService.test.ts`
+- `server/workShiftDbContract.test.ts`
+- `server/workShifts.router.test.ts`
+- `drizzle/0003_d007a_work_shift_history.sql` (nome esperado após `generate`; confirmar o nome real gerado)
+- `docs/D-007A-WORK-SHIFT-HISTORY-EVIDENCE.md`
+
+**Modificar**
+- `drizzle/schema.ts`
+- `drizzle/meta/_journal.json` e snapshot gerado pela ferramenta
+- `server/db.ts`
+- `server/routers.ts`
+- `server/accessControl.test.ts`
+- `server/teamShift.test.ts`
+- `server/triageAndShift.router.test.ts` somente se precisar reforço de compatibilidade
+- `scripts/generate-trpc-coverage.mjs`
+- `docs/TRPC_CONTRACT_COVERAGE.md` (gerado)
+- `todo.md`
 
 ---
 
-## File Map
+## Task 1 — Contratos compartilhados e máquina de estados pura
 
-**Create**
-- `shared/workShifts.ts` — ações/status/tipos compartilhados da jornada individual.
-- `server/workShiftDomain.ts` — máquina de estados pura e cálculos de pausa/tempo líquido.
-- `server/workShiftDomain.test.ts` — testes unitários da máquina de estados.
-- `server/workShiftService.ts` — orquestração independente de Drizzle através de `WorkShiftStore`.
-- `server/workShiftService.test.ts` — fake store cobrindo histórico/eventos/espelhamento.
-- `server/workShifts.router.test.ts` — contratos tRPC e RBAC da própria jornada.
-- `drizzle/0003_d007a_work_shift_history.sql` — migration gerada/revisada para sessões/eventos + catálogo de permissões.
-
-**Modify**
-- `drizzle/schema.ts` — enums/tabelas `workShiftSessions` e `workShiftEvents`.
-- `server/db.ts` — adapter Drizzle transacional e consultas da própria jornada.
-- `server/routers.ts` — router `workShifts` com `current`, `history`, `control`.
-- `server/accessControl.test.ts` — comprovar permissão dinâmica sem grant legado implícito.
-- `scripts/generate-trpc-coverage.mjs` — incluir raiz `workShifts` e atualizar a contagem de procedimentos.
-- `docs/TRPC_CONTRACT_COVERAGE.md` — regenerado pelo script.
-- `server/teamShift.test.ts` — preservar comportamento legado da equipe.
-- `server/triageAndShift.router.test.ts` — preservar `teams.updateShift` existente.
-- `todo.md` — marcar somente os itens efetivamente concluídos da D-007A.
-
----
-
-### Task 1: Contrato compartilhado e máquina de estados pura
-
-**Files:**
+**Files**
 - Create: `shared/workShifts.ts`
 - Create: `server/workShiftDomain.ts`
 - Create: `server/workShiftDomain.test.ts`
 
-**Interfaces:**
-- Produces: `WORK_SHIFT_ACTIONS`, `WORK_SHIFT_STATUSES`, `WorkShiftAction`, `WorkShiftStatus`.
-- Produces: `resolveWorkShiftTransition(current, action, now): WorkShiftTransitionPlan`.
-- Consumes later: Task 3 usa `WorkShiftTransitionPlan` para persistir sessão/evento e Task 4 usa o mesmo contrato no adapter Drizzle.
+### 1.1 RED — transições e cálculo
 
-- [ ] **Step 1: criar o teste RED da máquina de estados**
-
-Criar `server/workShiftDomain.test.ts` com casos determinísticos:
+Criar `server/workShiftDomain.test.ts` cobrindo:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { resolveWorkShiftTransition } from "./workShiftDomain";
-
 const startAt = new Date("2026-09-04T08:00:00.000Z");
-
 const active = {
   id: 10,
   startedAt: startAt,
@@ -82,67 +75,37 @@ const active = {
   status: "active" as const,
   pausedSeconds: 0,
 };
-
-describe("work shift domain", () => {
-  it("inicia uma nova sessão somente quando não existe sessão aberta", () => {
-    expect(resolveWorkShiftTransition(null, "start", startAt)).toEqual({
-      mode: "create",
-      eventType: "started",
-      session: {
-        startedAt: startAt,
-        pausedAt: null,
-        endedAt: null,
-        status: "active",
-        pausedSeconds: 0,
-        workedSeconds: 0,
-      },
-      legacyPatch: {
-        shiftStartedAt: startAt,
-        shiftEndsAt: null,
-        shiftPausedAt: null,
-        shiftPausedTotalSeconds: 0,
-      },
-    });
-  });
-
-  it("acumula pausas em resume e calcula tempo líquido ao encerrar", () => {
-    const pauseAt = new Date("2026-09-04T10:00:00.000Z");
-    const resumeAt = new Date("2026-09-04T10:15:30.000Z");
-    const endAt = new Date("2026-09-04T12:00:00.000Z");
-
-    const paused = resolveWorkShiftTransition(active, "pause", pauseAt);
-    expect(paused.sessionPatch).toEqual({ status: "paused", pausedAt: pauseAt });
-
-    const resumed = resolveWorkShiftTransition({ ...active, status: "paused", pausedAt: pauseAt }, "resume", resumeAt);
-    expect(resumed.sessionPatch).toEqual({ status: "active", pausedAt: null, pausedSeconds: 930 });
-
-    const ended = resolveWorkShiftTransition({ ...active, pausedSeconds: 930 }, "end", endAt);
-    expect(ended.sessionPatch).toEqual({
-      status: "ended",
-      pausedAt: null,
-      endedAt: endAt,
-      pausedSeconds: 930,
-      workedSeconds: 13530,
-    });
-  });
-
-  it("inclui a pausa corrente quando encerra uma sessão pausada", () => {
-    const pausedAt = new Date("2026-09-04T11:45:00.000Z");
-    const endAt = new Date("2026-09-04T12:00:00.000Z");
-    const ended = resolveWorkShiftTransition({ ...active, status: "paused", pausedAt, pausedSeconds: 300 }, "end", endAt);
-    expect(ended.sessionPatch.pausedSeconds).toBe(1200);
-    expect(ended.sessionPatch.workedSeconds).toBe(13200);
-  });
-
-  it("rejeita transições incompatíveis", () => {
-    expect(() => resolveWorkShiftTransition(null, "pause", startAt)).toThrow("Inicie a jornada");
-    expect(() => resolveWorkShiftTransition(active, "start", startAt)).toThrow("já está em andamento");
-    expect(() => resolveWorkShiftTransition(active, "resume", startAt)).toThrow("não está em pausa");
-  });
-});
 ```
 
-- [ ] **Step 2: executar o RED**
+Casos obrigatórios:
+
+```ts
+expect(resolveWorkShiftTransition(null, "start", startAt)).toMatchObject({
+  mode: "create",
+  eventType: "started",
+  session: { status: "active", startedAt: startAt, pausedSeconds: 0, workedSeconds: 0 },
+});
+
+const pauseAt = new Date("2026-09-04T10:00:00.000Z");
+const resumeAt = new Date("2026-09-04T10:15:30.000Z");
+const resumed = resolveWorkShiftTransition({ ...active, status: "paused", pausedAt: pauseAt }, "resume", resumeAt);
+expect(resumed.sessionPatch).toEqual({ status: "active", pausedAt: null, pausedSeconds: 930 });
+
+const endAt = new Date("2026-09-04T12:00:00.000Z");
+const ended = resolveWorkShiftTransition({ ...active, pausedSeconds: 930 }, "end", endAt);
+expect(ended.sessionPatch.workedSeconds).toBe(13470); // 14400 - 930
+
+const endWhilePaused = resolveWorkShiftTransition({
+  ...active,
+  status: "paused",
+  pausedAt: new Date("2026-09-04T11:45:00.000Z"),
+  pausedSeconds: 300,
+}, "end", endAt);
+expect(endWhilePaused.sessionPatch.pausedSeconds).toBe(1200);
+expect(endWhilePaused.sessionPatch.workedSeconds).toBe(13200);
+```
+
+Também exigir erro para `pause` sem sessão, `start` com sessão aberta e `resume` fora de pausa.
 
 Run:
 
@@ -150,9 +113,9 @@ Run:
 corepack pnpm vitest run --config vitest.config.ts server/workShiftDomain.test.ts
 ```
 
-Expected: FAIL porque `server/workShiftDomain.ts`/`resolveWorkShiftTransition` ainda não existem.
+Expected: **FAIL** por módulo/função ausente.
 
-- [ ] **Step 3: criar os contratos compartilhados**
+### 1.2 GREEN — tipos compartilhados
 
 Criar `shared/workShifts.ts`:
 
@@ -168,20 +131,26 @@ export type WorkShiftEventType = (typeof WORK_SHIFT_EVENT_TYPES)[number];
 export type WorkShiftSource = (typeof WORK_SHIFT_SOURCES)[number];
 ```
 
-- [ ] **Step 4: implementar o GREEN mínimo do domínio**
+### 1.3 GREEN — domínio explícito e tipado
 
-Criar `server/workShiftDomain.ts` com estes tipos e regras:
+Em `server/workShiftDomain.ts`, criar:
 
 ```ts
-import type { WorkShiftAction, WorkShiftEventType, WorkShiftStatus } from "../shared/workShifts";
-
 export type OpenWorkShiftSnapshot = {
   id: number;
   startedAt: Date;
   pausedAt: Date | null;
   endedAt: Date | null;
-  status: Extract<WorkShiftStatus, "active" | "paused">;
+  status: "active" | "paused";
   pausedSeconds: number;
+};
+
+export type WorkShiftSessionPatch = {
+  status: "active" | "paused" | "ended" | "cancelled";
+  pausedAt?: Date | null;
+  endedAt?: Date;
+  pausedSeconds?: number;
+  workedSeconds?: number;
 };
 
 export type WorkShiftLegacyPatch = {
@@ -190,88 +159,23 @@ export type WorkShiftLegacyPatch = {
   shiftPausedAt?: Date | null;
   shiftPausedTotalSeconds?: number;
 };
-
-export type WorkShiftTransitionPlan =
-  | {
-      mode: "create";
-      eventType: WorkShiftEventType;
-      session: {
-        startedAt: Date;
-        pausedAt: null;
-        endedAt: null;
-        status: "active";
-        pausedSeconds: 0;
-        workedSeconds: 0;
-      };
-      legacyPatch: WorkShiftLegacyPatch;
-    }
-  | {
-      mode: "update";
-      eventType: WorkShiftEventType;
-      sessionPatch: {
-        status: WorkShiftStatus;
-        pausedAt?: Date | null;
-        endedAt?: Date;
-        pausedSeconds?: number;
-        workedSeconds?: number;
-      };
-      legacyPatch: WorkShiftLegacyPatch;
-    };
-
-function elapsedSeconds(from: Date, to: Date) {
-  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 1000));
-}
-
-export function resolveWorkShiftTransition(
-  current: OpenWorkShiftSnapshot | null,
-  action: WorkShiftAction,
-  now = new Date(),
-): WorkShiftTransitionPlan {
-  if (action === "start") {
-    if (current) throw new Error("A jornada já está em andamento.");
-    return {
-      mode: "create",
-      eventType: "started",
-      session: { startedAt: now, pausedAt: null, endedAt: null, status: "active", pausedSeconds: 0, workedSeconds: 0 },
-      legacyPatch: { shiftStartedAt: now, shiftEndsAt: null, shiftPausedAt: null, shiftPausedTotalSeconds: 0 },
-    };
-  }
-
-  if (!current) throw new Error("Inicie a jornada antes desta operação.");
-
-  if (action === "pause") {
-    if (current.status !== "active") throw new Error("A jornada já está em pausa.");
-    return { mode: "update", eventType: "paused", sessionPatch: { status: "paused", pausedAt: now }, legacyPatch: { shiftPausedAt: now } };
-  }
-
-  if (action === "resume") {
-    if (current.status !== "paused" || !current.pausedAt) throw new Error("A jornada não está em pausa.");
-    const pausedSeconds = current.pausedSeconds + elapsedSeconds(current.pausedAt, now);
-    return { mode: "update", eventType: "resumed", sessionPatch: { status: "active", pausedAt: null, pausedSeconds }, legacyPatch: { shiftPausedAt: null, shiftPausedTotalSeconds: pausedSeconds } };
-  }
-
-  const pausedSeconds = current.pausedSeconds + (current.pausedAt ? elapsedSeconds(current.pausedAt, now) : 0);
-  const workedSeconds = Math.max(0, elapsedSeconds(current.startedAt, now) - pausedSeconds);
-  return {
-    mode: "update",
-    eventType: "ended",
-    sessionPatch: { status: "ended", pausedAt: null, endedAt: now, pausedSeconds, workedSeconds },
-    legacyPatch: { shiftEndsAt: now, shiftPausedAt: null, shiftPausedTotalSeconds: pausedSeconds },
-  };
-}
 ```
 
-- [ ] **Step 5: executar testes direcionados e legado**
+`resolveWorkShiftTransition(current, action, now)` deve:
+- `start`: criar sessão `active`, zerar pausas e devolver patch legado de início;
+- `pause`: exigir `active` e definir `pausedAt`;
+- `resume`: exigir `paused`, somar segundos da pausa corrente e limpar `pausedAt`;
+- `end`: aceitar `active`/`paused`, somar pausa corrente se houver e persistir `workedSeconds = max(0, elapsed - pausedSeconds)`.
 
-Run:
+### 1.4 GREEN + regressão
 
 ```bash
 corepack pnpm vitest run --config vitest.config.ts server/workShiftDomain.test.ts server/teamShift.test.ts
 ```
 
-Expected: PASS; o teste legado continua verde sem alteração de `resolveTeamShiftAction`.
+Expected: PASS.
 
-- [ ] **Step 6: commit**
+Commit:
 
 ```bash
 git add shared/workShifts.ts server/workShiftDomain.ts server/workShiftDomain.test.ts
@@ -280,61 +184,62 @@ git commit -m "feat(d007): add historical work shift domain"
 
 ---
 
-### Task 2: Persistência histórica no schema e migration segura
+## Task 2 — Schema histórico e migration somente gerada
 
-**Files:**
+**Files**
 - Modify: `drizzle/schema.ts`
-- Create: `drizzle/0003_d007a_work_shift_history.sql`
-- Generated/Modify: `drizzle/meta/_journal.json`
-- Generated/Create: snapshot correspondente em `drizzle/meta/`
+- Create: migration/snapshot gerados pelo Drizzle
 - Create: `server/workShiftSchema.test.ts`
 
-**Interfaces:**
-- Produces: `workShiftSessions`, `workShiftEvents`, `workShiftSessionStatusEnum`, `workShiftSourceEnum`.
-- Task 4 importa as tabelas diretamente do schema.
+### 2.1 RED — tabelas e nulabilidade
 
-- [ ] **Step 1: escrever teste RED do schema**
-
-Criar `server/workShiftSchema.test.ts`:
+Criar teste usando a API de configuração de tabela, evitando inspeção frágil de propriedades internas:
 
 ```ts
 import { getTableName } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/mysql-core";
 import { describe, expect, it } from "vitest";
 import { workShiftEvents, workShiftSessions } from "../drizzle/schema";
 
-it("expõe as tabelas históricas da jornada", () => {
-  expect(getTableName(workShiftSessions)).toBe("work_shift_sessions");
-  expect(getTableName(workShiftEvents)).toBe("work_shift_events");
-});
+function column(table: Parameters<typeof getTableConfig>[0], name: string) {
+  const found = getTableConfig(table).columns.find(item => item.name === name);
+  if (!found) throw new Error(`Coluna ausente: ${name}`);
+  return found;
+}
 
-describe("campos mínimos da D-007A", () => {
-  it("mantém usuário obrigatório e equipe opcional na sessão", () => {
-    expect(workShiftSessions.userId.notNull).toBe(true);
-    expect(workShiftSessions.teamId.notNull).toBe(false);
-    expect(workShiftSessions.startedAt.notNull).toBe(true);
-    expect(workShiftSessions.pausedSeconds.notNull).toBe(true);
+describe("D-007A schema", () => {
+  it("expõe as tabelas históricas", () => {
+    expect(getTableName(workShiftSessions)).toBe("work_shift_sessions");
+    expect(getTableName(workShiftEvents)).toBe("work_shift_events");
+  });
+
+  it("mantém usuário obrigatório e equipe opcional", () => {
+    expect(column(workShiftSessions, "user_id").notNull).toBe(true);
+    expect(column(workShiftSessions, "team_id").notNull).toBe(false);
+    expect(column(workShiftSessions, "started_at").notNull).toBe(true);
+    expect(column(workShiftSessions, "paused_seconds").notNull).toBe(true);
   });
 });
 ```
 
-- [ ] **Step 2: executar RED**
+Run:
 
 ```bash
 corepack pnpm vitest run --config vitest.config.ts server/workShiftSchema.test.ts
 ```
 
-Expected: FAIL porque as tabelas ainda não existem.
+Expected: **FAIL** porque as tabelas não existem.
 
-- [ ] **Step 3: adicionar enums e tabelas ao `drizzle/schema.ts`**
+### 2.2 GREEN — enums e tabelas
 
-Adicionar próximos aos demais enums:
+Adicionar ao schema:
 
 ```ts
 export const workShiftSessionStatusEnum = mysqlEnum("work_shift_session_status", ["active", "paused", "ended", "cancelled"]);
 export const workShiftSourceEnum = mysqlEnum("work_shift_source", ["self", "supervisor", "admin", "migration", "system"]);
 ```
 
-Adicionar tabelas após `users`/`teams` estarem declaradas:
+Adicionar `workShiftSessions` depois de `users`:
 
 ```ts
 export const workShiftSessions = mysqlTable(
@@ -362,12 +267,16 @@ export const workShiftSessions = mysqlTable(
     index("work_shift_sessions_team_started_idx").on(table.teamId, table.startedAt),
   ],
 );
+```
 
+Adicionar `workShiftEvents`:
+
+```ts
 export const workShiftEvents = mysqlTable(
   "work_shift_events",
   {
     id: int("id").autoincrement().primaryKey(),
-    sessionId: int("session_id").notNull().references(() => workShiftSessions.id, { onDelete: "cascade" }),
+    sessionId: int("session_id").notNull().references(() => workShiftSessions.id, { onDelete: "restrict" }),
     eventType: varchar("event_type", { length: 48 }).notNull(),
     occurredAt: timestamp("occurred_at").notNull(),
     actorUserId: int("actor_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -381,37 +290,38 @@ export const workShiftEvents = mysqlTable(
 );
 ```
 
-Não adicionar ainda `scheduleAssignmentId`, `scheduledStartAt` e `scheduledEndAt`; esses campos entram junto com as FKs da D-007B para não criar referência órfã.
+Não adicionar `scheduleAssignmentId`, `scheduledStartAt` ou `scheduledEndAt` na D-007A; entram com as FKs da D-007B.
 
-- [ ] **Step 4: gerar migration sem conectar em banco real**
-
-Use uma URL sintaticamente válida apenas para carregar `drizzle.config.ts`; `generate` não deve aplicar SQL:
+### 2.3 Gerar migration sem aplicar
 
 ```bash
 DATABASE_URL='mysql://root:plan-only@127.0.0.1:3306/dispatch_plan' \
   corepack pnpm exec drizzle-kit generate --name d007a_work_shift_history
 ```
 
-Expected: criar `drizzle/0003_d007a_work_shift_history.sql` e atualizar metadata. **Não executar `drizzle-kit migrate` nem `pnpm db:push`.**
+Expected: gerar a próxima migration (esperada `0003_...sql`) e metadata. **Não executar migrate/db:push.**
 
-- [ ] **Step 5: acrescentar somente o catálogo de permissões na migration**
+### 2.4 Acrescentar catálogo RBAC usando colunas reais
 
-Depois do SQL gerado, adicionar ao final, usando os nomes reais das colunas de `access_permissions` confirmados no schema:
+O schema atual de `access_permissions` usa `code`, `resource`, `action`, `description`, `active` — não possui `name`.
+
+Adicionar ao SQL gerado:
 
 ```sql
-INSERT INTO `access_permissions` (`code`, `name`, `description`, `active`)
+INSERT INTO `access_permissions` (`code`, `resource`, `action`, `description`, `active`)
 VALUES
-  ('work_shifts.view', 'Consultar jornada', 'Consulta a própria jornada e histórico autorizado.', true),
-  ('work_shifts.control', 'Controlar própria jornada', 'Inicia, pausa, retoma e encerra a própria jornada.', true)
+  ('work_shifts.view', 'work_shifts', 'view', 'Consulta a própria jornada e histórico autorizado.', true),
+  ('work_shifts.control', 'work_shifts', 'control', 'Inicia, pausa, retoma e encerra a própria jornada.', true)
 ON DUPLICATE KEY UPDATE
-  `name` = VALUES(`name`),
+  `resource` = VALUES(`resource`),
+  `action` = VALUES(`action`),
   `description` = VALUES(`description`),
   `active` = VALUES(`active`);
 ```
 
-Não inserir linhas em `role_permissions`.
+Não inserir nada em `role_permissions`.
 
-- [ ] **Step 6: verificar migration e schema**
+### 2.5 GREEN
 
 ```bash
 corepack pnpm vitest run --config vitest.config.ts server/workShiftSchema.test.ts
@@ -420,139 +330,108 @@ corepack pnpm check
 
 Expected: PASS.
 
-- [ ] **Step 7: commit**
+Commit:
 
 ```bash
-git add drizzle/schema.ts drizzle/0003_d007a_work_shift_history.sql drizzle/meta server/workShiftSchema.test.ts
+git add drizzle/schema.ts drizzle/0003* drizzle/meta server/workShiftSchema.test.ts
 git commit -m "feat(d007): add work shift history schema"
 ```
 
 ---
 
-### Task 3: Serviço transacional independente do Drizzle
+## Task 3 — Serviço transacional independente de Drizzle
 
-**Files:**
+**Files**
 - Create: `server/workShiftService.ts`
 - Create: `server/workShiftService.test.ts`
 
-**Interfaces:**
-- Consumes: `resolveWorkShiftTransition` da Task 1.
-- Produces: `WorkShiftStore` e `executeOwnWorkShiftAction(store, input)`.
-- Task 4 implementa `WorkShiftStore` dentro de uma transaction Drizzle.
+### 3.1 RED — fake store
 
-- [ ] **Step 1: escrever o fake store e testes RED**
+Criar fake `WorkShiftStore` e testes para `start`, `pause`, `resume`, `end`, inclusive ausência de `teamId`.
 
-Criar `server/workShiftService.test.ts` com fake explícito:
+Casos mínimos:
+- `start` cria sessão, exatamente um evento `started` e espelho legado quando há equipe;
+- sem `teamId`, nenhum `mirrorTeam`;
+- `pause/resume/end` atualizam a sessão existente e registram exatamente um evento;
+- `end` preserva o `workedSeconds` calculado pelo domínio.
 
-```ts
-import { describe, expect, it, vi } from "vitest";
-import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
-
-function store(current: Awaited<ReturnType<WorkShiftStore["getOpenSession"]>> = null): WorkShiftStore {
-  return {
-    getOpenSession: vi.fn().mockResolvedValue(current),
-    createSession: vi.fn().mockResolvedValue({ id: 77 }),
-    updateSession: vi.fn().mockResolvedValue(undefined),
-    appendEvent: vi.fn().mockResolvedValue(undefined),
-    mirrorTeam: vi.fn().mockResolvedValue(undefined),
-  };
-}
-
-describe("executeOwnWorkShiftAction", () => {
-  it("cria sessão, evento e espelho legado no start", async () => {
-    const fake = store();
-    const now = new Date("2026-09-04T08:00:00.000Z");
-
-    await executeOwnWorkShiftAction(fake, { userId: 7, teamId: 3, action: "start", now });
-
-    expect(fake.createSession).toHaveBeenCalledWith(expect.objectContaining({ userId: 7, teamId: 3, source: "self", status: "active", startedAt: now }));
-    expect(fake.appendEvent).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 77, eventType: "started", actorUserId: 7, occurredAt: now }));
-    expect(fake.mirrorTeam).toHaveBeenCalledWith(3, expect.objectContaining({ shiftStartedAt: now }));
-  });
-
-  it("não tenta espelhar equipe quando o usuário não possui teamId", async () => {
-    const fake = store();
-    await executeOwnWorkShiftAction(fake, { userId: 7, teamId: null, action: "start", now: new Date("2026-09-04T08:00:00.000Z") });
-    expect(fake.mirrorTeam).not.toHaveBeenCalled();
-  });
-});
-```
-
-Adicionar casos de `pause`, `resume`, `end` verificando `updateSession`, `appendEvent` e `mirrorTeam`.
-
-- [ ] **Step 2: executar RED**
+Run:
 
 ```bash
 corepack pnpm vitest run --config vitest.config.ts server/workShiftService.test.ts
 ```
 
-Expected: FAIL por módulo/funções ausentes.
+Expected: **FAIL** por módulo/função ausente.
 
-- [ ] **Step 3: implementar a porta e o serviço mínimo**
+### 3.2 GREEN — tipos de store específicos
 
-Criar `server/workShiftService.ts`:
+Em `server/workShiftService.ts`, usar tipos específicos, sem `Record<string, unknown>` para patches de sessão:
 
 ```ts
-import type { WorkShiftAction, WorkShiftSource } from "../shared/workShifts";
-import { resolveWorkShiftTransition, type OpenWorkShiftSnapshot, type WorkShiftLegacyPatch } from "./workShiftDomain";
+import type { WorkShiftAction, WorkShiftEventType, WorkShiftSource } from "../shared/workShifts";
+import type { OpenWorkShiftSnapshot, WorkShiftLegacyPatch, WorkShiftSessionPatch } from "./workShiftDomain";
+
+export type WorkShiftCreateSession = {
+  userId: number;
+  teamId: number | null;
+  source: WorkShiftSource;
+  startedAt: Date;
+  pausedAt: null;
+  endedAt: null;
+  status: "active";
+  pausedSeconds: number;
+  workedSeconds: number;
+};
+
+export type WorkShiftEventSnapshot = Record<string, string | number | boolean | null>;
 
 export type WorkShiftStore = {
   getOpenSession(userId: number): Promise<OpenWorkShiftSnapshot | null>;
-  createSession(input: {
-    userId: number;
-    teamId: number | null;
-    source: WorkShiftSource;
-    startedAt: Date;
-    pausedAt: null;
-    endedAt: null;
-    status: "active";
-    pausedSeconds: number;
-    workedSeconds: number;
-  }): Promise<{ id: number }>;
-  updateSession(sessionId: number, patch: Record<string, unknown>): Promise<void>;
+  createSession(input: WorkShiftCreateSession): Promise<{ id: number }>;
+  updateSession(sessionId: number, patch: WorkShiftSessionPatch): Promise<void>;
   appendEvent(input: {
     sessionId: number;
-    eventType: string;
+    eventType: WorkShiftEventType;
     actorUserId: number;
     occurredAt: Date;
-    beforeData: Record<string, unknown> | null;
-    afterData: Record<string, unknown> | null;
+    beforeData: WorkShiftEventSnapshot | null;
+    afterData: WorkShiftEventSnapshot | null;
   }): Promise<void>;
   mirrorTeam(teamId: number, patch: WorkShiftLegacyPatch): Promise<void>;
 };
+```
 
-export async function executeOwnWorkShiftAction(
-  store: WorkShiftStore,
-  input: { userId: number; teamId: number | null; action: WorkShiftAction; now?: Date },
-) {
-  const now = input.now ?? new Date();
-  const before = await store.getOpenSession(input.userId);
-  const plan = resolveWorkShiftTransition(before, input.action, now);
+### 3.3 Snapshots serializáveis
 
-  let sessionId: number;
-  if (plan.mode === "create") {
-    sessionId = (await store.createSession({ userId: input.userId, teamId: input.teamId, source: "self", ...plan.session })).id;
-  } else {
-    if (!before) throw new Error("Sessão de jornada não encontrada.");
-    sessionId = before.id;
-    await store.updateSession(sessionId, plan.sessionPatch);
-  }
+Adicionar helper puro que converte `Date` para ISO antes de persistir em JSON:
 
-  await store.appendEvent({
-    sessionId,
-    eventType: plan.eventType,
-    actorUserId: input.userId,
-    occurredAt: now,
-    beforeData: before ? { ...before } : null,
-    afterData: plan.mode === "create" ? { ...plan.session } : { ...plan.sessionPatch },
-  });
-
-  if (input.teamId !== null) await store.mirrorTeam(input.teamId, plan.legacyPatch);
-  return { sessionId, eventType: plan.eventType };
+```ts
+export function snapshotOpenSession(value: OpenWorkShiftSnapshot | null): WorkShiftEventSnapshot | null {
+  if (!value) return null;
+  return {
+    id: value.id,
+    startedAt: value.startedAt.toISOString(),
+    pausedAt: value.pausedAt?.toISOString() ?? null,
+    endedAt: value.endedAt?.toISOString() ?? null,
+    status: value.status,
+    pausedSeconds: value.pausedSeconds,
+  };
 }
 ```
 
-- [ ] **Step 4: executar GREEN e testes do domínio**
+Criar helper equivalente para o estado `afterData`, nunca gravando objetos `Date` crus no snapshot JSON.
+
+### 3.4 Orquestração
+
+`executeOwnWorkShiftAction(store, { userId, teamId, action, now? })` deve:
+1. obter sessão aberta;
+2. chamar `resolveWorkShiftTransition`;
+3. criar ou atualizar a sessão;
+4. anexar exatamente um evento com snapshots sanitizados;
+5. espelhar `teams.*shift*` se `teamId !== null`;
+6. retornar `{ sessionId, eventType }`.
+
+### 3.5 GREEN
 
 ```bash
 corepack pnpm vitest run --config vitest.config.ts server/workShiftDomain.test.ts server/workShiftService.test.ts
@@ -560,7 +439,7 @@ corepack pnpm vitest run --config vitest.config.ts server/workShiftDomain.test.t
 
 Expected: PASS.
 
-- [ ] **Step 5: commit**
+Commit:
 
 ```bash
 git add server/workShiftService.ts server/workShiftService.test.ts
@@ -569,47 +448,25 @@ git commit -m "feat(d007): orchestrate historical work shift actions"
 
 ---
 
-### Task 4: Adapter Drizzle transacional, histórico e compatibilidade com equipe
+## Task 4 — Adapter Drizzle transacional e histórico próprio
 
-**Files:**
+**Files**
 - Modify: `server/db.ts`
 - Create: `server/workShiftDbContract.test.ts`
 
-**Interfaces:**
-- Produces: `controlOwnWorkShift(input)`.
-- Produces: `getOwnCurrentWorkShift(userId)`.
-- Produces: `listOwnWorkShiftHistory({ userId, page, pageSize })`.
-- Consumes: `executeOwnWorkShiftAction` e tabelas da Task 2.
+### 4.1 RED — invariantes estruturais locais
 
-- [ ] **Step 1: criar teste RED do contrato de persistência**
+Criar teste que verifique em `server/db.ts`:
+- `controlOwnWorkShift` existe;
+- usa `db.transaction`;
+- executa `.for("update")` no usuário antes da decisão;
+- usa `executeOwnWorkShiftAction`;
+- persiste `workShiftSessions`/`workShiftEvents`;
+- espelha por `tx.update(teams)`.
 
-Criar `server/workShiftDbContract.test.ts` como teste estrutural focado apenas em invariantes que não dependem de MySQL externo:
+Esse teste estrutural não substitui integração MySQL; ele garante no gate local que a proteção de concorrência não seja removida inadvertidamente.
 
-```ts
-import fs from "node:fs";
-import { describe, expect, it } from "vitest";
-
-const source = fs.readFileSync(new URL("./db.ts", import.meta.url), "utf8");
-
-describe("adapter transacional da jornada", () => {
-  it("serializa por usuário antes de executar a ação", () => {
-    expect(source).toContain("export async function controlOwnWorkShift");
-    expect(source).toContain("db.transaction");
-    expect(source).toContain('.for("update")');
-    expect(source).toContain("executeOwnWorkShiftAction");
-  });
-
-  it("persiste sessão/evento e preserva o espelho legado de equipe", () => {
-    expect(source).toContain("workShiftSessions");
-    expect(source).toContain("workShiftEvents");
-    expect(source).toContain("tx.update(teams)");
-  });
-});
-```
-
-Este teste não substitui a integração de banco futura; ele protege a presença da transação/lock no gate local, enquanto a lógica transacional é exercitada por `workShiftService.test.ts`.
-
-- [ ] **Step 2: executar RED**
+Run:
 
 ```bash
 corepack pnpm vitest run --config vitest.config.ts server/workShiftDbContract.test.ts
@@ -617,15 +474,7 @@ corepack pnpm vitest run --config vitest.config.ts server/workShiftDbContract.te
 
 Expected: FAIL.
 
-- [ ] **Step 3: adicionar imports no `server/db.ts`**
-
-Adicionar `workShiftSessions`, `workShiftEvents` aos imports do schema e:
-
-```ts
-import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
-```
-
-- [ ] **Step 4: implementar consulta da sessão atual**
+### 4.2 GREEN — consultas
 
 Adicionar:
 
@@ -633,80 +482,72 @@ Adicionar:
 export async function getOwnCurrentWorkShift(userId: number) {
   const db = await requireDb();
   return (
-    await db
-      .select()
-      .from(workShiftSessions)
+    await db.select().from(workShiftSessions)
       .where(and(eq(workShiftSessions.userId, userId), inArray(workShiftSessions.status, ["active", "paused"])))
       .orderBy(desc(workShiftSessions.startedAt))
       .limit(1)
   )[0] ?? null;
 }
-```
 
-- [ ] **Step 5: implementar histórico paginado próprio**
-
-```ts
 export async function listOwnWorkShiftHistory(input: { userId: number; page: number; pageSize: number }) {
   const db = await requireDb();
   const where = eq(workShiftSessions.userId, input.userId);
   const [rows, totalRows] = await Promise.all([
-    db.select().from(workShiftSessions).where(where).orderBy(desc(workShiftSessions.startedAt)).limit(input.pageSize).offset((input.page - 1) * input.pageSize),
+    db.select().from(workShiftSessions).where(where).orderBy(desc(workShiftSessions.startedAt))
+      .limit(input.pageSize).offset((input.page - 1) * input.pageSize),
     db.select({ total: count() }).from(workShiftSessions).where(where),
   ]);
   return { rows, total: Number(totalRows[0]?.total ?? 0) };
 }
 ```
 
-- [ ] **Step 6: implementar `controlOwnWorkShift` com lock do usuário**
+### 4.3 GREEN — lock por usuário e store Drizzle
 
-O corpo deve seguir esta forma, mantendo tudo na mesma transaction:
+`controlOwnWorkShift` deve:
 
 ```ts
-export async function controlOwnWorkShift(input: { userId: number; teamId: number | null; action: "start" | "pause" | "resume" | "end" }) {
+export async function controlOwnWorkShift(input: {
+  userId: number;
+  teamId: number | null;
+  action: WorkShiftAction;
+}) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    const lockedUser = await tx.select({ id: users.id }).from(users).where(eq(users.id, input.userId)).limit(1).for("update");
+    const lockedUser = await tx.select({ id: users.id }).from(users)
+      .where(eq(users.id, input.userId)).limit(1).for("update");
     if (!lockedUser[0]) throw new Error("Usuário não encontrado.");
 
-    const store: WorkShiftStore = {
-      async getOpenSession(userId) {
-        const row = (await tx.select().from(workShiftSessions)
-          .where(and(eq(workShiftSessions.userId, userId), inArray(workShiftSessions.status, ["active", "paused"])))
-          .orderBy(desc(workShiftSessions.startedAt)).limit(1))[0];
-        return row ? { id: row.id, startedAt: row.startedAt, pausedAt: row.pausedAt, endedAt: row.endedAt, status: row.status as "active" | "paused", pausedSeconds: row.pausedSeconds } : null;
-      },
-      async createSession(values) {
-        const [created] = await tx.insert(workShiftSessions).values(values).$returningId();
-        return { id: created.id };
-      },
-      async updateSession(sessionId, patch) {
-        await tx.update(workShiftSessions).set(patch).where(eq(workShiftSessions.id, sessionId));
-      },
-      async appendEvent(event) {
-        await tx.insert(workShiftEvents).values(event);
-      },
-      async mirrorTeam(teamId, patch) {
-        await tx.update(teams).set(patch).where(eq(teams.id, teamId));
-      },
-    };
+    // Construir WorkShiftStore usando SOMENTE `tx`.
+    // `getOpenSession` ocorre depois do lock do usuário.
+    // `createSession`, `updateSession`, `appendEvent` e `mirrorTeam`
+    // permanecem na mesma transaction.
 
     return executeOwnWorkShiftAction(store, input);
   });
 }
 ```
 
-Antes de finalizar, fazer o TypeScript inferir os patches com tipos de Drizzle; não usar `as any`.
+No adapter:
+- `getOpenSession` retorna somente `active|paused`;
+- `createSession` usa `$returningId()`;
+- `updateSession` recebe `WorkShiftSessionPatch` tipado diretamente, sem `as any`;
+- `appendEvent` persiste snapshots serializáveis;
+- `mirrorTeam` usa `WorkShiftLegacyPatch` e não toca `teams.status`.
 
-- [ ] **Step 7: executar testes e tipagem**
+### 4.4 GREEN + tipagem
 
 ```bash
-corepack pnpm vitest run --config vitest.config.ts server/workShiftDomain.test.ts server/workShiftService.test.ts server/workShiftDbContract.test.ts server/teamShift.test.ts
+corepack pnpm vitest run --config vitest.config.ts \
+  server/workShiftDomain.test.ts \
+  server/workShiftService.test.ts \
+  server/workShiftDbContract.test.ts \
+  server/teamShift.test.ts
 corepack pnpm check
 ```
 
 Expected: PASS.
 
-- [ ] **Step 8: commit**
+Commit:
 
 ```bash
 git add server/db.ts server/workShiftDbContract.test.ts
@@ -715,106 +556,32 @@ git commit -m "feat(d007): persist own work shift history transactionally"
 
 ---
 
-### Task 5: Router tRPC e RBAC específico
+## Task 5 — Router tRPC e RBAC específico
 
-**Files:**
+**Files**
 - Modify: `server/routers.ts`
 - Create: `server/workShifts.router.test.ts`
 - Modify: `server/accessControl.test.ts`
 
-**Interfaces:**
-- Produces tRPC: `workShifts.current`, `workShifts.history`, `workShifts.control`.
-- RBAC: `work_shifts.view` para leitura; `work_shifts.control` para ação própria.
-- O `control` não aceita `userId`, `teamId` ou timestamp do cliente; usa exclusivamente `ctx.user.id` e `ctx.user.teamId`.
+### 5.1 RED — contratos de autoatendimento
 
-- [ ] **Step 1: escrever RED do router usando o padrão de mocks existente**
+Basear mocks no padrão de `server/triageAndShift.router.test.ts`. Exigir:
+- `workShifts.current()` chama `assertPermission(..., "work_shifts.view")` e consulta `ctx.user.id`;
+- `workShifts.history({ page, pageSize })` usa `work_shifts.view` e força `userId` do contexto;
+- `workShifts.control({ action })` usa `work_shifts.control` e passa `{ userId: ctx.user.id, teamId: ctx.user.teamId, action }`;
+- input de `control` não possui campos para timestamps/user/team.
 
-Criar `server/workShifts.router.test.ts` baseado em `triageAndShift.router.test.ts`:
-
-```ts
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TrpcContext } from "./_core/context";
-
-const mocks = vi.hoisted(() => ({
-  assertPermission: vi.fn(),
-  getOwnCurrentWorkShift: vi.fn(),
-  listOwnWorkShiftHistory: vi.fn(),
-  controlOwnWorkShift: vi.fn(),
-}));
-
-vi.mock("./accessControl", async importOriginal => ({
-  ...(await importOriginal<typeof import("./accessControl")>()),
-  assertPermission: mocks.assertPermission,
-}));
-
-vi.mock("./db", async importOriginal => ({
-  ...(await importOriginal<typeof import("./db")>()),
-  getOwnCurrentWorkShift: mocks.getOwnCurrentWorkShift,
-  listOwnWorkShiftHistory: mocks.listOwnWorkShiftHistory,
-  controlOwnWorkShift: mocks.controlOwnWorkShift,
-}));
-
-import { appRouter } from "./routers";
-
-function context(): TrpcContext {
-  return {
-    user: {
-      id: 7,
-      openId: "d007-agent",
-      name: "Agente D007",
-      email: "agent@test.local",
-      loginMethod: "test",
-      role: "user",
-      operationalRole: "agente",
-      teamId: 3,
-      active: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      lastSignedIn: new Date(),
-    },
-    req: { headers: {}, protocol: "https" } as TrpcContext["req"],
-    res: {} as TrpcContext["res"],
-  };
-}
-
-describe("workShifts router", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.assertPermission.mockResolvedValue(undefined);
-    mocks.getOwnCurrentWorkShift.mockResolvedValue(null);
-    mocks.listOwnWorkShiftHistory.mockResolvedValue({ rows: [], total: 0 });
-    mocks.controlOwnWorkShift.mockResolvedValue({ sessionId: 77, eventType: "started" });
-  });
-
-  it("usa view para current/history e restringe a consulta ao próprio usuário", async () => {
-    const caller = appRouter.createCaller(context());
-    await caller.workShifts.current();
-    await caller.workShifts.history({ page: 1, pageSize: 25 });
-    expect(mocks.assertPermission).toHaveBeenNthCalledWith(1, expect.objectContaining({ id: 7 }), "work_shifts.view");
-    expect(mocks.assertPermission).toHaveBeenNthCalledWith(2, expect.objectContaining({ id: 7 }), "work_shifts.view");
-    expect(mocks.listOwnWorkShiftHistory).toHaveBeenCalledWith({ userId: 7, page: 1, pageSize: 25 });
-  });
-
-  it("usa control e deriva user/team do contexto autenticado", async () => {
-    const caller = appRouter.createCaller(context());
-    await caller.workShifts.control({ action: "start" });
-    expect(mocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shifts.control");
-    expect(mocks.controlOwnWorkShift).toHaveBeenCalledWith({ userId: 7, teamId: 3, action: "start" });
-  });
-});
-```
-
-- [ ] **Step 2: executar RED**
+Run:
 
 ```bash
 corepack pnpm vitest run --config vitest.config.ts server/workShifts.router.test.ts
 ```
 
-Expected: FAIL porque `workShifts` ainda não existe no `appRouter`.
+Expected: FAIL porque `workShifts` ainda não existe.
 
-- [ ] **Step 3: adicionar imports e router**
+### 5.2 GREEN — router
 
-Em `server/routers.ts`, importar `WORK_SHIFT_ACTIONS` e as três funções do `db.ts`. Adicionar no nível raiz do `appRouter`:
+Importar `WORK_SHIFT_ACTIONS` e adicionar:
 
 ```ts
 workShifts: router({
@@ -822,12 +589,10 @@ workShifts: router({
     await assertPermission(ctx.user, "work_shifts.view");
     return getOwnCurrentWorkShift(ctx.user.id);
   }),
-  history: operationalProcedure
-    .input(paginationInput)
-    .query(async ({ ctx, input }) => {
-      await assertPermission(ctx.user, "work_shifts.view");
-      return listOwnWorkShiftHistory({ userId: ctx.user.id, ...input });
-    }),
+  history: operationalProcedure.input(paginationInput).query(async ({ ctx, input }) => {
+    await assertPermission(ctx.user, "work_shifts.view");
+    return listOwnWorkShiftHistory({ userId: ctx.user.id, ...input });
+  }),
   control: operationalProcedure
     .input(z.object({ action: z.enum(WORK_SHIFT_ACTIONS) }))
     .mutation(async ({ ctx, input }) => {
@@ -837,27 +602,47 @@ workShifts: router({
 }),
 ```
 
-- [ ] **Step 4: comprovar que permissão dinâmica funciona sem grant legado implícito**
+### 5.3 RBAC sem grant legado implícito
 
-Adicionar a `server/accessControl.test.ts`:
+Adicionar em `server/accessControl.test.ts`:
 
 ```ts
-it("reconhece permissões dinâmicas de jornada sem concedê-las ao agente legado", () => {
-  expect(evaluatePermission({ active: true, operationalRole: "agente", hasDynamicAssignments: true, dynamicPermissions: ["work_shifts.view", "work_shifts.control"] }, "work_shifts.control")).toBe(true);
-  expect(evaluatePermission({ active: true, operationalRole: "agente", hasDynamicAssignments: false, dynamicPermissions: [] }, "work_shifts.control")).toBe(false);
-  expect(evaluatePermission({ active: true, operationalRole: "administrador", hasDynamicAssignments: false, dynamicPermissions: [] }, "work_shifts.control")).toBe(true);
+it("reconhece jornada dinâmica sem conceder control ao agente legado", () => {
+  expect(evaluatePermission({
+    active: true,
+    operationalRole: "agente",
+    hasDynamicAssignments: true,
+    dynamicPermissions: ["work_shifts.view", "work_shifts.control"],
+  }, "work_shifts.control")).toBe(true);
+
+  expect(evaluatePermission({
+    active: true,
+    operationalRole: "agente",
+    hasDynamicAssignments: false,
+    dynamicPermissions: [],
+  }, "work_shifts.control")).toBe(false);
+
+  expect(evaluatePermission({
+    active: true,
+    operationalRole: "administrador",
+    hasDynamicAssignments: false,
+    dynamicPermissions: [],
+  }, "work_shifts.control")).toBe(true);
 });
 ```
 
-- [ ] **Step 5: executar GREEN do router/RBAC**
+### 5.4 GREEN + regressão do endpoint legado
 
 ```bash
-corepack pnpm vitest run --config vitest.config.ts server/workShifts.router.test.ts server/accessControl.test.ts server/triageAndShift.router.test.ts
+corepack pnpm vitest run --config vitest.config.ts \
+  server/workShifts.router.test.ts \
+  server/accessControl.test.ts \
+  server/triageAndShift.router.test.ts
 ```
 
-Expected: PASS; `teams.updateShift` continua operando no teste legado.
+Expected: PASS.
 
-- [ ] **Step 6: commit**
+Commit:
 
 ```bash
 git add server/routers.ts server/workShifts.router.test.ts server/accessControl.test.ts
@@ -866,37 +651,42 @@ git commit -m "feat(d007): expose own work shift API with RBAC"
 
 ---
 
-### Task 6: Cobertura tRPC e invariantes de compatibilidade
+## Task 6 — Inventário tRPC e compatibilidade legada
 
-**Files:**
+**Files**
 - Modify: `scripts/generate-trpc-coverage.mjs`
-- Modify: `docs/TRPC_CONTRACT_COVERAGE.md`
+- Generated/Modify: `docs/TRPC_CONTRACT_COVERAGE.md`
 - Modify: `server/teamShift.test.ts`
-- Modify: `server/triageAndShift.router.test.ts` only if an explicit compatibility assertion is missing after Task 5.
 
-**Interfaces:**
-- Coverage root: `workShifts`.
-- Expected tRPC surface after adding 3 procedures: 100 procedures (97 atuais + 3 D-007A), unless execution discovers another concurrent intentional router change; in that case recompute the exact count from `server/routers.ts` and document the reason before changing the assertion.
+### 6.1 RED — gerador percebe a nova superfície
 
-- [ ] **Step 1: escrever RED no gerador de cobertura**
-
-Antes de modificar o script, execute:
+Antes de alterar o script:
 
 ```bash
 corepack pnpm contracts:coverage
 ```
 
-Expected: FAIL por superfície tRPC inesperada e/ou raiz `workShifts` sem classificação.
+Expected: FAIL por contagem inesperada e/ou raiz `workShifts` sem regra.
 
-- [ ] **Step 2: adicionar a regra de cobertura**
+### 6.2 GREEN — classificar `workShifts`
 
-Em `scripts/generate-trpc-coverage.mjs`, adicionar:
+Adicionar:
 
 ```js
-{ prefix: "workShifts", suites: ["server/workShifts.router.test.ts", "server/workShiftDomain.test.ts", "server/workShiftService.test.ts"], evidence: "Jornada individual histórica: current, history, controle start/pause/resume/end, RBAC e máquina de estados." },
+{
+  prefix: "workShifts",
+  suites: [
+    "server/workShifts.router.test.ts",
+    "server/workShiftDomain.test.ts",
+    "server/workShiftService.test.ts",
+  ],
+  evidence: "Jornada individual histórica: current, history, start/pause/resume/end, RBAC e máquina de estados.",
+},
 ```
 
-Atualizar a asserção da superfície:
+A base aprovada tem 97 procedimentos. Três novos procedimentos levam a 100; antes de editar a asserção, contar a superfície atual do próprio `server/routers.ts`. Se houver outra mudança intencional concorrente, documentar o motivo e usar a contagem real — não mascarar divergência.
+
+Atualização esperada:
 
 ```js
 if (procedures.length !== 100) {
@@ -904,30 +694,25 @@ if (procedures.length !== 100) {
 }
 ```
 
-Não editar manualmente as contagens de arquivos/testes no markdown gerado sem antes verificar o que o próprio script produz; se esses números estiverem hardcoded e já estiverem defasados na base, corrigi-los na mesma mudança para refletir a suíte atual observada em `pnpm test`.
+### 6.3 Reforçar compatibilidade legada
 
-- [ ] **Step 3: reforçar teste legado da equipe**
+Em `server/teamShift.test.ts`, manter e reforçar que `resolveTeamShiftAction` continua funcional na transição D-007A. `server/triageAndShift.router.test.ts` já cobre o `teams.updateShift`; só modificar se o teste existente deixar de provar essa compatibilidade.
 
-Adicionar a `server/teamShift.test.ts` uma asserção explícita de que a função legada continua independente do novo domínio:
-
-```ts
-it("mantém a máquina legada disponível durante a transição D-007A", () => {
-  const startedAt = new Date("2026-09-04T08:00:00.000Z");
-  expect(resolveTeamShiftAction({ startedAt: null, pausedAt: null, endedAt: null, pausedTotalSeconds: 0 }, "start", startedAt))
-    .toEqual({ shiftStartedAt: startedAt, shiftEndsAt: null, shiftPausedAt: null, shiftPausedTotalSeconds: 0 });
-});
-```
-
-- [ ] **Step 4: regenerar e validar inventário**
+### 6.4 Regenerar
 
 ```bash
 corepack pnpm contracts:coverage
-corepack pnpm vitest run --config vitest.config.ts server/teamShift.test.ts server/triageAndShift.router.test.ts server/workShifts.router.test.ts
+corepack pnpm vitest run --config vitest.config.ts \
+  server/teamShift.test.ts \
+  server/triageAndShift.router.test.ts \
+  server/workShifts.router.test.ts
 ```
 
-Expected: PASS e `docs/TRPC_CONTRACT_COVERAGE.md` contém `workShifts.current`, `workShifts.history`, `workShifts.control`.
+Expected: PASS e markdown contém `workShifts.current`, `workShifts.history`, `workShifts.control`.
 
-- [ ] **Step 5: commit**
+Se o gerador possuir números de arquivos/testes hardcoded e já defasados, atualizá-los somente após observar a saída real de `pnpm test` na Task 7.
+
+Commit:
 
 ```bash
 git add scripts/generate-trpc-coverage.mjs docs/TRPC_CONTRACT_COVERAGE.md server/teamShift.test.ts server/triageAndShift.router.test.ts
@@ -936,18 +721,13 @@ git commit -m "test(d007): cover work shift API and legacy compatibility"
 
 ---
 
-### Task 7: Gate completo, documentação e checkpoint D-007A
+## Task 7 — Gate completo, evidência e checkpoint
 
-**Files:**
+**Files**
 - Modify: `todo.md`
 - Create: `docs/D-007A-WORK-SHIFT-HISTORY-EVIDENCE.md`
-- No production source changes in this task unless a gate exposes a defect; any defect fix gets its own RED/GREEN commit before documentation.
 
-**Interfaces:**
-- Produces evidence record with exact commit SHA, workflow run IDs and artifact digests where applicable.
-- Produces immutable branch `checkpoint/d007a-work-shift-history-20260904` only after all required gates pass on the same final SHA.
-
-- [ ] **Step 1: executar a suíte direcionada final local**
+### 7.1 Testes direcionados finais
 
 ```bash
 corepack pnpm vitest run --config vitest.config.ts \
@@ -963,7 +743,7 @@ corepack pnpm vitest run --config vitest.config.ts \
 
 Expected: PASS.
 
-- [ ] **Step 2: executar o mesmo gate local do workflow Qualidade**
+### 7.2 Gate equivalente à Qualidade
 
 ```bash
 corepack pnpm security:check
@@ -972,130 +752,119 @@ corepack pnpm test
 corepack pnpm build
 ```
 
-Expected: todos exit code 0. Registrar quantidade real de arquivos/testes da execução, sem copiar números antigos.
+Expected: todos exit code 0. Registrar quantidades reais da suíte, sem copiar números históricos.
 
-- [ ] **Step 3: inspecionar o diff de migration**
+### 7.3 Revisão destrutiva da migration
 
 ```bash
-git diff checkpoint/d006e-csp-frame-src-20260904 -- drizzle/schema.ts drizzle/0003_d007a_work_shift_history.sql drizzle/meta
+git diff checkpoint/d006e-csp-frame-src-20260904 -- \
+  drizzle/schema.ts drizzle/0003* drizzle/meta
 ```
 
-Critérios:
-- somente criação de `work_shift_sessions`, `work_shift_events`, índices/FKs correspondentes e catálogo das duas permissões;
-- nenhuma alteração/destruição de tabelas existentes;
-- nenhum `DROP TABLE`, `DROP COLUMN` ou grant em `role_permissions`;
-- nenhum dado operacional real embutido.
+Exigir:
+- somente criação de `work_shift_sessions`, `work_shift_events`, índices/FKs e catálogo das duas permissões;
+- nenhum `DROP TABLE`, `DROP COLUMN` ou alteração destrutiva;
+- nenhum grant em `role_permissions`;
+- nenhum dado operacional real;
+- FK de `work_shift_events.session_id` não pode apagar a trilha por cascade.
 
-- [ ] **Step 4: atualizar `todo.md` sem marcar fases futuras**
+### 7.4 Atualizar roadmap sem antecipar fases
 
-Adicionar seção D-007 e marcar como concluídos apenas:
+Adicionar:
 
 ```md
 ## D-007 — Controle de Jornada de Trabalho
 
-- [x] D-007A — criar domínio histórico de sessão/eventos de jornada individual.
-- [x] D-007A — preservar `teams.*shift*` como compatibilidade sem alterar status operacional automaticamente.
-- [x] D-007A — expor `workShifts.current`, `workShifts.history` e `workShifts.control` com RBAC específico.
-- [x] D-007A — catalogar `work_shifts.view` e `work_shifts.control` sem grants automáticos.
+- [x] D-007A — domínio histórico de sessão/eventos de jornada individual.
+- [x] D-007A — compatibilidade `teams.*shift*` sem alterar status operacional automaticamente.
+- [x] D-007A — `workShifts.current`, `workShifts.history` e `workShifts.control` com RBAC específico.
+- [x] D-007A — catálogo `work_shifts.view` e `work_shifts.control` sem grants automáticos.
 - [ ] D-007B — escalas fixas/cíclicas, 12x36, associações e exceções.
 - [ ] D-007C — elegibilidade por jornada antes do ranking GIS/despacho.
 - [ ] D-007D — ajustes, administração, relatórios e alertas.
 ```
 
-- [ ] **Step 5: criar documento de evidência**
+### 7.5 Documento de evidência
 
-Criar `docs/D-007A-WORK-SHIFT-HISTORY-EVIDENCE.md` com:
-
-```md
-# D-007A — Evidência da Fundação Histórica de Jornada
-
-**Escopo:** sessão individual + eventos + RBAC + compatibilidade de equipe.
-**Base:** `checkpoint/d006e-csp-frame-src-20260904`.
-
-## Entregue
-- `work_shift_sessions` e `work_shift_events`;
-- máquina `start/pause/resume/end` testada;
-- uma sessão aberta por usuário, serializada por lock transacional;
-- histórico próprio paginado;
+Criar `docs/D-007A-WORK-SHIFT-HISTORY-EVIDENCE.md` contendo:
+- escopo entregue;
+- tabelas/contratos;
+- regra de concorrência (lock do usuário);
 - eventos append-only;
-- espelho `teams.*shift*` quando há equipe vinculada;
-- `work_shifts.view` e `work_shifts.control` no catálogo, sem grants automáticos.
+- compatibilidade legado;
+- RBAC sem grants automáticos;
+- escopo explicitamente adiado;
+- declaração de que migration não foi aplicada, sem merge/deploy;
+- SHA e runs reais somente depois dos gates.
 
-## Fora desta entrega
-- 12x36 e escalas;
-- ajustes administrativos;
-- filtro de despacho;
-- relatórios e alertas.
-
-## Segurança operacional
-Nenhuma migration foi aplicada em produção nesta etapa de desenvolvimento; nenhum merge/deploy foi executado.
-```
-
-Preencher o documento com SHA/run IDs reais somente depois dos gates CI.
-
-- [ ] **Step 6: commit documental pré-CI**
+Commit documental inicial:
 
 ```bash
 git add todo.md docs/D-007A-WORK-SHIFT-HISTORY-EVIDENCE.md
 git commit -m "docs(d007): record D-007A historical shift evidence"
 ```
 
-- [ ] **Step 7: abrir PR Draft da branch de implementação para `main`**
+### 7.6 PR Draft
 
-Título:
+Abrir PR para `main`:
 
 ```text
 D-007A: fundação histórica do controle de jornada
 ```
 
-Body deve declarar explicitamente: sem merge/deploy, migration somente gerada e revisada, grants de RBAC não automáticos, D-007B/C/D fora do escopo.
+Body deve declarar: sem merge/deploy; migration apenas gerada/revisada; permissões catalogadas sem grants; D-007B/C/D fora do escopo.
 
-- [ ] **Step 8: verificar CI do SHA documental final**
+### 7.7 CI no mesmo SHA
 
-Exigir, no mesmo SHA:
+Exigir:
 - `Qualidade`: success;
 - `GIS visual homologation`: success;
 - `NEO workspace visual homologation`: success;
 - `NEO external compatibility`: success.
 
-A D-007A não precisa criar novo workflow visual próprio porque não altera UI nesta fase. Se qualquer workflow existente falhar, investigar a causa antes de checkpointar; não classificar automaticamente como flake.
+D-007A não cria workflow visual próprio porque não altera UI.
 
-- [ ] **Step 9: atualizar evidência com IDs reais e revalidar se houver novo commit**
+Se qualquer gate falhar, investigar antes de classificar como flake.
 
-Se o documento receber IDs/digests e isso criar novo SHA, repetir os quatro gates no novo SHA antes do checkpoint.
+### 7.8 Evidência final e revalidação
 
-- [ ] **Step 10: criar checkpoint imutável somente após GREEN final**
+Se inserir run IDs/digests no documento criar novo SHA, repetir os quatro gates nesse SHA. Só depois criar o checkpoint.
 
-```bash
-git branch checkpoint/d007a-work-shift-history-20260904 <FINAL_GREEN_SHA>
-git push origin checkpoint/d007a-work-shift-history-20260904
+### 7.9 Checkpoint imutável
+
+Criar:
+
+```text
+checkpoint/d007a-work-shift-history-20260904
 ```
 
-Não mover esse checkpoint depois de criado. Qualquer correção posterior nasce em nova branch/checkpoint.
+apontando para o **FINAL_GREEN_SHA**. Não mover o checkpoint depois de criado.
 
 ---
 
 ## Acceptance Checklist D-007A
 
-- [ ] Sessões encerradas permanecem consultáveis após iniciar jornadas futuras.
-- [ ] `start` não cria duas sessões abertas para o mesmo usuário sob concorrência serializada.
+- [ ] Sessões encerradas permanecem consultáveis após jornadas futuras.
+- [ ] `start` não cria duas sessões abertas sob concorrência serializada pelo usuário.
 - [ ] `pause/resume/end` rejeitam estados incompatíveis.
-- [ ] Múltiplas pausas acumulam segundos corretamente.
-- [ ] `end` durante pausa inclui a pausa corrente antes de calcular `workedSeconds`.
-- [ ] Cada ação grava exatamente um evento histórico correspondente.
-- [ ] A API não aceita `userId`, `teamId` ou timestamp arbitrário do cliente para controle próprio.
-- [ ] O estado legado da equipe é espelhado somente quando a sessão possui `teamId`.
-- [ ] `teams.status` não é alterado pelas transições da nova jornada.
-- [ ] `teams.updateShift` e seus testes existentes permanecem verdes.
+- [ ] Múltiplas pausas acumulam corretamente.
+- [ ] `end` durante pausa inclui a pausa corrente no cálculo.
+- [ ] Cada ação grava exatamente um evento correspondente.
+- [ ] Snapshots de evento são serializáveis e usam datas ISO, não objetos `Date` crus.
+- [ ] A API de controle não aceita `userId`, `teamId` ou timestamp arbitrário.
+- [ ] Espelho legado ocorre somente quando a sessão possui `teamId`.
+- [ ] Transições da nova jornada não alteram `teams.status`.
+- [ ] `teams.updateShift` e testes existentes permanecem verdes.
 - [ ] `work_shifts.view` e `work_shifts.control` existem no catálogo sem grants automáticos.
 - [ ] Administrador legado `*` permanece compatível.
+- [ ] Eventos não são apagados por cascade da sessão.
 - [ ] `contracts:coverage` reconhece os três novos procedimentos.
 - [ ] Security, TypeScript, suíte completa e build passam.
-- [ ] GIS/NEO não sofrem regressão nos workflows existentes.
+- [ ] GIS/NEO permanecem verdes.
 - [ ] Migration foi apenas gerada/revisada; não aplicada em produção.
-- [ ] Checkpoint final aponta para um SHA com todos os gates verdes.
+- [ ] Checkpoint final aponta para SHA com todos os gates verdes.
 
-## Explicitly Deferred to Later Plans
+## Explicitamente adiado
 
 **D-007B:** `work_shift_schedules`, `work_shift_assignments`, `work_shift_schedule_exceptions`, timezone, `cycleAnchorAt`, 12x36, sobreposição e planejamento.
 
