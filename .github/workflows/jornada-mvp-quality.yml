@@ -14,7 +14,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: jornada-mvp-${{ github.workflow }}-${{ github.ref }}
@@ -69,6 +69,9 @@ jobs:
           git status --short drizzle drizzle.config.ts
           git diff -- drizzle drizzle.config.ts > jornada-migration.patch
           test -s jornada-migration.patch
+          git status --porcelain drizzle | awk '{print $2}' > /tmp/jornada-generated-files.txt
+          test -s /tmp/jornada-generated-files.txt
+          tar -cf /tmp/jornada-generated.tar -T /tmp/jornada-generated-files.txt
 
       - name: Publicar migração gerada
         uses: actions/upload-artifact@v4
@@ -79,3 +82,21 @@ jobs:
             jornada-migration.patch
           if-no-files-found: error
           retention-days: 7
+
+      - name: Versionar artefatos oficiais do Drizzle no branch do PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$HEAD_REF"
+          git checkout -B "$HEAD_REF" "origin/$HEAD_REF"
+          tar -xf /tmp/jornada-generated.tar
+          xargs git add -- < /tmp/jornada-generated-files.txt
+          if git diff --cached --quiet; then
+            echo "Nenhum artefato Drizzle novo para versionar."
+            exit 0
+          fi
+          git commit -m "chore(jornada): versionar migração Drizzle gerada"
+          git push origin "HEAD:$HEAD_REF"
