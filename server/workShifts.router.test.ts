@@ -73,7 +73,7 @@ describe("workShifts router", () => {
     expect(mocks.listOwnWorkShiftHistory).toHaveBeenCalledWith({ userId: 7, page: 2, pageSize: 10 });
   });
 
-  it("controla a própria jornada e ignora identidade/equipe/timestamp enviados pelo cliente", async () => {
+  it("controla a própria jornada no adapter transacional e ignora identidade/equipe/timestamp enviados pelo cliente", async () => {
     const caller = appRouter.createCaller(context());
 
     await caller.workShifts.control({

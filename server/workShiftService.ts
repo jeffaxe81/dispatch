@@ -5,6 +5,7 @@ import {
   type WorkShiftLegacyPatch,
   type WorkShiftSessionPatch,
 } from "./workShiftDomain";
+import type { ResolvedUserWorkShiftPlan } from "./workShiftScheduleService";
 
 export type WorkShiftCreateSession = {
   userId: number;
@@ -16,6 +17,16 @@ export type WorkShiftCreateSession = {
   status: "active";
   pausedSeconds: number;
   workedSeconds: number;
+  scheduleAssignmentId: number | null;
+  scheduledStartAt: Date | null;
+  scheduledEndAt: Date | null;
+  lateStartSeconds: number;
+  earlyEndSeconds: number;
+  overtimeSeconds: number;
+};
+
+export type WorkShiftPlanningResolver = {
+  resolveForUser(userId: number, instant: Date): Promise<ResolvedUserWorkShiftPlan | null>;
 };
 
 export type WorkShiftEventSnapshot = Record<string, string | number | boolean | null>;
@@ -35,6 +46,67 @@ export type WorkShiftStore = {
   mirrorTeam(teamId: number, patch: WorkShiftLegacyPatch): Promise<void>;
 };
 
+function elapsedSeconds(from: Date, to: Date) {
+  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 1000));
+}
+
+async function resolvePlanningForStart(
+  planningResolver: WorkShiftPlanningResolver | undefined,
+  userId: number,
+  now: Date,
+) {
+  if (planningResolver) return planningResolver.resolveForUser(userId, now);
+  const { resolveRuntimeWorkShiftPlan } = await import("./workShiftPlanningRuntime");
+  return resolveRuntimeWorkShiftPlan(userId, now);
+}
+
+async function hydratePlanningSnapshot(current: OpenWorkShiftSnapshot) {
+  const adapterAlreadySelectedSnapshot =
+    current.scheduleAssignmentId !== undefined ||
+    current.scheduledStartAt !== undefined ||
+    current.scheduledEndAt !== undefined;
+  if (adapterAlreadySelectedSnapshot) return current;
+
+  const { loadRuntimeWorkShiftPlanningSnapshot } = await import("./workShiftPlanningRuntime");
+  const persisted = await loadRuntimeWorkShiftPlanningSnapshot(current.id);
+  return persisted ? { ...current, ...persisted } : current;
+}
+
+function resolveStartPlanningSnapshot(plan: ResolvedUserWorkShiftPlan | null, now: Date) {
+  const scheduledStartAt = plan?.plannedStartAt ?? null;
+  const scheduledEndAt = plan?.plannedEndAt ?? null;
+  return {
+    scheduleAssignmentId: plan?.assignmentId ?? null,
+    scheduledStartAt,
+    scheduledEndAt,
+    lateStartSeconds: scheduledStartAt ? elapsedSeconds(scheduledStartAt, now) : 0,
+    earlyEndSeconds: 0,
+    overtimeSeconds: 0,
+  };
+}
+
+function enrichEndPatch(
+  current: OpenWorkShiftSnapshot,
+  patch: WorkShiftSessionPatch,
+  now: Date,
+): WorkShiftSessionPatch {
+  if (patch.status !== "ended") return patch;
+
+  const scheduledStartAt = current.scheduledStartAt ?? null;
+  const scheduledEndAt = current.scheduledEndAt ?? null;
+  const workedSeconds = patch.workedSeconds ?? 0;
+  const plannedWorkSeconds =
+    scheduledStartAt && scheduledEndAt
+      ? elapsedSeconds(scheduledStartAt, scheduledEndAt)
+      : 0;
+
+  return {
+    ...patch,
+    earlyEndSeconds: scheduledEndAt ? elapsedSeconds(now, scheduledEndAt) : 0,
+    overtimeSeconds: plannedWorkSeconds > 0 ? Math.max(0, workedSeconds - plannedWorkSeconds) : 0,
+  };
+}
+
 export function snapshotOpenSession(value: OpenWorkShiftSnapshot | null): WorkShiftEventSnapshot | null {
   if (!value) return null;
   return {
@@ -44,6 +116,12 @@ export function snapshotOpenSession(value: OpenWorkShiftSnapshot | null): WorkSh
     endedAt: value.endedAt?.toISOString() ?? null,
     status: value.status,
     pausedSeconds: value.pausedSeconds,
+    scheduleAssignmentId: value.scheduleAssignmentId ?? null,
+    scheduledStartAt: value.scheduledStartAt?.toISOString() ?? null,
+    scheduledEndAt: value.scheduledEndAt?.toISOString() ?? null,
+    lateStartSeconds: value.lateStartSeconds ?? 0,
+    earlyEndSeconds: value.earlyEndSeconds ?? 0,
+    overtimeSeconds: value.overtimeSeconds ?? 0,
   };
 }
 
@@ -59,6 +137,12 @@ function snapshotCreatedSession(sessionId: number, input: WorkShiftCreateSession
     status: input.status,
     pausedSeconds: input.pausedSeconds,
     workedSeconds: input.workedSeconds,
+    scheduleAssignmentId: input.scheduleAssignmentId,
+    scheduledStartAt: input.scheduledStartAt?.toISOString() ?? null,
+    scheduledEndAt: input.scheduledEndAt?.toISOString() ?? null,
+    lateStartSeconds: input.lateStartSeconds,
+    earlyEndSeconds: input.earlyEndSeconds,
+    overtimeSeconds: input.overtimeSeconds,
   };
 }
 
@@ -76,6 +160,12 @@ function snapshotUpdatedSession(
     endedAt: patch.endedAt?.toISOString() ?? current.endedAt?.toISOString() ?? null,
     status: patch.status,
     pausedSeconds: patch.pausedSeconds ?? current.pausedSeconds,
+    scheduleAssignmentId: current.scheduleAssignmentId ?? null,
+    scheduledStartAt: current.scheduledStartAt?.toISOString() ?? null,
+    scheduledEndAt: current.scheduledEndAt?.toISOString() ?? null,
+    lateStartSeconds: current.lateStartSeconds ?? 0,
+    earlyEndSeconds: patch.earlyEndSeconds ?? current.earlyEndSeconds ?? 0,
+    overtimeSeconds: patch.overtimeSeconds ?? current.overtimeSeconds ?? 0,
     ...(patch.workedSeconds === undefined ? {} : { workedSeconds: patch.workedSeconds }),
   };
 }
@@ -89,6 +179,7 @@ export async function executeOwnWorkShiftAction(
     source?: WorkShiftSource;
     now?: Date;
   },
+  planningResolver?: WorkShiftPlanningResolver,
 ) {
   const now = input.now ?? new Date();
   const source = input.source ?? "self";
@@ -96,11 +187,13 @@ export async function executeOwnWorkShiftAction(
   const transition = resolveWorkShiftTransition(current, input.action, now);
 
   if (transition.mode === "create") {
+    const plan = await resolvePlanningForStart(planningResolver, input.userId, now);
     const createInput: WorkShiftCreateSession = {
       userId: input.userId,
       teamId: input.teamId,
       source,
       ...transition.session,
+      ...resolveStartPlanningSnapshot(plan, now),
     };
     const created = await store.createSession(createInput);
 
@@ -122,19 +215,24 @@ export async function executeOwnWorkShiftAction(
 
   if (!current) throw new Error("Sessão de jornada ausente durante atualização.");
 
-  await store.updateSession(current.id, transition.sessionPatch);
+  const effectiveCurrent =
+    transition.sessionPatch.status === "ended"
+      ? await hydratePlanningSnapshot(current)
+      : current;
+  const sessionPatch = enrichEndPatch(effectiveCurrent, transition.sessionPatch, now);
+  await store.updateSession(effectiveCurrent.id, sessionPatch);
   await store.appendEvent({
-    sessionId: current.id,
+    sessionId: effectiveCurrent.id,
     eventType: transition.eventType,
     actorUserId: input.userId,
     occurredAt: now,
-    beforeData: snapshotOpenSession(current),
-    afterData: snapshotUpdatedSession(current, transition.sessionPatch),
+    beforeData: snapshotOpenSession(effectiveCurrent),
+    afterData: snapshotUpdatedSession(effectiveCurrent, sessionPatch),
   });
 
   if (input.teamId !== null) {
     await store.mirrorTeam(input.teamId, transition.legacyPatch);
   }
 
-  return { sessionId: current.id, eventType: transition.eventType };
+  return { sessionId: effectiveCurrent.id, eventType: transition.eventType };
 }

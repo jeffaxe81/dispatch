@@ -1,9 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenWorkShiftSnapshot, WorkShiftLegacyPatch } from "./workShiftDomain";
+
+const runtimeMocks = vi.hoisted(() => ({
+  resolveRuntimeWorkShiftPlan: vi.fn(),
+  loadRuntimeWorkShiftPlanningSnapshot: vi.fn(),
+}));
+
+vi.mock("./workShiftPlanningRuntime", () => ({
+  resolveRuntimeWorkShiftPlan: runtimeMocks.resolveRuntimeWorkShiftPlan,
+  loadRuntimeWorkShiftPlanningSnapshot: runtimeMocks.loadRuntimeWorkShiftPlanningSnapshot,
+}));
+
 import {
   executeOwnWorkShiftAction,
   type WorkShiftCreateSession,
   type WorkShiftEventSnapshot,
+  type WorkShiftPlanningResolver,
   type WorkShiftStore,
 } from "./workShiftService";
 
@@ -32,6 +44,12 @@ function expectSerializableSnapshot(snapshot: WorkShiftEventSnapshot | null) {
 }
 
 describe("executeOwnWorkShiftAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    runtimeMocks.resolveRuntimeWorkShiftPlan.mockResolvedValue(null);
+    runtimeMocks.loadRuntimeWorkShiftPlanningSnapshot.mockResolvedValue(null);
+  });
+
   it("cria sessão, um evento started e espelha a equipe no start", async () => {
     const now = new Date("2026-09-04T08:00:00.000Z");
     const { store, createSession, appendEvent, mirrorTeam } = makeStore(null);
@@ -55,6 +73,12 @@ describe("executeOwnWorkShiftAction", () => {
       status: "active",
       pausedSeconds: 0,
       workedSeconds: 0,
+      scheduleAssignmentId: null,
+      scheduledStartAt: null,
+      scheduledEndAt: null,
+      lateStartSeconds: 0,
+      earlyEndSeconds: 0,
+      overtimeSeconds: 0,
     });
     expect(appendEvent).toHaveBeenCalledTimes(1);
     expect(appendEvent.mock.calls[0]?.[0]).toMatchObject({
@@ -72,6 +96,71 @@ describe("executeOwnWorkShiftAction", () => {
       shiftPausedAt: null,
       shiftPausedTotalSeconds: 0,
     });
+  });
+
+  it("materializa o planejamento resolvido no start e calcula atraso", async () => {
+    const scheduledStartAt = new Date("2026-09-04T08:00:00.000Z");
+    const scheduledEndAt = new Date("2026-09-04T20:00:00.000Z");
+    const now = new Date("2026-09-04T08:10:00.000Z");
+    const { store, createSession } = makeStore(null);
+    const planningResolver: WorkShiftPlanningResolver = {
+      resolveForUser: vi.fn(async () => ({
+        assignmentId: 55,
+        scheduleId: 10,
+        plannedStartAt: scheduledStartAt,
+        plannedEndAt: scheduledEndAt,
+        inPlannedWindow: true,
+        source: "schedule" as const,
+      })),
+    };
+
+    await executeOwnWorkShiftAction(store, {
+      userId: 7,
+      teamId: 3,
+      action: "start",
+      now,
+    }, planningResolver);
+
+    expect(planningResolver.resolveForUser).toHaveBeenCalledWith(7, now);
+    expect(runtimeMocks.resolveRuntimeWorkShiftPlan).not.toHaveBeenCalled();
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      scheduleAssignmentId: 55,
+      scheduledStartAt,
+      scheduledEndAt,
+      lateStartSeconds: 600,
+      earlyEndSeconds: 0,
+      overtimeSeconds: 0,
+    }));
+  });
+
+  it("usa o resolver runtime quando o adapter transacional não injeta resolver explícito", async () => {
+    const scheduledStartAt = new Date("2026-09-04T08:00:00.000Z");
+    const scheduledEndAt = new Date("2026-09-04T20:00:00.000Z");
+    const now = new Date("2026-09-04T08:10:00.000Z");
+    const { store, createSession } = makeStore(null);
+    runtimeMocks.resolveRuntimeWorkShiftPlan.mockResolvedValueOnce({
+      assignmentId: 55,
+      scheduleId: 10,
+      plannedStartAt: scheduledStartAt,
+      plannedEndAt: scheduledEndAt,
+      inPlannedWindow: true,
+      source: "schedule",
+    });
+
+    await executeOwnWorkShiftAction(store, {
+      userId: 7,
+      teamId: 3,
+      action: "start",
+      now,
+    });
+
+    expect(runtimeMocks.resolveRuntimeWorkShiftPlan).toHaveBeenCalledWith(7, now);
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      scheduleAssignmentId: 55,
+      scheduledStartAt,
+      scheduledEndAt,
+      lateStartSeconds: 600,
+    }));
   });
 
   it("não espelha equipe quando o usuário não possui teamId", async () => {
@@ -162,6 +251,8 @@ describe("executeOwnWorkShiftAction", () => {
       endedAt: endAt,
       pausedSeconds: 930,
       workedSeconds: 13470,
+      earlyEndSeconds: 0,
+      overtimeSeconds: 0,
     });
     expect(appendEvent).toHaveBeenCalledTimes(1);
     expect(appendEvent.mock.calls[0]?.[0].eventType).toBe("ended");
@@ -170,5 +261,96 @@ describe("executeOwnWorkShiftAction", () => {
       shiftPausedAt: null,
       shiftPausedTotalSeconds: 930,
     });
+  });
+
+  it("hidrata o snapshot planejado no end quando o adapter legado não o seleciona", async () => {
+    const active: OpenWorkShiftSnapshot = {
+      id: 10,
+      startedAt: new Date("2026-09-04T08:00:00.000Z"),
+      pausedAt: null,
+      endedAt: null,
+      status: "active",
+      pausedSeconds: 0,
+    };
+    runtimeMocks.loadRuntimeWorkShiftPlanningSnapshot.mockResolvedValueOnce({
+      scheduleAssignmentId: 55,
+      scheduledStartAt: new Date("2026-09-04T08:00:00.000Z"),
+      scheduledEndAt: new Date("2026-09-04T20:00:00.000Z"),
+      lateStartSeconds: 0,
+      earlyEndSeconds: 0,
+      overtimeSeconds: 0,
+    });
+    const { store, updateSession } = makeStore(active);
+    const endAt = new Date("2026-09-04T19:45:00.000Z");
+
+    await executeOwnWorkShiftAction(store, {
+      userId: 7,
+      teamId: 3,
+      action: "end",
+      now: endAt,
+    });
+
+    expect(runtimeMocks.loadRuntimeWorkShiftPlanningSnapshot).toHaveBeenCalledWith(10);
+    expect(updateSession).toHaveBeenCalledWith(10, expect.objectContaining({
+      earlyEndSeconds: 900,
+      overtimeSeconds: 0,
+    }));
+  });
+
+  it("calcula saída antecipada a partir do snapshot planejado salvo", async () => {
+    const active = {
+      id: 10,
+      startedAt: new Date("2026-09-04T08:00:00.000Z"),
+      pausedAt: null,
+      endedAt: null,
+      status: "active" as const,
+      pausedSeconds: 0,
+      scheduleAssignmentId: 55,
+      scheduledStartAt: new Date("2026-09-04T08:00:00.000Z"),
+      scheduledEndAt: new Date("2026-09-04T20:00:00.000Z"),
+    } as OpenWorkShiftSnapshot;
+    const { store, updateSession } = makeStore(active);
+    const endAt = new Date("2026-09-04T19:45:00.000Z");
+
+    await executeOwnWorkShiftAction(store, {
+      userId: 7,
+      teamId: 3,
+      action: "end",
+      now: endAt,
+    });
+
+    expect(runtimeMocks.loadRuntimeWorkShiftPlanningSnapshot).not.toHaveBeenCalled();
+    expect(updateSession).toHaveBeenCalledWith(10, expect.objectContaining({
+      earlyEndSeconds: 900,
+      overtimeSeconds: 0,
+    }));
+  });
+
+  it("calcula hora extra pelo trabalho realizado além da duração planejada", async () => {
+    const active = {
+      id: 10,
+      startedAt: new Date("2026-09-04T08:00:00.000Z"),
+      pausedAt: null,
+      endedAt: null,
+      status: "active" as const,
+      pausedSeconds: 0,
+      scheduleAssignmentId: 55,
+      scheduledStartAt: new Date("2026-09-04T08:00:00.000Z"),
+      scheduledEndAt: new Date("2026-09-04T20:00:00.000Z"),
+    } as OpenWorkShiftSnapshot;
+    const { store, updateSession } = makeStore(active);
+    const endAt = new Date("2026-09-04T20:30:00.000Z");
+
+    await executeOwnWorkShiftAction(store, {
+      userId: 7,
+      teamId: 3,
+      action: "end",
+      now: endAt,
+    });
+
+    expect(updateSession).toHaveBeenCalledWith(10, expect.objectContaining({
+      earlyEndSeconds: 0,
+      overtimeSeconds: 1800,
+    }));
   });
 });

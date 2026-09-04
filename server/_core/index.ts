@@ -6,7 +6,7 @@ import { EMBEDDED_APPLICATIONS } from "@shared/embeddedApplications";
 import { createEmbeddedApplicationCspMiddleware } from "../embeddedAppCsp";
 import { ensureLocalAdministrator } from "../localAuth";
 import { registerStorageProxy } from "./storageProxy";
-import { appRouter } from "../routers";
+import { rootRouter } from "../rootRouter";
 import { alrtIngressJsonErrorHandler, registerAlrtIngressRoutes } from "../alrtIngress";
 import { createContext } from "./context";
 import { ENV, validateRuntimeEnv } from "./env";
@@ -35,7 +35,7 @@ async function startServer() {
   app.use(
     "/api/trpc",
     createExpressMiddleware({
-      router: appRouter,
+      router: rootRouter,
       createContext,
     })
   );
