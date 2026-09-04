@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useRefreshSettings } from "@/hooks/useRefreshSettings";
+import { canViewEmbeddedApplications } from "@/lib/embeddedAppAccess";
 import { formatDateTime, priorityClasses, priorityLabels, statusClasses, statusLabels } from "@/lib/operational";
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, MapPin, MonitorSmartphone, Navigation, Send, ShieldCheck, Trash2, UserRound } from "lucide-react";
@@ -52,7 +53,7 @@ function IncidentDetailContent() {
   const detail = trpc.incidents.get.useQuery({ incidentId }, { enabled: Number.isInteger(incidentId) && incidentId > 0, refetchInterval: refresh.interval || false });
   const timeline = trpc.incidents.timeline.useQuery({ incidentId }, { enabled: Number.isInteger(incidentId) && incidentId > 0, refetchInterval: refresh.interval || false });
   const access = trpc.access.me.useQuery(undefined, { retry: false });
-  const canOpenNeo = Boolean(access.data?.permissions.includes("integrations.view"));
+  const canOpenNeo = canViewEmbeddedApplications(access.data?.permissions);
   const embeddedApplications = trpc.integrations.embeddedApplications.list.useQuery(undefined, { enabled: neoOpen && canOpenNeo, retry: false });
   const teams = trpc.teams.list.useQuery(undefined, { enabled: assignOpen });
   const mapSettings = trpc.settings.operationalMap.useQuery(undefined, { enabled: assignOpen });
