@@ -64,6 +64,7 @@ export type ResolvedUserWorkShiftPlan = {
 export type WorkShiftScheduleStore = {
   findAssignmentsForUser(userId: number, from: Date, until: Date): Promise<WorkShiftAssignmentRecord[]>;
   findEffectiveAssignment(userId: number, instant: Date): Promise<WorkShiftAssignmentRecord | null>;
+  findAssignmentById(assignmentId: number): Promise<WorkShiftAssignmentRecord | null>;
   findScheduleById(scheduleId: number): Promise<WorkShiftScheduleRecord | null>;
   findExceptions(assignmentId: number, from: Date, until: Date): Promise<WorkShiftScheduleExceptionRecord[]>;
   insertAssignment(input: NewWorkShiftAssignment): Promise<WorkShiftAssignmentRecord>;
@@ -143,6 +144,12 @@ export function createWorkShiftScheduleService(store: WorkShiftScheduleStore) {
     ) {
       assertManagePermission(actor);
       assertValidPeriod(input.startsAt, input.endsAt, "startsAt", "endsAt");
+
+      const assignment = await store.findAssignmentById(input.assignmentId);
+      if (!assignment || !assignment.active) throw new Error("Associação de escala não encontrada ou inativa.");
+      const schedule = await store.findScheduleById(assignment.scheduleId);
+      if (!schedule || !schedule.active) throw new Error("Escala não encontrada ou inativa.");
+      assertScheduleScope(schedule, actor);
 
       return store.insertException({
         assignmentId: input.assignmentId,

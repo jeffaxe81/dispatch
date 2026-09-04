@@ -32,6 +32,9 @@ function createMemoryStore(): WorkShiftScheduleStore {
     async findEffectiveAssignment(userId, instant) {
       return assignments.find(item => item.userId === userId && item.active && item.effectiveFrom <= instant && (item.effectiveUntil === null || item.effectiveUntil > instant)) ?? null;
     },
+    async findAssignmentById(assignmentId) {
+      return assignments.find(item => item.id === assignmentId) ?? null;
+    },
     async findScheduleById(scheduleId) {
       return scheduleId === schedule.id ? schedule : null;
     },
