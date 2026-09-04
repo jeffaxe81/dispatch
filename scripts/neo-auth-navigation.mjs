@@ -23,6 +23,10 @@ function safeUrl(value) {
   }
 }
 
+function boundedCount(value) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1000, Math.trunc(value))) : 0;
+}
+
 export function classifyNeoAuthNavigation({
   url,
   hasPassword,
@@ -63,5 +67,40 @@ export function summarizeNavigateResult({ errorText, currentUrl }) {
         : "<redacted-error>"
       : null,
     finalProtocol: parsed?.protocol ?? "<invalid-protocol>",
+  };
+}
+
+export function summarizePageStructure({
+  readyState,
+  forms,
+  iframes,
+  shadowHosts,
+  inputs,
+}) {
+  const inputTypes = {
+    text: 0,
+    password: 0,
+    email: 0,
+    hidden: 0,
+    other: 0,
+  };
+
+  for (const rawType of Array.isArray(inputs) ? inputs.slice(0, 1000) : []) {
+    const type = String(rawType || "text").toLowerCase();
+    if (type === "text" || type === "password" || type === "email" || type === "hidden") {
+      inputTypes[type] += 1;
+    } else {
+      inputTypes.other += 1;
+    }
+  }
+
+  return {
+    readyState: readyState === "loading" || readyState === "interactive" || readyState === "complete"
+      ? readyState
+      : "unknown",
+    forms: boundedCount(forms),
+    iframes: boundedCount(iframes),
+    shadowHosts: boundedCount(shadowHosts),
+    inputTypes,
   };
 }
