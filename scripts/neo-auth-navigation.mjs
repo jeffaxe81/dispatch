@@ -58,6 +58,40 @@ export function classifyNeoAuthNavigation({
   return "login-form-found";
 }
 
+export async function waitForLoginProbe(
+  probe,
+  { attempts = 40, delayMs = 150, neoOrigin },
+) {
+  let last = {
+    url: "about:blank",
+    hasPassword: false,
+    hasUsername: false,
+  };
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    last = await probe();
+    const status = classifyNeoAuthNavigation({ ...last, neoOrigin });
+
+    if (
+      status === "login-form-found" ||
+      status === "authenticated" ||
+      status === "redirect-or-sso" ||
+      status === "network-error"
+    ) {
+      return { ...last, status };
+    }
+
+    if (attempt + 1 < attempts && delayMs > 0) {
+      await new Promise(resolvePromise => setTimeout(resolvePromise, delayMs));
+    }
+  }
+
+  return {
+    ...last,
+    status: classifyNeoAuthNavigation({ ...last, neoOrigin }),
+  };
+}
+
 export function summarizeNavigateResult({ errorText, currentUrl }) {
   const parsed = safeUrl(currentUrl);
   return {
