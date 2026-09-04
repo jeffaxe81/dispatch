@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      NEO_AUTH_USERNAME: ${{ secrets.NEO_AUTH_USERNAME }}
-      NEO_AUTH_PASSWORD: ${{ secrets.NEO_AUTH_PASSWORD }}
+      NEO_AUTH_USERNAME: ${{ github.event_name == 'workflow_dispatch' && secrets.NEO_AUTH_USERNAME || '' }}
+      NEO_AUTH_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.NEO_AUTH_PASSWORD || '' }}
 
     steps:
       - name: Obter código
@@ -56,9 +56,9 @@ jobs:
         shell: bash
         run: |
           if [[ -n "${NEO_AUTH_USERNAME}" && -n "${NEO_AUTH_PASSWORD}" ]]; then
-            echo "neo_auth_mode=authenticated"
+            echo "neo_auth_mode=authenticated-manual"
           else
-            echo "neo_auth_mode=anonymous"
+            echo "neo_auth_mode=anonymous-pr"
           fi
 
       - name: Smoke autenticado NEO com espera de formulário
@@ -78,10 +78,11 @@ jobs:
         run: node scripts/neo-authenticated-iframe-smoke.mjs
 
       - name: Gerar evidência visual do workspace NEO
+        if: env.NEO_AUTH_USERNAME == '' || env.NEO_AUTH_PASSWORD == ''
         run: corepack pnpm test:neo-visual
 
       - name: Publicar capturas e relatório
-        if: always()
+        if: ${{ always() && (env.NEO_AUTH_USERNAME == '' || env.NEO_AUTH_PASSWORD == '') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: d006c-neo-workspace-visual
