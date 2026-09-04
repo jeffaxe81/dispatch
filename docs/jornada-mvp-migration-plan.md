@@ -90,6 +90,7 @@ O PR #24 agora possui `.github/workflows/jornada-mvp-quality.yml`, pois o `main`
 
 - Run #1: falhou no `setup-node` porque o cache de pnpm era solicitado antes de o pnpm estar disponível.
 - Run #2: ambiente e dependências passaram; a execução revelou que arquivos escritos com `node:test` estavam sendo enviados ao Vitest.
-- Run #3: workflow corrigido para executar domínio/persistência via `tsx --test` e router via Vitest; a validação de tipos e a geração oficial da migração permanecem condicionadas à conclusão verde desse run.
+- Run #3: domínio/persistência passaram (19/19), router passou (5/5) e `pnpm check` passou. A única falha foi a exigência de `DATABASE_URL` pelo `drizzle.config.ts` durante `drizzle-kit generate`.
+- O workflow foi corrigido novamente para usar uma `DATABASE_URL` descartável de CI somente na etapa de geração. Não há conexão com banco real e nenhum secret é utilizado.
 
-Nenhum secret é utilizado nesse workflow.
+A próxima evidência obrigatória é um run verde que publique o artefato `jornada-mvp-drizzle-generated`; somente esse artefato poderá ser usado como fonte para versionar SQL/snapshot/journal oficiais.
