@@ -6,7 +6,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: d007a-schema-generate-${{ github.ref }}
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   generate:
-    name: Generate migration without applying database changes
+    name: Generate and persist migration without applying database changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -22,8 +22,10 @@ jobs:
       DATABASE_URL: mysql://root:plan-only@127.0.0.1:3306/dispatch_plan
 
     steps:
-      - name: Obter código
+      - name: Obter branch da feature
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Preparar Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -40,17 +42,38 @@ jobs:
       - name: Gerar migration D-007A sem aplicar banco
         run: corepack pnpm exec drizzle-kit generate --name d007a_work_shift_history
 
-      - name: Listar evidência gerada
+      - name: Validar migration gerada
+        shell: bash
         run: |
-          ls -la drizzle/0003*
-          ls -la drizzle/meta/0003_snapshot.json drizzle/meta/_journal.json
+          test -f drizzle/0003_d007a_work_shift_history.sql
+          test -f drizzle/meta/0003_snapshot.json
+          grep -q 'CREATE TABLE `work_shift_sessions`' drizzle/0003_d007a_work_shift_history.sql
+          grep -q 'CREATE TABLE `work_shift_events`' drizzle/0003_d007a_work_shift_history.sql
+          grep -q 'ON DELETE restrict' drizzle/0003_d007a_work_shift_history.sql
+          if grep -Eq 'DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM' drizzle/0003_d007a_work_shift_history.sql; then
+            echo 'Migration contém operação destrutiva não autorizada.' >&2
+            exit 1
+          fi
+
+      - name: Versionar somente os artefatos Drizzle gerados
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add drizzle/0003_d007a_work_shift_history.sql drizzle/meta/0003_snapshot.json drizzle/meta/_journal.json
+          if git diff --cached --quiet; then
+            echo "Nenhum artefato novo para versionar."
+            exit 0
+          fi
+          git commit -m "db(d007): add historical work shift migration"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
 
       - name: Publicar migration e metadata geradas
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: d007a-generated-drizzle
           path: |
-            drizzle/0003_*.sql
+            drizzle/0003_d007a_work_shift_history.sql
             drizzle/meta/0003_snapshot.json
             drizzle/meta/_journal.json
           if-no-files-found: error
