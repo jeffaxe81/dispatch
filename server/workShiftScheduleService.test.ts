@@ -124,4 +124,32 @@ describe("work shift schedule service", () => {
       reason: "Inválida",
     }, actor)).rejects.toThrow("startsAt");
   });
+
+  it("rejeita exceção criada fora do escopo organizacional da escala", async () => {
+    const store = createMemoryStore();
+    const service = createWorkShiftScheduleService(store);
+    const admin = { userId: 1, organizationId: 1, organizationalUnitId: null, permissions: ["*"] };
+    const assignment = await service.createAssignment({
+      scheduleId: 10,
+      userId: 7,
+      teamId: 3,
+      effectiveFrom: new Date("2026-09-01T00:00:00.000Z"),
+      effectiveUntil: null,
+    }, admin);
+
+    const outOfScopeActor = {
+      userId: 2,
+      organizationId: 2,
+      organizationalUnitId: null,
+      permissions: ["work_shift_schedules.manage"],
+    };
+
+    await expect(service.createException({
+      assignmentId: assignment.id,
+      exceptionType: "day_off",
+      startsAt: new Date("2026-09-05T00:00:00.000Z"),
+      endsAt: new Date("2026-09-06T00:00:00.000Z"),
+      reason: "Fora do escopo",
+    }, outOfScopeActor)).rejects.toThrow("Escala fora do escopo organizacional autorizado.");
+  });
 });
