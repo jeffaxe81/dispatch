@@ -7,7 +7,7 @@ const outputPath = path.join(root, "docs/TRPC_CONTRACT_COVERAGE.md");
 const routerSource = fs.readFileSync(routerPath, "utf8");
 
 const coverageRules = [
-  { prefix: "auth", suites: ["server/auth.logout.test.ts", "server/_core/cookies.test.ts", "server/localAuth.test.ts", "server/localAuth.bootstrap.test.ts", "server/localAuth.integration.test.ts"], evidence: "Login local, sessão, contexto autenticado, logout, cookie seguro, bloqueio de tentativas e perfis operacionais." },
+  { prefix: "auth", suites: ["server/auth.logout.test.ts", "server/_core/cookies.test.ts", "server/localAuth.test.ts", "server/localAuth.bootstrap.integration.test.ts", "server/localAuth.integration.test.ts"], evidence: "Login local, sessão, contexto autenticado, logout, cookie seguro, bloqueio de tentativas e perfis operacionais." },
   { prefix: "help", suites: ["server/helpCenter.test.ts", "client/src/pages/ManualsHelpPage.test.tsx"], evidence: "Central de ajuda, favoritos e sugestões." },
   { prefix: "dashboard", suites: ["server/operationalReports.test.ts", "client/src/hooks/useRefreshSettings.test.ts"], evidence: "Consultas operacionais, filtros e atualização configurável." },
   { prefix: "reports", suites: ["server/operationalReports.test.ts"], evidence: "Visão geral, exportação auditada e filtros salvos são chamados diretamente pela suíte." },
