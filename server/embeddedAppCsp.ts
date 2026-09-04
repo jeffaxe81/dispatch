@@ -1,3 +1,4 @@
+import type { RequestHandler } from "express";
 import type { EmbeddedApplication } from "@shared/embeddedApplications";
 
 type EmbeddedApplicationFrameSource = Pick<
@@ -45,4 +46,23 @@ export function mergeEmbeddedApplicationFrameSrcCsp(
 
   directives.push(buildEmbeddedApplicationFrameSrcDirective(applications));
   return `${directives.join("; ")};`;
+}
+
+export function createEmbeddedApplicationCspMiddleware(
+  applications: readonly EmbeddedApplicationFrameSource[],
+): RequestHandler {
+  return (_request, response, next) => {
+    const currentHeader = response.getHeader("Content-Security-Policy");
+    const currentPolicy = Array.isArray(currentHeader)
+      ? currentHeader.join("; ")
+      : typeof currentHeader === "string"
+        ? currentHeader
+        : undefined;
+
+    response.setHeader(
+      "Content-Security-Policy",
+      mergeEmbeddedApplicationFrameSrcCsp(currentPolicy, applications),
+    );
+    next();
+  };
 }
