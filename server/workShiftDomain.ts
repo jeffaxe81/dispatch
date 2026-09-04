@@ -53,5 +53,5 @@ export function transitionWorkShift(
     };
   }
 
-  return current;
+  throw new Error(`transicao_invalida:${current.state}->${command.type}`);
 }
