@@ -9,6 +9,14 @@ export type OpenWorkShiftSnapshot = {
   pausedSeconds: number;
 };
 
+export type WorkShiftSessionPatch = {
+  status: WorkShiftStatus;
+  pausedAt?: Date | null;
+  endedAt?: Date;
+  pausedSeconds?: number;
+  workedSeconds?: number;
+};
+
 export type WorkShiftLegacyPatch = {
   shiftStartedAt?: Date;
   shiftEndsAt?: Date | null;
@@ -33,13 +41,7 @@ export type WorkShiftTransitionPlan =
   | {
       mode: "update";
       eventType: WorkShiftEventType;
-      sessionPatch: {
-        status: WorkShiftStatus;
-        pausedAt?: Date | null;
-        endedAt?: Date;
-        pausedSeconds?: number;
-        workedSeconds?: number;
-      };
+      sessionPatch: WorkShiftSessionPatch;
       legacyPatch: WorkShiftLegacyPatch;
     };
 
