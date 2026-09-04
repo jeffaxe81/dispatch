@@ -12,11 +12,19 @@ const mocks = vi.hoisted(() => ({
     breakStartedAt: Date | null;
     endedAt: Date | null;
   },
+  history: [] as Array<{
+    id: number;
+    state: "fora_jornada" | "em_jornada" | "em_intervalo" | "encerrada";
+    startedAt: Date | null;
+    breakStartedAt: Date | null;
+    endedAt: Date | null;
+  }>,
   start: vi.fn(),
   startBreak: vi.fn(),
   resume: vi.fn(),
   end: vi.fn(),
-  invalidate: vi.fn(),
+  invalidateCurrent: vi.fn(),
+  invalidateHistory: vi.fn(),
   error: null as Error | null,
   pending: false,
 }));
@@ -25,9 +33,13 @@ vi.mock("@/components/DashboardLayout", () => ({ default: ({ children }: { child
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ workShift: { current: { invalidate: mocks.invalidate } } }),
+    useUtils: () => ({ workShift: {
+      current: { invalidate: mocks.invalidateCurrent },
+      history: { invalidate: mocks.invalidateHistory },
+    } }),
     workShift: {
       current: { useQuery: () => ({ data: mocks.current, isLoading: false, error: mocks.error }) },
+      history: { useQuery: () => ({ data: mocks.history, isLoading: false, error: null }) },
       start: { useMutation: () => ({ mutateAsync: mocks.start, isPending: mocks.pending, error: mocks.error }) },
       break: { useMutation: () => ({ mutateAsync: mocks.startBreak, isPending: mocks.pending, error: mocks.error }) },
       resume: { useMutation: () => ({ mutateAsync: mocks.resume, isPending: mocks.pending, error: mocks.error }) },
@@ -42,6 +54,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   mocks.current = null;
+  mocks.history = [];
   mocks.error = null;
   mocks.pending = false;
 });
@@ -80,13 +93,14 @@ describe("WorkShiftPage", () => {
     expect(screen.getByRole("button", { name: /retomar jornada/i })).toBeTruthy();
   });
 
-  it("inicia a jornada e invalida o estado atual", async () => {
+  it("inicia a jornada e invalida estado atual e histórico", async () => {
     mocks.start.mockResolvedValue({});
     const user = userEvent.setup();
     render(<WorkShiftPage />);
     await user.click(screen.getByRole("button", { name: /iniciar jornada/i }));
     expect(mocks.start).toHaveBeenCalledWith();
-    await waitFor(() => expect(mocks.invalidate).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.invalidateCurrent).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.invalidateHistory).toHaveBeenCalled());
   });
 
   it("exibe erro de operação", () => {
@@ -99,5 +113,19 @@ describe("WorkShiftPage", () => {
     mocks.pending = true;
     render(<WorkShiftPage />);
     expect(screen.getByRole("button", { name: /processando/i })).toHaveProperty("disabled", true);
+  });
+
+  it("mostra as jornadas recentes do próprio usuário", () => {
+    mocks.history = [{
+      id: 90,
+      state: "encerrada",
+      startedAt: new Date("2026-09-03T11:00:00.000Z"),
+      breakStartedAt: new Date("2026-09-03T15:00:00.000Z"),
+      endedAt: new Date("2026-09-03T20:00:00.000Z"),
+    }];
+    render(<WorkShiftPage />);
+    expect(screen.getByText("Histórico recente")).toBeTruthy();
+    expect(screen.getByLabelText("Histórico de jornadas")).toBeTruthy();
+    expect(screen.getAllByText("Encerrada").length).toBeGreaterThan(0);
   });
 });
