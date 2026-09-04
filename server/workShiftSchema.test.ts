@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { getTableColumns } from "drizzle-orm";
-import { workShiftEvents, workShiftSessions } from "../drizzle/schema";
+import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 
 test("work shift sessions persist user, state and timestamps", () => {
   const columns = getTableColumns(workShiftSessions);
