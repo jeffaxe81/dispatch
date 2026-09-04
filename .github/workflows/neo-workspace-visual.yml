@@ -61,6 +61,10 @@ jobs:
             echo "neo_auth_mode=anonymous"
           fi
 
+      - name: Smoke autenticado NEO com espera de formulário
+        if: env.NEO_AUTH_USERNAME != '' && env.NEO_AUTH_PASSWORD != ''
+        run: node scripts/neo-authenticated-login-smoke.mjs
+
       - name: Gerar evidência visual do workspace NEO
         run: corepack pnpm test:neo-visual
 
