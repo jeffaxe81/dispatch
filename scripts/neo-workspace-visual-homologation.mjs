@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const HOST = "127.0.0.1";
 const PORT = 4174;
 const URL = `http://${HOST}:${PORT}/`;
+const NEO_URL = "https://gscprj.saas.digitro.cloud/neo/";
 const NEO_ORIGIN = "https://gscprj.saas.digitro.cloud";
 const outputDir = resolve("artifacts/neo-workspace-homologation");
 const chromeProfile = resolve(`.tmp-neo-visual-chrome-${process.pid}`);
@@ -123,6 +124,13 @@ function createNeoNetworkCollector(maxEntries = 50) {
   };
 }
 
+function getNeoAuthConfig() {
+  const username = process.env.NEO_AUTH_USERNAME?.trim();
+  const password = process.env.NEO_AUTH_PASSWORD;
+  if (!username || !password) return null;
+  return { username, password };
+}
+
 function findChrome() {
   const candidates = [
     process.env.CHROME_BIN,
@@ -182,9 +190,7 @@ async function waitForDevTools(profilePath, chromeProcess, getChromeOutput) {
     await new Promise(resolvePromise => setTimeout(resolvePromise, 150));
   }
 
-  throw new Error(
-    `Chrome DevTools não iniciou: ${String(lastError)}. ${getChromeOutput()}`,
-  );
+  throw new Error(`Chrome DevTools não iniciou: ${String(lastError)}. ${getChromeOutput()}`);
 }
 
 function createCdpClient(socket) {
@@ -234,23 +240,92 @@ function createCdpClient(socket) {
       awaitPromise: true,
       returnByValue: true,
     });
-    if (result.exceptionDetails) {
-      throw new Error(result.exceptionDetails.text ?? "Falha no navegador.");
-    }
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? "Falha no navegador.");
     return result.result.value;
   }
 
-  async function waitFor(expression) {
-    for (let step = 0; step < 80; step += 1) {
+  async function waitFor(expression, steps = 80) {
+    for (let step = 0; step < steps; step += 1) {
       try {
-        if (await evaluate(expression)) return;
+        if (await evaluate(expression)) return true;
       } catch {}
       await new Promise(resolvePromise => setTimeout(resolvePromise, 150));
     }
-    throw new Error("A interface NEO não atingiu o estado esperado.");
+    return false;
   }
 
   return { call, on, evaluate, waitFor };
+}
+
+async function authenticateNeo(client, config) {
+  if (!config) {
+    return { status: "not-requested", currentUrl: "about:blank" };
+  }
+
+  await client.call("Page.navigate", { url: NEO_URL });
+  const loaded = await client.waitFor('document.readyState === "complete"', 140);
+  if (!loaded) return { status: "network-error", currentUrl: NEO_URL };
+
+  const loginShape = await client.evaluate(`(() => {
+    const password = document.querySelector('input[type="password"]');
+    const username = document.querySelector('input[type="email"], input[name*="user" i], input[id*="user" i], input[name*="login" i], input[id*="login" i], input[type="text"]');
+    return {
+      hasPassword: Boolean(password),
+      hasUsername: Boolean(username),
+      url: location.href,
+    };
+  })()`);
+
+  if (!loginShape.hasPassword || !loginShape.hasUsername) {
+    const authenticatedAlready = belongsToNeo(loginShape.url) && !/login|auth|signin/i.test(loginShape.url);
+    return {
+      status: authenticatedAlready ? "authenticated" : "login-form-not-found",
+      currentUrl: sanitizeDiagnosticUrl(loginShape.url),
+    };
+  }
+
+  const payload = JSON.stringify({ username: config.username, password: config.password });
+  await client.evaluate(`(() => {
+    const credentials = ${payload};
+    const password = document.querySelector('input[type="password"]');
+    const username = document.querySelector('input[type="email"], input[name*="user" i], input[id*="user" i], input[name*="login" i], input[id*="login" i], input[type="text"]');
+    const setValue = (node, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setter?.call(node, value);
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setValue(username, credentials.username);
+    setValue(password, credentials.password);
+    const form = password.closest('form') || username.closest('form');
+    const submit = form?.querySelector('button[type="submit"], input[type="submit"], button') || document.querySelector('button[type="submit"], input[type="submit"]');
+    if (submit) submit.click();
+    else form?.requestSubmit?.();
+    credentials.username = '';
+    credentials.password = '';
+    return true;
+  })()`);
+
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 1800));
+
+  for (let step = 0; step < 80; step += 1) {
+    const state = await client.evaluate(`(() => ({
+      url: location.href,
+      hasPassword: Boolean(document.querySelector('input[type="password"]')),
+      hasOtp: Boolean(document.querySelector('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="code" i]')),
+    }))()`);
+
+    if (state.hasOtp) {
+      return { status: "interactive-auth-required", currentUrl: sanitizeDiagnosticUrl(state.url) };
+    }
+    if (!state.hasPassword && belongsToNeo(state.url)) {
+      return { status: "authenticated", currentUrl: sanitizeDiagnosticUrl(state.url) };
+    }
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 250));
+  }
+
+  const finalUrl = await client.evaluate("location.href");
+  return { status: "login-rejected", currentUrl: sanitizeDiagnosticUrl(finalUrl) };
 }
 
 function assertMetrics(metrics, label, expectedLayout, viewportWidth) {
@@ -280,11 +355,12 @@ async function capture(client, name, width, height, expectedLayout) {
     screenHeight: height,
   });
   await client.call("Page.navigate", { url: URL });
-  await client.waitFor(
+  const ready = await client.waitFor(
     `document.readyState === "complete" &&
      document.body?.dataset.neoIframe === "configured" &&
      Number(document.body?.dataset.neoDialogWidth || 0) > 0`,
   );
+  if (!ready) throw new Error("A interface NEO não atingiu o estado esperado.");
 
   await new Promise(resolvePromise => setTimeout(resolvePromise, 5800));
 
@@ -389,6 +465,18 @@ try {
     maxResourceBufferSize: 250_000,
   });
 
+  const authConfig = getNeoAuthConfig();
+  const auth = await authenticateNeo(client, authConfig);
+  await writeFile(
+    resolve(outputDir, "neo-auth-result.json"),
+    JSON.stringify({
+      status: auth.status,
+      currentUrl: sanitizeDiagnosticUrl(auth.currentUrl),
+      credentialsProvided: Boolean(authConfig),
+    }, null, 2) + "\n",
+    "utf8",
+  );
+
   const captures = [
     await capture(client, "desktop-1440x900", 1440, 900, "desktop-split"),
     await capture(client, "mobile-390x844", 390, 844, "mobile-stack"),
@@ -405,9 +493,14 @@ try {
     status: "layout-approved",
     generatedAt: new Date().toISOString(),
     embeddedApplication: "NEO Interact",
-    src: "https://gscprj.saas.digitro.cloud/neo/",
+    src: NEO_URL,
     origin: NEO_ORIGIN,
-    note: "A aprovação automatizada cobre layout, configuração do iframe e ausência de overflow usando emulação real de viewport via Chrome DevTools. A coleta de rede é sanitizada e registra somente URLs sem query/fragment, respostas Document da origem NEO e falhas técnicas da origem NEO.",
+    note: "A aprovação automatizada cobre layout, configuração do iframe e ausência de overflow usando emulação real de viewport via Chrome DevTools. Quando credenciais são fornecidas por variáveis de ambiente, a autenticação ocorre primeiro em navegação de primeira parte no NEO e nenhum screenshot/DOM da tela de login é persistido.",
+    authentication: {
+      requested: Boolean(authConfig),
+      status: auth.status,
+      currentUrl: sanitizeDiagnosticUrl(auth.currentUrl),
+    },
     externalCompatibility: {
       neoDocumentObserved: networkDiagnostics.neoDocumentObserved,
       documentResponses: networkDiagnostics.documents.length,
@@ -423,7 +516,7 @@ try {
   );
 
   console.log(
-    `neo_workspace_visual=layout-approved desktop=desktop-split mobile=mobile-stack viewport=cdp overflow=ok iframe=configured neo_document=${networkDiagnostics.neoDocumentObserved ? "observed" : "not-observed"} neo_failures=${networkDiagnostics.failures.length}`,
+    `neo_workspace_visual=layout-approved auth=${auth.status} desktop=desktop-split mobile=mobile-stack viewport=cdp overflow=ok iframe=configured neo_document=${networkDiagnostics.neoDocumentObserved ? "observed" : "not-observed"} neo_failures=${networkDiagnostics.failures.length}`,
   );
 } catch (error) {
   console.error(viteOutput);
