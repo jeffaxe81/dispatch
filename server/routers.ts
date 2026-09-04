@@ -185,7 +185,7 @@ export const appRouter = router({
       list: operationalProcedure.query(({ ctx }) => listHelpFavorites(ctx.user.id)),
       add: operationalProcedure.input(z.object({ contentType: z.enum(["manual", "faq"]), contentId: z.string().trim().regex(/^[a-z0-9-]{2,80}$/) })).mutation(({ ctx, input }) => addHelpFavorite({ userId: ctx.user.id, ...input })),
       remove: operationalProcedure.input(z.object({ contentType: z.enum(["manual", "faq"]), contentId: z.string().trim().regex(/^[a-z0-9-]{2,80}$/) })).mutation(async ({ ctx, input }) => {
-        await removeHelpFavorite({ userId: ctx.user.id, ...input });
+        await removeHelpFavorite({ userId: ctx.user.id, contentType: input.contentType, contentId: input.contentId });
         return { success: true };
       }),
     }),
@@ -201,7 +201,7 @@ export const appRouter = router({
     }),
     embeddedApplications: router({
       list: operationalProcedure.query(async ({ ctx }) => {
-        await assertPermission(ctx.user, "integrations.view");
+        await assertPermission(ctx.user, "embedded_apps.view");
         return EMBEDDED_APPLICATIONS.filter(application => application.enabled);
       }),
     }),
