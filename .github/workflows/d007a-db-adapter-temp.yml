@@ -85,7 +85,7 @@ jobs:
                 });
               }),
           }),
-'''
+          '''
           source = source.replace(router_marker, block + router_marker, 1)
           path.write_text(source)
           PY
