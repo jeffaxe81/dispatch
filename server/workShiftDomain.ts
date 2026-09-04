@@ -9,7 +9,8 @@ export type WorkShiftSnapshot = {
 
 export type WorkShiftCommand =
   | { type: "iniciar"; at: Date }
-  | { type: "iniciar_intervalo"; at: Date };
+  | { type: "iniciar_intervalo"; at: Date }
+  | { type: "retomar"; at: Date };
 
 export function transitionWorkShift(
   current: WorkShiftSnapshot,
@@ -29,6 +30,15 @@ export function transitionWorkShift(
       state: "em_intervalo",
       startedAt: current.startedAt,
       breakStartedAt: command.at,
+      endedAt: null,
+    };
+  }
+
+  if (current.state === "em_intervalo" && command.type === "retomar") {
+    return {
+      state: "em_jornada",
+      startedAt: current.startedAt,
+      breakStartedAt: null,
       endedAt: null,
     };
   }
