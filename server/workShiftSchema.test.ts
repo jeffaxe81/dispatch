@@ -1,6 +1,7 @@
 import { getTableName } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/mysql-core";
 import { describe, expect, it } from "vitest";
-import { workShiftEvents, workShiftSessions } from "../drizzle/schema";
+import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 
 describe("work shift historical schema", () => {
   it("expõe as tabelas históricas da jornada", () => {
@@ -18,5 +19,9 @@ describe("work shift historical schema", () => {
   it("mantém eventos vinculados à sessão sem exclusão em cascata", () => {
     expect(workShiftEvents.sessionId.notNull).toBe(true);
     expect(workShiftEvents.occurredAt.notNull).toBe(true);
+    const sessionForeignKey = getTableConfig(workShiftEvents).foreignKeys.find(foreignKey =>
+      foreignKey.reference().columns.some(column => column.name === "session_id"),
+    );
+    expect(sessionForeignKey?.onDelete).toBe("restrict");
   });
 });
