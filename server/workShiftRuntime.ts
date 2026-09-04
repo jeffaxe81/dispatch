@@ -1,7 +1,7 @@
 import { getDb } from "./db";
 import { handleWorkShiftCommand } from "./workShiftApplicationService";
 import type { WorkShiftCommand, WorkShiftSnapshot } from "./workShiftDomain";
-import { selectActiveWorkShiftSession } from "./workShiftGateway";
+import { selectActiveWorkShiftSession, selectWorkShiftHistory } from "./workShiftGateway";
 import { createWorkShiftPersistenceAdapter } from "./workShiftPersistenceAdapter";
 import { executeWorkShiftTransition } from "./workShiftService";
 
@@ -39,6 +39,12 @@ export async function getDatabaseWorkShiftStatus(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   return selectActiveWorkShiftSession(db as never, userId);
+}
+
+export async function getDatabaseWorkShiftHistory(userId: number, limit = 10) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  return selectWorkShiftHistory(db as never, userId, limit);
 }
 
 export async function runDatabaseWorkShiftCommand(input: RuntimeInput) {
