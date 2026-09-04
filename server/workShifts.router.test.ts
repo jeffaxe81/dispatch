@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   getOwnCurrentWorkShift: vi.fn(),
   listOwnWorkShiftHistory: vi.fn(),
   controlOwnWorkShift: vi.fn(),
-  legacyControlOwnWorkShift: vi.fn(),
 }));
 
 vi.mock("./accessControl", async importOriginal => ({
@@ -18,11 +17,7 @@ vi.mock("./db", async importOriginal => ({
   ...(await importOriginal<typeof import("./db")>()),
   getOwnCurrentWorkShift: mocks.getOwnCurrentWorkShift,
   listOwnWorkShiftHistory: mocks.listOwnWorkShiftHistory,
-  controlOwnWorkShift: mocks.legacyControlOwnWorkShift,
-}));
-
-vi.mock("./workShiftControlDb", () => ({
-  controlOwnWorkShiftWithPlanning: mocks.controlOwnWorkShift,
+  controlOwnWorkShift: mocks.controlOwnWorkShift,
 }));
 
 import { appRouter } from "./routers";
@@ -55,7 +50,6 @@ describe("workShifts router", () => {
     mocks.getOwnCurrentWorkShift.mockResolvedValue(null);
     mocks.listOwnWorkShiftHistory.mockResolvedValue({ rows: [], total: 0 });
     mocks.controlOwnWorkShift.mockResolvedValue({ sessionId: 10, eventType: "started" });
-    mocks.legacyControlOwnWorkShift.mockRejectedValue(new Error("controle legado não deve ser utilizado"));
   });
 
   it("consulta somente a jornada do usuário autenticado com work_shifts.view", async () => {
@@ -79,7 +73,7 @@ describe("workShifts router", () => {
     expect(mocks.listOwnWorkShiftHistory).toHaveBeenCalledWith({ userId: 7, page: 2, pageSize: 10 });
   });
 
-  it("controla a própria jornada pelo wiring planejado e ignora identidade/equipe/timestamp enviados pelo cliente", async () => {
+  it("controla a própria jornada no adapter transacional e ignora identidade/equipe/timestamp enviados pelo cliente", async () => {
     const caller = appRouter.createCaller(context());
 
     await caller.workShifts.control({
@@ -91,6 +85,5 @@ describe("workShifts router", () => {
 
     expect(mocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shifts.control");
     expect(mocks.controlOwnWorkShift).toHaveBeenCalledWith({ userId: 7, teamId: 3, action: "start" });
-    expect(mocks.legacyControlOwnWorkShift).not.toHaveBeenCalled();
   });
 });
