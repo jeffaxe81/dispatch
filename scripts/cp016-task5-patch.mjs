@@ -1,5 +1,6 @@
 import fs from "node:fs";
 
+// CP-016 Task 5: deterministic, idempotent integration of auditable work sessions.
 const path = "server/db.ts";
 let source = fs.readFileSync(path, "utf8");
 
