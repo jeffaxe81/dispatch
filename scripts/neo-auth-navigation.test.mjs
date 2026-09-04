@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   classifyNeoAuthNavigation,
   summarizeNavigateResult,
+  summarizePageStructure,
 } from "./neo-auth-navigation.mjs";
 
 test("classifies Chrome internal error pages as network errors", () => {
@@ -73,6 +74,31 @@ test("preserves only allowlisted Chrome navigation error codes", () => {
     {
       navigationError: "<redacted-error>",
       finalProtocol: "https:",
+    },
+  );
+});
+
+test("summarizes page structure without text, values or selectors", () => {
+  assert.deepEqual(
+    summarizePageStructure({
+      readyState: "complete",
+      forms: 2,
+      iframes: 1,
+      shadowHosts: 3,
+      inputs: ["text", "password", "email", "hidden", "custom-secret-type"],
+    }),
+    {
+      readyState: "complete",
+      forms: 2,
+      iframes: 1,
+      shadowHosts: 3,
+      inputTypes: {
+        text: 1,
+        password: 1,
+        email: 1,
+        hidden: 1,
+        other: 1,
+      },
     },
   );
 });
