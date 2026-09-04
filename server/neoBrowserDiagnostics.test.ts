@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createNeoCdpDiagnosticCollector,
   sanitizeBrowserDiagnosticUrl,
   summarizeNeoDocumentResponse,
   summarizeNeoNetworkFailure,
@@ -114,5 +115,102 @@ describe("summarizeNeoNetworkFailure", () => {
         NEO_ORIGIN,
       ),
     ).toBeNull();
+  });
+});
+
+describe("createNeoCdpDiagnosticCollector", () => {
+  it("correlaciona requestId, conserva apenas documento NEO e falhas NEO e redige segredos", () => {
+    const collector = createNeoCdpDiagnosticCollector(NEO_ORIGIN);
+
+    collector.onRequestWillBeSent({
+      requestId: "doc-1",
+      type: "Document",
+      request: { url: "https://gscprj.saas.digitro.cloud/neo/?token=secret" },
+    });
+    collector.onResponseReceived({
+      requestId: "doc-1",
+      type: "Document",
+      response: {
+        url: "https://gscprj.saas.digitro.cloud/neo/?token=secret",
+        status: 200,
+        mimeType: "text/html",
+        headers: { "x-frame-options": "SAMEORIGIN" },
+      },
+    });
+
+    collector.onRequestWillBeSent({
+      requestId: "script-1",
+      type: "Script",
+      request: { url: "https://gscprj.saas.digitro.cloud/neo/app.js?session=secret" },
+    });
+    collector.onLoadingFailed({
+      requestId: "script-1",
+      errorText: "private-message-must-not-leak",
+      blockedReason: "csp",
+      canceled: false,
+    });
+
+    collector.onResponseReceived({
+      requestId: "other-doc",
+      type: "Document",
+      response: {
+        url: "https://identity.example.com/login?code=secret",
+        status: 302,
+        mimeType: "text/html",
+        headers: {},
+      },
+    });
+
+    const report = collector.snapshot();
+    expect(report.documents).toEqual([
+      {
+        url: "https://gscprj.saas.digitro.cloud/neo/",
+        status: 200,
+        mimeType: "text/html",
+        embedding: { embedding: "same-origin-only" },
+      },
+    ]);
+    expect(report.failures).toEqual([
+      {
+        url: "https://gscprj.saas.digitro.cloud/neo/app.js",
+        error: "<redacted-error>",
+        blockedReason: "csp",
+        resourceType: "Script",
+        canceled: false,
+      },
+    ]);
+    expect(JSON.stringify(report)).not.toContain("secret");
+    expect(JSON.stringify(report)).not.toContain("private-message-must-not-leak");
+  });
+
+  it("mantém histórico limitado e informa se o documento NEO foi observado", () => {
+    const collector = createNeoCdpDiagnosticCollector(NEO_ORIGIN, { maxEntries: 2 });
+
+    for (let index = 0; index < 3; index += 1) {
+      const requestId = `doc-${index}`;
+      collector.onRequestWillBeSent({
+        requestId,
+        type: "Document",
+        request: { url: `https://gscprj.saas.digitro.cloud/neo/page-${index}` },
+      });
+      collector.onResponseReceived({
+        requestId,
+        type: "Document",
+        response: {
+          url: `https://gscprj.saas.digitro.cloud/neo/page-${index}`,
+          status: 200,
+          mimeType: "text/html",
+          headers: {},
+        },
+      });
+    }
+
+    const report = collector.snapshot();
+    expect(report.neoDocumentObserved).toBe(true);
+    expect(report.documents).toHaveLength(2);
+    expect(report.documents.map(item => item.url)).toEqual([
+      "https://gscprj.saas.digitro.cloud/neo/page-1",
+      "https://gscprj.saas.digitro.cloud/neo/page-2",
+    ]);
   });
 });
