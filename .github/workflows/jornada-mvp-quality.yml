@@ -1,0 +1,65 @@
+name: Jornada MVP quality
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "server/workShift*.ts"
+      - "drizzle/workShiftSchema.ts"
+      - "drizzle.config.ts"
+      - "server/rootRouter.ts"
+      - "server/_core/index.ts"
+      - "client/src/lib/trpc.ts"
+      - ".github/workflows/jornada-mvp-quality.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jornada-mvp-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Testes, tipos e migração da Jornada
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obter código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Habilitar Corepack
+        run: corepack enable
+
+      - name: Instalar dependências congeladas
+        run: pnpm install --frozen-lockfile
+
+      - name: Executar testes da Jornada
+        run: pnpm exec vitest run server/workShift*.test.ts
+
+      - name: Validar tipos
+        run: pnpm check
+
+      - name: Gerar migração Drizzle para validação
+        run: |
+          pnpm exec drizzle-kit generate
+          git status --short drizzle drizzle.config.ts
+          git diff -- drizzle drizzle.config.ts > jornada-migration.patch
+          test -s jornada-migration.patch
+
+      - name: Publicar migração gerada
+        uses: actions/upload-artifact@v4
+        with:
+          name: jornada-mvp-drizzle-generated
+          path: |
+            drizzle/
+            jornada-migration.patch
+          if-no-files-found: error
+          retention-days: 7
