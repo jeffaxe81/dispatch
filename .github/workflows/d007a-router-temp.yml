@@ -1,0 +1,123 @@
+name: D-007A router TEMP
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: d007a-router-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    name: Patch and validate work shift tRPC router
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CI: true
+
+    steps:
+      - name: Obter branch da feature
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Habilitar Corepack
+        run: corepack enable
+
+      - name: Instalar dependências congeladas
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Aplicar patch D-007A por marcadores exatos
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("server/routers.ts")
+          source = path.read_text()
+          if "workShifts: router({" in source:
+              print("Router D-007A já presente; nenhum patch necessário.")
+              raise SystemExit(0)
+
+          operations_marker = 'import { INCIDENT_PRIORITIES, INCIDENT_STATUSES, INCIDENT_TRANSITIONS, OPERATIONAL_ROLES } from "../shared/operations";\n'
+          operations_replacement = operations_marker + 'import { WORK_SHIFT_ACTIONS } from "../shared/workShifts";\n'
+          if source.count(operations_marker) != 1:
+              raise SystemExit("Marcador de imports shared inesperado.")
+          source = source.replace(operations_marker, operations_replacement, 1)
+
+          db_marker = '  getOperationalMapSettings,\n  getOwnProfilePhoto,\n'
+          db_replacement = '  getOperationalMapSettings,\n  getOwnCurrentWorkShift,\n  listOwnWorkShiftHistory,\n  controlOwnWorkShift,\n  getOwnProfilePhoto,\n'
+          if source.count(db_marker) != 1:
+              raise SystemExit("Marcador de imports DB inesperado.")
+          source = source.replace(db_marker, db_replacement, 1)
+
+          router_marker = '  dashboard: router({\n'
+          if source.count(router_marker) != 1:
+              raise SystemExit("Marcador de router inesperado.")
+
+          block = '''  workShifts: router({
+            current: operationalProcedure.query(async ({ ctx }) => {
+              await assertPermission(ctx.user, "work_shifts.view");
+              return getOwnCurrentWorkShift(ctx.user.id);
+            }),
+            history: operationalProcedure.input(paginationInput).query(async ({ ctx, input }) => {
+              await assertPermission(ctx.user, "work_shifts.view");
+              return listOwnWorkShiftHistory({ userId: ctx.user.id, ...input });
+            }),
+            control: operationalProcedure
+              .input(z.object({ action: z.enum(WORK_SHIFT_ACTIONS) }))
+              .mutation(async ({ ctx, input }) => {
+                await assertPermission(ctx.user, "work_shifts.control");
+                return controlOwnWorkShift({
+                  userId: ctx.user.id,
+                  teamId: ctx.user.teamId,
+                  action: input.action,
+                });
+              }),
+          }),
+'''
+          source = source.replace(router_marker, block + router_marker, 1)
+          path.write_text(source)
+          PY
+
+      - name: Validar contrato direcionado
+        run: |
+          corepack pnpm check
+          corepack pnpm vitest run --config vitest.config.ts \
+            server/workShifts.router.test.ts \
+            server/workShiftDbContract.test.ts \
+            server/triageAndShift.router.test.ts
+
+      - name: Validar superfície do diff
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only | tr -d '\r')" = "server/routers.ts"
+          grep -q 'workShifts: router({' server/routers.ts
+          grep -q 'work_shifts.view' server/routers.ts
+          grep -q 'work_shifts.control' server/routers.ts
+          grep -q 'z.enum(WORK_SHIFT_ACTIONS)' server/routers.ts
+
+      - name: Versionar somente server/routers.ts
+        shell: bash
+        run: |
+          if git diff --quiet -- server/routers.ts; then
+            echo "Nenhuma alteração nova para versionar."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/routers.ts
+          git commit -m "feat(d007): expose own work shift API with RBAC"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
