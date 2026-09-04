@@ -38,4 +38,13 @@ ALTER TABLE `work_shift_sessions` ADD CONSTRAINT `work_shift_sessions_team_id_te
 CREATE INDEX `work_shift_events_session_occurred_idx` ON `work_shift_events` (`session_id`,`occurred_at`);--> statement-breakpoint
 CREATE INDEX `work_shift_sessions_user_started_idx` ON `work_shift_sessions` (`user_id`,`started_at`);--> statement-breakpoint
 CREATE INDEX `work_shift_sessions_user_status_idx` ON `work_shift_sessions` (`user_id`,`work_shift_session_status`);--> statement-breakpoint
-CREATE INDEX `work_shift_sessions_team_started_idx` ON `work_shift_sessions` (`team_id`,`started_at`);
+CREATE INDEX `work_shift_sessions_team_started_idx` ON `work_shift_sessions` (`team_id`,`started_at`);--> statement-breakpoint
+INSERT INTO `access_permissions` (`code`, `resource`, `action`, `description`, `active`)
+VALUES
+  ('work_shifts.view', 'work_shifts', 'view', 'Consulta a própria jornada e histórico autorizado.', true),
+  ('work_shifts.control', 'work_shifts', 'control', 'Inicia, pausa, retoma e encerra a própria jornada.', true)
+ON DUPLICATE KEY UPDATE
+  `resource` = VALUES(`resource`),
+  `action` = VALUES(`action`),
+  `description` = VALUES(`description`),
+  `active` = VALUES(`active`);
