@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 import { protectedProcedure, router } from "./_core/trpc";
-import { getDatabaseWorkShiftStatus, runDatabaseWorkShiftCommand } from "./workShiftRuntime";
+import { getDatabaseWorkShiftHistory, getDatabaseWorkShiftStatus, runDatabaseWorkShiftCommand } from "./workShiftRuntime";
 
 const workShiftProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (!ctx.user?.active) {
@@ -37,6 +38,9 @@ function commandProcedure(type: "iniciar" | "iniciar_intervalo" | "retomar" | "e
 
 export const workShiftRouter = router({
   current: workShiftProcedure.query(({ ctx }) => getDatabaseWorkShiftStatus(ctx.user.id)),
+  history: workShiftProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(31).default(10) }).optional())
+    .query(({ ctx, input }) => getDatabaseWorkShiftHistory(ctx.user.id, input?.limit ?? 10)),
   start: commandProcedure("iniciar"),
   break: commandProcedure("iniciar_intervalo"),
   resume: commandProcedure("retomar"),
