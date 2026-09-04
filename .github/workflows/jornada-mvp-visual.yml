@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      DATABASE_URL: mysql://dispatch_ci@127.0.0.1:3306/dispatch_ci
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/dispatch_ci
       LOCAL_AUTH_SMOKE_URL: http://127.0.0.1:3000
       NODE_ENV: development
 
@@ -50,13 +50,8 @@ jobs:
       - name: Preparar MySQL efêmero do runner
         run: |
           sudo systemctl start mysql
-          sudo mysql <<'SQL'
-          CREATE DATABASE IF NOT EXISTS dispatch_ci;
-          CREATE USER IF NOT EXISTS 'dispatch_ci'@'127.0.0.1' IDENTIFIED BY '';
-          GRANT ALL PRIVILEGES ON dispatch_ci.* TO 'dispatch_ci'@'127.0.0.1';
-          FLUSH PRIVILEGES;
-          SQL
-          mysqladmin ping -h 127.0.0.1 -u dispatch_ci
+          mysql -h 127.0.0.1 -uroot -proot -e "CREATE DATABASE IF NOT EXISTS dispatch_ci;"
+          mysqladmin ping -h 127.0.0.1 -uroot -proot
 
       - name: Habilitar Corepack e pnpm
         run: |
