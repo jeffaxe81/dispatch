@@ -27,6 +27,9 @@ describe("inventário de contratos tRPC", () => {
       expect(coverage).toContain("`gis.route`");
       expect(coverage).toContain("`gis.rankCandidates`");
       expect(coverage).toContain("| Procedimentos inventariados | 104 |");
+      expect(coverage).toContain("A suíte completa contém **91 arquivos e 402 testes**.");
+      expect(coverage).toContain("| Arquivos de teste aprovados | 91 |");
+      expect(coverage).toContain("| Casos de teste aprovados | 402 |");
     } finally {
       fs.writeFileSync(coveragePath, originalCoverage);
     }
