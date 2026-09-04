@@ -3,7 +3,7 @@
 **Data:** 04/09/2026  
 **Projeto:** AXE Dispatch / Projeto Despacho  
 **Prioridade:** Alta  
-**Status:** Design aprovado em conversa; aguardando revisão formal desta especificação antes do plano de implementação.  
+**Status:** Design técnico aprovado em conversa; especificação revisada e aguardando aprovação formal antes do plano de implementação.  
 **Base técnica:** `checkpoint/d006e-csp-frame-src-20260904`
 
 ## 1. Objetivo
@@ -12,7 +12,7 @@ Evoluir o controle de jornada já existente no AXE Dispatch para um módulo hist
 
 O módulo deve suportar início e encerramento de jornada, pausas e intervalos, escalas fixas e cíclicas — incluindo 12x36 —, cálculo de horas, ajustes auditáveis, relatórios, alertas, status operacional e filtragem de elegibilidade no motor de despacho.
 
-A jornada deve ser tratada como domínio próprio, sem perder a compatibilidade com o controle atual das equipes.
+A jornada será tratada como domínio próprio, sem perder compatibilidade com o controle atual das equipes.
 
 ## 2. Estado atual preservado
 
@@ -29,13 +29,7 @@ O backend já implementa a máquina de estados:
 
 com rejeição de transições incompatíveis. O endpoint `teams.updateShift` respeita escopo de equipe, `teams.manage` e permite ao agente controlar a própria equipe.
 
-A tela de Equipes já apresenta:
-
-- situação atual da jornada;
-- início;
-- tempo acumulado de pausa;
-- tempo líquido;
-- comandos Iniciar, Pausar, Retomar e Encerrar.
+A tela de Equipes já apresenta situação atual da jornada, início, tempo acumulado de pausa, tempo líquido e os comandos Iniciar, Pausar, Retomar e Encerrar.
 
 O status operacional da equipe permanece separado da jornada — decisão que será preservada.
 
@@ -43,7 +37,7 @@ O status operacional da equipe permanece separado da jornada — decisão que se
 
 Os campos em `teams` representam apenas o estado corrente. Eles não constituem histórico completo de jornadas, não permitem múltiplas sessões, planejamento de escala, apuração histórica, ajustes com antes/depois ou associação individual adequada por usuário.
 
-Por isso, esses campos não serão expandidos para concentrar toda a nova funcionalidade. Eles serão mantidos inicialmente como compatibilidade/cache operacional e gradualmente derivados do novo domínio.
+Esses campos não serão expandidos para concentrar toda a nova funcionalidade. Serão preservados inicialmente como compatibilidade/cache operacional e gradualmente derivados do novo domínio.
 
 ## 3. Princípios de arquitetura
 
@@ -52,7 +46,7 @@ Por isso, esses campos não serão expandidos para concentrar toda a nova funcio
 3. **Eventos de jornada são auditáveis.** Ajustes não sobrescrevem silenciosamente a história.
 4. **Jornada e status operacional são dimensões distintas.** Estar dentro da jornada não significa estar disponível para despacho.
 5. **Elegibilidade deve ser decidida antes do ranking GIS.** Equipes/agentes inelegíveis não devem consumir cálculo de rota.
-6. **Sem event sourcing completo.** O modelo será sessão + eventos de auditoria, reduzindo complexidade operacional.
+6. **Sem event sourcing completo.** O modelo será sessão + eventos auditáveis, reduzindo complexidade operacional.
 7. **Compatibilidade progressiva.** A tela e o endpoint atuais continuam funcionando enquanto a persistência migra para o novo domínio.
 8. **Multi-tenant futuro.** As entidades devem carregar escopo organizacional suficiente para isolamento posterior por tenant.
 
@@ -72,8 +66,10 @@ Campos mínimos propostos:
 - `scheduleType`: `fixed`, `cyclic_12x36`, `custom_cycle`;
 - `timezone`;
 - `startTimeLocal`;
+- `weekdays` opcional para escala fixa;
 - `plannedDurationMinutes`;
 - `breakPolicyMinutes` opcional;
+- `cycleAnchorAt` opcional e obrigatório para escalas cíclicas;
 - `cycleWorkMinutes` opcional;
 - `cycleRestMinutes` opcional;
 - `effectiveFrom`;
@@ -82,7 +78,7 @@ Campos mínimos propostos:
 - `createdAt`;
 - `updatedAt`.
 
-Para 12x36, a regra de referência é 12 horas planejadas de trabalho seguidas por 36 horas planejadas de descanso. O cálculo deverá usar timezone explícito e uma âncora de ciclo, evitando inferência baseada apenas no dia do calendário.
+Para 12x36, a regra de referência é 12 horas planejadas de trabalho seguidas por 36 horas planejadas de descanso. O cálculo usará `cycleAnchorAt`, duração do ciclo e timezone explícito, evitando inferência baseada apenas no dia do calendário.
 
 ### 4.2 `work_shift_assignments`
 
@@ -96,14 +92,40 @@ Campos mínimos:
 - `teamId` opcional;
 - `effectiveFrom`;
 - `effectiveUntil` opcional;
-- `priority`;
 - `active`;
 - `createdAt`;
 - `updatedAt`.
 
-A associação primária será por usuário, permitindo jornada individual. `teamId` funcionará como contexto operacional e suporte à compatibilidade com a jornada atual de equipe.
+A associação primária será por usuário, permitindo jornada individual. `teamId` funciona como contexto operacional e suporte à compatibilidade com a jornada atual de equipe.
 
-### 4.3 `work_shift_sessions`
+Duas associações ativas e sobrepostas para o mesmo usuário não serão permitidas na fundação. Exceções de escala serão modeladas explicitamente, em vez de resolvidas por prioridade implícita.
+
+### 4.3 `work_shift_schedule_exceptions`
+
+Representa exceções à escala recorrente.
+
+Tipos iniciais:
+
+- `day_off`;
+- `replacement_shift`;
+- `leave`;
+- `extra_call`;
+- `holiday_override`.
+
+Campos mínimos:
+
+- `id`;
+- `assignmentId`;
+- `exceptionType`;
+- `startsAt`;
+- `endsAt`;
+- `reason`;
+- `createdByUserId`;
+- `createdAt`.
+
+Exceções têm precedência sobre a regra recorrente e precisam de auditoria.
+
+### 4.4 `work_shift_sessions`
 
 Representa uma jornada efetivamente realizada.
 
@@ -116,10 +138,11 @@ Campos mínimos:
 - `scheduledStartAt` opcional;
 - `scheduledEndAt` opcional;
 - `startedAt`;
+- `pausedAt` opcional;
 - `endedAt` opcional;
-- `status`: `active`, `paused`, `ended`, `adjusted`, `cancelled`;
-- `workedSeconds` calculado/materializado ao encerrar;
-- `pausedSeconds`;
+- `status`: `active`, `paused`, `ended`, `cancelled`;
+- `workedSeconds` materializado ao encerrar;
+- `pausedSeconds` acumulado;
 - `overtimeSeconds`;
 - `lateStartSeconds`;
 - `earlyEndSeconds`;
@@ -127,9 +150,11 @@ Campos mínimos:
 - `createdAt`;
 - `updatedAt`.
 
-A sessão é a fonte de verdade da jornada realizada.
+A sessão é a fonte de verdade da jornada realizada. Ajustes posteriores não criam um estado `adjusted`; são representados pela trilha de ajuste e pelos eventos correspondentes.
 
-### 4.4 `work_shift_events`
+Quando a sessão for iniciada pelo próprio usuário, `teamId` será capturado como snapshot do vínculo operacional vigente do usuário naquele instante. Supervisor/administrador poderá selecionar outro contexto apenas se possuir escopo e permissão adequados.
+
+### 4.5 `work_shift_events`
 
 Trilha cronológica imutável da sessão.
 
@@ -161,7 +186,7 @@ Campos mínimos:
 
 Eventos não serão atualizados ou apagados por fluxo normal.
 
-### 4.5 `work_shift_adjustments`
+### 4.6 `work_shift_adjustments`
 
 Representa pedidos e decisões de correção.
 
@@ -189,15 +214,15 @@ Estados derivados da sessão:
 
 Regras:
 
-- uma sessão ativa por usuário por vez;
+- uma sessão não encerrada por usuário por vez;
 - `pause` exige sessão `active`;
 - `resume` exige sessão `paused`;
 - `end` aceita `active` ou `paused`;
 - ao encerrar durante pausa, o intervalo corrente é acumulado antes do fechamento;
 - sessão encerrada não pode ser reaberta por operação comum;
 - correções posteriores usam o fluxo de ajuste;
-- timestamps de cliente não serão aceitos como fonte autoritativa sem regra específica; servidor registra o instante efetivo da ação;
-- ações duplicadas devem ser rejeitadas ou idempotentes conforme o contrato do endpoint, nunca criar duas sessões por acidente.
+- timestamps enviados pelo cliente não serão fonte autoritativa na operação comum; o servidor registra o instante efetivo;
+- ações duplicadas devem ser rejeitadas ou tratadas de forma idempotente pelo contrato, nunca criar duas sessões acidentalmente.
 
 ## 6. Compatibilidade com `teams`
 
@@ -205,9 +230,9 @@ Durante a transição:
 
 - `teams.shiftStartedAt`, `shiftEndsAt`, `shiftPausedAt` e `shiftPausedTotalSeconds` continuam sendo preenchidos;
 - a gravação primária passa a ocorrer na sessão/eventos;
-- a atualização da equipe será feita na mesma transação quando possível;
-- leitura da tela atual poderá continuar usando `teams` na D-007A;
-- uma etapa posterior migrará a tela para consulta derivada da sessão ativa;
+- a atualização da equipe ocorre na mesma transação quando houver `teamId`;
+- a tela atual poderá continuar lendo `teams` na D-007A;
+- etapa posterior migrará a tela para consulta derivada da sessão ativa;
 - não haverá exclusão imediata dos campos antigos.
 
 Essa estratégia permite rollback de código sem perda da nova trilha histórica.
@@ -216,31 +241,23 @@ Essa estratégia permite rollback de código sem perda da nova trilha histórica
 
 ### 7.1 Escala fixa
 
-Permite horário diário/recorrente com duração planejada e política de intervalo.
+Permite horário recorrente por dias da semana, duração planejada e política de intervalo.
 
 ### 7.2 Escala 12x36
 
-Deve usar:
+Usará:
 
-- instante âncora do primeiro plantão;
-- ciclo de 48 horas;
+- `cycleAnchorAt` como instante do primeiro plantão;
+- ciclo total de 48 horas;
 - janela de trabalho de 12 horas;
 - descanso planejado de 36 horas;
 - timezone definido na escala.
 
-O sistema não presumirá que 12x36 significa apenas alternância de datas. Plantões noturnos e transições de horário devem ser calculados por instantes.
+O sistema não presumirá que 12x36 significa apenas alternância de datas. Plantões noturnos e futuras mudanças de offset serão calculados por instantes e timezone.
 
 ### 7.3 Exceções
 
-Evolução prevista:
-
-- troca de plantão;
-- folga extraordinária;
-- afastamento;
-- convocação extraordinária;
-- feriado/regra local.
-
-Exceções terão precedência sobre a regra recorrente e serão auditadas.
+Troca de plantão, folga extraordinária, afastamento, convocação e feriado serão representados por `work_shift_schedule_exceptions` e terão precedência sobre a regra recorrente.
 
 ## 8. Status operacional x jornada
 
@@ -255,7 +272,7 @@ Exemplos:
 - jornada ativa + ausência de localização recente -> pode ser inelegível por política operacional;
 - jornada ativa + equipe fora da região -> pode ser inelegível por escopo/região.
 
-O módulo não alterará automaticamente o status operacional em toda transição de jornada. Regras específicas poderão, no futuro, sugerir ou aplicar mudanças configuráveis, mas não serão implícitas na fundação.
+O módulo não alterará automaticamente o status operacional em toda transição de jornada. Regras automáticas futuras exigirão configuração explícita.
 
 ## 9. Elegibilidade para despacho
 
@@ -276,9 +293,9 @@ Critérios iniciais:
 7. localização válida e suficientemente recente;
 8. região/área operacional, quando aplicável.
 
-Somente os candidatos elegíveis seguem para pré-seleção geodésica e cálculo OSRM.
+Somente candidatos elegíveis seguem para pré-seleção geodésica e cálculo OSRM.
 
-O resultado deve informar motivos de exclusão, por exemplo:
+O resultado informa motivos de exclusão, por exemplo:
 
 - `outside_shift`;
 - `shift_paused`;
@@ -288,21 +305,23 @@ O resultado deve informar motivos de exclusão, por exemplo:
 - `outside_scope`;
 - `outside_region`.
 
-Esses motivos poderão ser exibidos ao despachante e auditados sem expor dados sensíveis.
+Esses motivos podem ser exibidos ao despachante e auditados sem expor dados sensíveis.
 
 ## 10. Cálculos
 
 ### 10.1 Tempo trabalhado
 
-`worked = ended/start-current duration - paused duration`
+Para sessão encerrada:
 
-Durante sessão ativa, valor é derivado em tempo real. Ao encerrar, o valor final é persistido.
+`workedSeconds = max(0, endedAt - startedAt - pausedSeconds)`
+
+Para sessão ativa, o fim lógico usado no cálculo é o instante atual do servidor. Se a sessão estiver pausada, o intervalo entre `pausedAt` e o instante atual entra temporariamente no cálculo de pausa.
 
 ### 10.2 Horas extras
 
-`overtime = max(0, worked - plannedWorkDuration)`
+`overtimeSeconds = max(0, workedSeconds - plannedWorkSeconds)`
 
-A regra poderá evoluir para tolerâncias e banco de horas, mas a D-007 não tentará implementar legislação trabalhista completa.
+A regra pode evoluir para tolerâncias e banco de horas, mas a D-007 não implementará legislação trabalhista completa.
 
 ### 10.3 Atraso e saída antecipada
 
@@ -310,11 +329,11 @@ Quando houver escala vinculada:
 
 - atraso = início real posterior ao início planejado;
 - saída antecipada = encerramento real anterior ao fim planejado;
-- tolerâncias devem ser configuráveis em evolução posterior.
+- tolerâncias serão configuráveis em evolução posterior.
 
 ### 10.4 Intervalos
 
-Serão acumulados por eventos `paused`/`resumed`. A D-007A preserva a semântica atual de pausa única por vez; múltiplas pausas ao longo da sessão são suportadas pelo histórico de eventos.
+Serão acumulados por eventos `paused`/`resumed`. A D-007A preserva a semântica de uma pausa corrente por vez, mas suporta múltiplas pausas ao longo da mesma sessão por meio do histórico de eventos.
 
 ## 11. Alertas
 
@@ -348,27 +367,25 @@ Relatórios mínimos:
 - cobertura por faixa de horário;
 - candidatos excluídos do despacho por jornada.
 
-Filtros devem respeitar escopo RBAC/organizacional.
-
-Exportação deve reutilizar o padrão existente de auditoria de relatórios.
+Filtros respeitam escopo RBAC/organizacional. Exportação reutiliza o padrão existente de auditoria de relatórios.
 
 ## 13. RBAC
 
 Permissões propostas:
 
-- `work_shifts.view` — consultar própria jornada e dados permitidos pelo escopo;
+- `work_shifts.view` — consultar jornada conforme escopo;
 - `work_shifts.control` — iniciar/pausar/retomar/encerrar a própria jornada;
 - `work_shifts.manage` — administrar jornadas do escopo;
-- `work_shifts.adjust` — solicitar/aplicar ajustes;
+- `work_shifts.adjust` — solicitar/aplicar ajustes permitidos;
 - `work_shifts.approve` — aprovar/rejeitar ajustes;
 - `work_shift_schedules.view` — consultar escalas;
 - `work_shift_schedules.manage` — criar/alterar escalas;
-- `work_shift_reports.view` — consultar relatórios de jornada;
+- `work_shift_reports.view` — consultar relatórios;
 - `work_shift_reports.export` — exportar relatórios.
 
 O wildcard administrativo legado `*` continua compatível.
 
-A implementação deve evitar conceder automaticamente as novas permissões a perfis existentes, exceto quando houver mapeamento explícito aprovado.
+As novas permissões não serão concedidas automaticamente a perfis existentes, exceto quando houver mapeamento explícito aprovado.
 
 ## 14. Auditoria
 
@@ -376,6 +393,7 @@ Devem ser auditados:
 
 - criação/alteração de escala;
 - associação de usuário à escala;
+- criação/alteração de exceção;
 - início/pausa/retorno/fim;
 - ajuste solicitado;
 - ajuste aprovado/rejeitado;
@@ -383,18 +401,13 @@ Devem ser auditados:
 - exportação de relatório;
 - decisão de inelegibilidade para despacho quando relevante.
 
-Não registrar:
-
-- credenciais;
-- conteúdo privado sem relação com jornada;
-- localização em snapshots de ajuste quando não necessária;
-- payloads externos sem sanitização.
+Não registrar credenciais, conteúdo privado sem relação com jornada, localização desnecessária em snapshots de ajuste ou payload externo não sanitizado.
 
 ## 15. UX
 
 ### 15.1 Agente / operador
 
-A interface deve mostrar de forma simples:
+A interface mostra:
 
 - estado atual da jornada;
 - hora de início;
@@ -408,7 +421,7 @@ Os comandos atuais de Iniciar/Pausar/Retomar/Encerrar serão preservados e evolu
 
 ### 15.2 Supervisor / administrador
 
-Nova área de Jornada deverá permitir:
+Nova área de Jornada permitirá:
 
 - visão de quem está em jornada;
 - quem está em pausa;
@@ -420,7 +433,7 @@ Nova área de Jornada deverá permitir:
 
 ### 15.3 Despachante
 
-No ranking de candidatos, deve ser possível distinguir:
+No ranking de candidatos será possível distinguir:
 
 - elegível;
 - fora da jornada;
@@ -430,9 +443,9 @@ No ranking de candidatos, deve ser possível distinguir:
 - localização vencida;
 - fora do escopo/região.
 
-Candidatos inelegíveis não devem ser enviados ao OSRM por padrão.
+Candidatos inelegíveis não serão enviados ao OSRM por padrão.
 
-## 16. APIs / serviços
+## 16. APIs e serviços
 
 Separar responsabilidades em módulos pequenos:
 
@@ -442,22 +455,22 @@ Separar responsabilidades em módulos pequenos:
 - `dispatchEligibilityService` — filtro anterior ao GIS;
 - `workShiftReportingService` — agregações e relatórios.
 
-Procedures tRPC deverão apenas validar input/permissão/escopo e delegar para esses serviços.
+Procedures tRPC validam input/permissão/escopo e delegam a esses serviços.
 
 ## 17. Transações e concorrência
 
-Operações de jornada precisam ser transacionais.
+Operações de jornada são transacionais.
 
 Requisitos:
 
-- impedir duas sessões abertas para o mesmo usuário;
+- impedir duas sessões não encerradas para o mesmo usuário;
 - proteger contra duplo clique/requisições concorrentes;
 - inserir evento e atualizar sessão na mesma transação;
 - sincronizar campos legados da equipe na mesma transação quando houver `teamId`;
-- ajustes devem validar a versão/estado atual antes de materializar alterações;
+- ajustes validam a versão/estado atual antes de materializar alterações;
 - falha parcial não pode deixar sessão e evento divergentes.
 
-Na D-007A, a estratégia concreta de lock será escolhida de acordo com as capacidades MySQL/Drizzle já usadas no projeto, priorizando unicidade e validação transacional.
+Na D-007A, a estratégia concreta de lock será definida conforme as capacidades MySQL/Drizzle já usadas no projeto, priorizando restrição de unicidade aplicável e validação transacional.
 
 ## 18. Migração e rollback
 
@@ -469,28 +482,29 @@ Regras:
 - nenhuma migração destrutiva na primeira fase;
 - rollback de aplicação deve continuar conseguindo ler o estado legado;
 - dados históricos novos não serão descartados em rollback;
-- se necessário, um job de reconciliação poderá verificar divergências entre sessão ativa e cache legado;
+- uma rotina de reconciliação poderá identificar divergência entre sessão ativa e cache legado;
 - execução real da migration em produção exige aprovação explícita posterior.
 
 ## 19. Fases de entrega
 
 ### D-007A — Fundação histórica
 
-- tabelas de sessão, evento e ajuste;
+- tabelas `work_shift_sessions`, `work_shift_events` e `work_shift_adjustments`;
 - máquina de estados por usuário;
 - compatibilidade com `teams.updateShift`;
-- RBAC inicial;
-- histórico básico;
-- testes de concorrência/transição;
+- RBAC inicial de jornada;
+- consulta de histórico básico;
+- testes de transição, atomicidade e concorrência;
 - migration versionada, sem aplicação em produção.
 
 ### D-007B — Escalas e 12x36
 
+- `work_shift_schedules`;
+- `work_shift_assignments`;
+- `work_shift_schedule_exceptions`;
 - escalas fixas;
-- 12x36 por ciclo/âncora;
-- associações por usuário/equipe;
+- 12x36 por ciclo/âncora/timezone;
 - cálculo planejado x realizado;
-- exceções básicas;
 - visão de cobertura.
 
 ### D-007C — Integração com despacho
@@ -525,7 +539,7 @@ A D-007 completa será considerada aceita quando:
 - motivos de inelegibilidade forem explicáveis;
 - relatórios respeitarem RBAC/escopo;
 - desktop/mobile forem validados;
-- testes de segurança, TypeScript, Vitest, build e regressão GIS continuarem verdes;
+- segurança, TypeScript, Vitest, build e regressão GIS continuarem verdes;
 - migrations permanecerem versionadas e não forem aplicadas em produção sem aprovação explícita.
 
 ## 21. Fora do escopo inicial
@@ -545,10 +559,11 @@ Esses itens podem ser avaliados como evoluções independentes.
 ## 22. Decisões consolidadas
 
 - O domínio será baseado em **sessões + eventos auditáveis**, não event sourcing completo.
-- A jornada será primariamente **individual por usuário**, podendo carregar contexto de equipe.
+- A jornada será primariamente **individual por usuário**, com snapshot opcional do contexto de equipe.
 - Os campos de jornada em `teams` serão preservados durante a transição.
 - O status operacional continuará independente da jornada.
 - O filtro de jornada ocorrerá antes do ranking GIS/OSRM.
-- 12x36 será modelado por ciclo temporal com âncora e timezone.
+- 12x36 será modelado por ciclo temporal com `cycleAnchorAt` e timezone.
+- Sobreposição de escalas ativas para o mesmo usuário será bloqueada; exceções serão explícitas.
 - Ajustes nunca apagarão silenciosamente a história original.
 - Nenhuma migration será executada em produção sem aprovação posterior.
