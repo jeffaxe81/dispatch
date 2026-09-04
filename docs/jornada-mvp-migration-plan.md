@@ -83,3 +83,13 @@ CREATE INDEX `work_shift_events_user_occurred_idx`
 
 ## Regra de segurança
 Não editar manualmente `drizzle/meta/_journal.json` nem criar snapshot fictício. Esses artefatos devem ser produzidos pelo Drizzle Kit para evitar divergência em futuras migrações.
+
+## Estado do CI dedicado
+
+O PR #24 agora possui `.github/workflows/jornada-mvp-quality.yml`, pois o `main` não continha workflows e por isso nenhum check era criado anteriormente.
+
+- Run #1: falhou no `setup-node` porque o cache de pnpm era solicitado antes de o pnpm estar disponível.
+- Run #2: ambiente e dependências passaram; a execução revelou que arquivos escritos com `node:test` estavam sendo enviados ao Vitest.
+- Run #3: workflow corrigido para executar domínio/persistência via `tsx --test` e router via Vitest; a validação de tipos e a geração oficial da migração permanecem condicionadas à conclusão verde desse run.
+
+Nenhum secret é utilizado nesse workflow.
