@@ -3,6 +3,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { EMBEDDED_APPLICATIONS } from "@shared/embeddedApplications";
 import { INCIDENT_PRIORITIES, INCIDENT_STATUSES, INCIDENT_TRANSITIONS, OPERATIONAL_ROLES } from "../shared/operations";
+import { WORK_SHIFT_ACTIONS } from "../shared/workShifts";
 import {
   assertCanEditIncident,
   assertCanAddIncidentEvidence,
@@ -48,6 +49,9 @@ import {
   createIncident,
   permanentlyDeleteIncident,
   getOperationalMapSettings,
+  getOwnCurrentWorkShift,
+  listOwnWorkShiftHistory,
+  controlOwnWorkShift,
   getOwnProfilePhoto,
   getSolutionResetPreview,
   getSimulatedIntegrationMetrics,
@@ -146,6 +150,26 @@ export const appRouter = router({
       return { success: true } as const;
     }),
   }),
+  workShifts: router({
+  current: operationalProcedure.query(async ({ ctx }) => {
+    await assertPermission(ctx.user, "work_shifts.view");
+    return getOwnCurrentWorkShift(ctx.user.id);
+  }),
+  history: operationalProcedure.input(paginationInput).query(async ({ ctx, input }) => {
+    await assertPermission(ctx.user, "work_shifts.view");
+    return listOwnWorkShiftHistory({ userId: ctx.user.id, ...input });
+  }),
+  control: operationalProcedure
+    .input(z.object({ action: z.enum(WORK_SHIFT_ACTIONS) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertPermission(ctx.user, "work_shifts.control");
+      return controlOwnWorkShift({
+        userId: ctx.user.id,
+        teamId: ctx.user.teamId,
+        action: input.action,
+      });
+    }),
+}),
   dashboard: router({
     summary: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "occurrences.view");
