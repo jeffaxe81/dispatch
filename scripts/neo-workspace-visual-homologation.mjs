@@ -5,8 +5,123 @@ import { resolve } from "node:path";
 const HOST = "127.0.0.1";
 const PORT = 4174;
 const URL = `http://${HOST}:${PORT}/`;
+const NEO_ORIGIN = "https://gscprj.saas.digitro.cloud";
 const outputDir = resolve("artifacts/neo-workspace-homologation");
 const chromeProfile = resolve(`.tmp-neo-visual-chrome-${process.pid}`);
+
+const ALLOWED_NETWORK_ERRORS = new Set([
+  "net::ERR_ABORTED",
+  "net::ERR_BLOCKED_BY_CLIENT",
+  "net::ERR_BLOCKED_BY_RESPONSE",
+  "net::ERR_CONNECTION_CLOSED",
+  "net::ERR_CONNECTION_REFUSED",
+  "net::ERR_CONNECTION_RESET",
+  "net::ERR_FAILED",
+  "net::ERR_INTERNET_DISCONNECTED",
+  "net::ERR_NAME_NOT_RESOLVED",
+  "net::ERR_TIMED_OUT",
+]);
+
+function sanitizeDiagnosticUrl(value) {
+  if (value === "about:blank") return value;
+  if (value.startsWith("data:")) return "data:<redacted>";
+  if (value.startsWith("blob:")) return "blob:<redacted>";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return `${url.protocol}<redacted>`;
+    }
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "<redacted-url>";
+  }
+}
+
+function belongsToNeo(value) {
+  try {
+    return new URL(value).origin === NEO_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
+function getHeader(headers, name) {
+  const target = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    if (key.toLowerCase() === target) return String(value);
+  }
+  return undefined;
+}
+
+function classifyEmbedding(headers) {
+  const csp = getHeader(headers, "content-security-policy") ?? "";
+  const xFrameOptions = (getHeader(headers, "x-frame-options") ?? "").trim().toUpperCase();
+  const frameAncestors = csp.match(/(?:^|;)\s*frame-ancestors\s+([^;]+)/i)?.[1]?.trim();
+
+  if (frameAncestors) {
+    const normalized = frameAncestors.toLowerCase();
+    if (normalized.includes("'none'")) return "blocked";
+    if (normalized === "'self'") return "same-origin-only";
+    if (normalized.includes("*")) return "allow-all";
+    return "allowlist-specific";
+  }
+  if (xFrameOptions === "DENY") return "blocked";
+  if (xFrameOptions === "SAMEORIGIN") return "same-origin-only";
+  return "not-declared";
+}
+
+function createNeoNetworkCollector(maxEntries = 50) {
+  const requests = new Map();
+  const documents = [];
+  const failures = [];
+
+  function pushBounded(target, value) {
+    target.push(value);
+    while (target.length > maxEntries) target.shift();
+  }
+
+  return {
+    onRequest(event) {
+      requests.set(event.requestId, {
+        url: event.request?.url ?? "",
+        resourceType: event.type,
+      });
+    },
+    onResponse(event) {
+      const response = event.response;
+      if (event.type !== "Document" || !response || !belongsToNeo(response.url)) return;
+      pushBounded(documents, {
+        url: sanitizeDiagnosticUrl(response.url),
+        status: response.status,
+        mimeType: response.mimeType,
+        embedding: classifyEmbedding(response.headers),
+      });
+    },
+    onFailure(event) {
+      const request = requests.get(event.requestId);
+      requests.delete(event.requestId);
+      if (!request || !belongsToNeo(request.url)) return;
+      pushBounded(failures, {
+        url: sanitizeDiagnosticUrl(request.url),
+        error: ALLOWED_NETWORK_ERRORS.has(event.errorText)
+          ? event.errorText
+          : "<redacted-error>",
+        ...(event.blockedReason ? { blockedReason: event.blockedReason } : {}),
+        ...(request.resourceType ? { resourceType: request.resourceType } : {}),
+        canceled: Boolean(event.canceled),
+      });
+    },
+    snapshot() {
+      return {
+        neoDocumentObserved: documents.length > 0,
+        documents: [...documents],
+        failures: [...failures],
+      };
+    },
+  };
+}
 
 function findChrome() {
   const candidates = [
@@ -75,9 +190,14 @@ async function waitForDevTools(profilePath, chromeProcess, getChromeOutput) {
 function createCdpClient(socket) {
   let nextId = 0;
   const waiting = new Map();
+  const listeners = new Map();
 
   socket.onmessage = event => {
     const message = JSON.parse(event.data);
+    if (message.method) {
+      const methodListeners = listeners.get(message.method) ?? [];
+      for (const listener of methodListeners) listener(message.params ?? {});
+    }
     const done = waiting.get(message.id);
     if (done) {
       waiting.delete(message.id);
@@ -102,6 +222,12 @@ function createCdpClient(socket) {
     });
   }
 
+  function on(method, listener) {
+    const methodListeners = listeners.get(method) ?? [];
+    methodListeners.push(listener);
+    listeners.set(method, methodListeners);
+  }
+
   async function evaluate(expression) {
     const result = await call("Runtime.evaluate", {
       expression,
@@ -124,16 +250,12 @@ function createCdpClient(socket) {
     throw new Error("A interface NEO não atingiu o estado esperado.");
   }
 
-  return { call, evaluate, waitFor };
+  return { call, on, evaluate, waitFor };
 }
 
 function assertMetrics(metrics, label, expectedLayout, viewportWidth) {
-  if (metrics.overflow !== "ok") {
-    throw new Error(`${label}: overflow horizontal detectado.`);
-  }
-  if (metrics.iframe !== "configured") {
-    throw new Error(`${label}: iframe NEO não está configurado.`);
-  }
+  if (metrics.overflow !== "ok") throw new Error(`${label}: overflow horizontal detectado.`);
+  if (metrics.iframe !== "configured") throw new Error(`${label}: iframe NEO não está configurado.`);
   if (metrics.layout !== expectedLayout) {
     throw new Error(`${label}: layout ${metrics.layout}; esperado ${expectedLayout}.`);
   }
@@ -164,8 +286,6 @@ async function capture(client, name, width, height, expectedLayout) {
      Number(document.body?.dataset.neoDialogWidth || 0) > 0`,
   );
 
-  // Aguarda a segunda inspeção do harness e dá tempo para o iframe externo responder,
-  // sem considerar a resposta externa requisito para aprovação do layout.
   await new Promise(resolvePromise => setTimeout(resolvePromise, 5800));
 
   const metrics = await client.evaluate(`(() => ({
@@ -241,11 +361,7 @@ try {
   chrome.stdout.on("data", chunk => { chromeOutput += chunk.toString(); });
   chrome.stderr.on("data", chunk => { chromeOutput += chunk.toString(); });
 
-  const debugPort = await waitForDevTools(
-    chromeProfile,
-    chrome,
-    () => chromeOutput.slice(-4000),
-  );
+  const debugPort = await waitForDevTools(chromeProfile, chrome, () => chromeOutput.slice(-4000));
 
   const created = await fetch(
     `http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(URL)}`,
@@ -261,21 +377,42 @@ try {
   });
 
   const client = createCdpClient(socket);
+  const networkCollector = createNeoNetworkCollector();
+  client.on("Network.requestWillBeSent", event => networkCollector.onRequest(event));
+  client.on("Network.responseReceived", event => networkCollector.onResponse(event));
+  client.on("Network.loadingFailed", event => networkCollector.onFailure(event));
+
   await client.call("Page.enable");
   await client.call("Runtime.enable");
+  await client.call("Network.enable", {
+    maxTotalBufferSize: 1_000_000,
+    maxResourceBufferSize: 250_000,
+  });
 
   const captures = [
     await capture(client, "desktop-1440x900", 1440, 900, "desktop-split"),
     await capture(client, "mobile-390x844", 390, 844, "mobile-stack"),
   ];
 
+  const networkDiagnostics = networkCollector.snapshot();
+  await writeFile(
+    resolve(outputDir, "neo-network-diagnostics.json"),
+    JSON.stringify(networkDiagnostics, null, 2) + "\n",
+    "utf8",
+  );
+
   const report = {
     status: "layout-approved",
     generatedAt: new Date().toISOString(),
     embeddedApplication: "NEO Interact",
     src: "https://gscprj.saas.digitro.cloud/neo/",
-    origin: "https://gscprj.saas.digitro.cloud",
-    note: "A aprovação automatizada cobre layout, configuração do iframe e ausência de overflow usando emulação real de viewport via Chrome DevTools. O carregamento cross-origin do conteúdo NEO permanece uma homologação externa separada.",
+    origin: NEO_ORIGIN,
+    note: "A aprovação automatizada cobre layout, configuração do iframe e ausência de overflow usando emulação real de viewport via Chrome DevTools. A coleta de rede é sanitizada e registra somente URLs sem query/fragment, respostas Document da origem NEO e falhas técnicas da origem NEO.",
+    externalCompatibility: {
+      neoDocumentObserved: networkDiagnostics.neoDocumentObserved,
+      documentResponses: networkDiagnostics.documents.length,
+      networkFailures: networkDiagnostics.failures.length,
+    },
     captures,
   };
 
@@ -286,7 +423,7 @@ try {
   );
 
   console.log(
-    "neo_workspace_visual=layout-approved desktop=desktop-split mobile=mobile-stack viewport=cdp overflow=ok iframe=configured",
+    `neo_workspace_visual=layout-approved desktop=desktop-split mobile=mobile-stack viewport=cdp overflow=ok iframe=configured neo_document=${networkDiagnostics.neoDocumentObserved ? "observed" : "not-observed"} neo_failures=${networkDiagnostics.failures.length}`,
   );
 } catch (error) {
   console.error(viteOutput);
