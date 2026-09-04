@@ -7,6 +7,12 @@ export type OpenWorkShiftSnapshot = {
   endedAt: Date | null;
   status: Extract<WorkShiftStatus, "active" | "paused">;
   pausedSeconds: number;
+  scheduleAssignmentId?: number | null;
+  scheduledStartAt?: Date | null;
+  scheduledEndAt?: Date | null;
+  lateStartSeconds?: number;
+  earlyEndSeconds?: number;
+  overtimeSeconds?: number;
 };
 
 export type WorkShiftSessionPatch = {
@@ -15,6 +21,8 @@ export type WorkShiftSessionPatch = {
   endedAt?: Date;
   pausedSeconds?: number;
   workedSeconds?: number;
+  earlyEndSeconds?: number;
+  overtimeSeconds?: number;
 };
 
 export type WorkShiftLegacyPatch = {
