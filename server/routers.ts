@@ -151,25 +151,25 @@ export const appRouter = router({
     }),
   }),
   workShifts: router({
-  current: operationalProcedure.query(async ({ ctx }) => {
-    await assertPermission(ctx.user, "work_shifts.view");
-    return getOwnCurrentWorkShift(ctx.user.id);
-  }),
-  history: operationalProcedure.input(paginationInput).query(async ({ ctx, input }) => {
-    await assertPermission(ctx.user, "work_shifts.view");
-    return listOwnWorkShiftHistory({ userId: ctx.user.id, ...input });
-  }),
-  control: operationalProcedure
-    .input(z.object({ action: z.enum(WORK_SHIFT_ACTIONS) }))
-    .mutation(async ({ ctx, input }) => {
-      await assertPermission(ctx.user, "work_shifts.control");
-      return controlOwnWorkShift({
-        userId: ctx.user.id,
-        teamId: ctx.user.teamId,
-        action: input.action,
-      });
+    current: operationalProcedure.query(async ({ ctx }) => {
+      await assertPermission(ctx.user, "work_shifts.view");
+      return getOwnCurrentWorkShift(ctx.user.id);
     }),
-}),
+    history: operationalProcedure.input(paginationInput).query(async ({ ctx, input }) => {
+      await assertPermission(ctx.user, "work_shifts.view");
+      return listOwnWorkShiftHistory({ userId: ctx.user.id, ...input });
+    }),
+    control: operationalProcedure
+      .input(z.object({ action: z.enum(WORK_SHIFT_ACTIONS) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertPermission(ctx.user, "work_shifts.control");
+        return controlOwnWorkShift({
+          userId: ctx.user.id,
+          teamId: ctx.user.teamId,
+          action: input.action,
+        });
+      }),
+  }),
   dashboard: router({
     summary: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "occurrences.view");
