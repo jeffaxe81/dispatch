@@ -1,27 +1,27 @@
 import { index, int, json, mysqlEnum, mysqlTable, timestamp } from "drizzle-orm/mysql-core";
 import { users } from "./schema";
 
-export const workShiftStateEnum = mysqlEnum("work_shift_state", [
+export const WORK_SHIFT_STATES = [
   "fora_jornada",
   "em_jornada",
   "em_intervalo",
   "encerrada",
-]);
+] as const;
 
-export const workShiftEventTypeEnum = mysqlEnum("work_shift_event_type", [
+export const WORK_SHIFT_EVENT_TYPES = [
   "iniciar",
   "iniciar_intervalo",
   "retomar",
   "encerrar",
   "ajuste",
-]);
+] as const;
 
 export const workShiftSessions = mysqlTable(
   "work_shift_sessions",
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("user_id").notNull().references(() => users.id),
-    state: workShiftStateEnum.notNull().default("fora_jornada"),
+    state: mysqlEnum("state", WORK_SHIFT_STATES).notNull().default("fora_jornada"),
     startedAt: timestamp("started_at"),
     breakStartedAt: timestamp("break_started_at"),
     endedAt: timestamp("ended_at"),
@@ -40,9 +40,9 @@ export const workShiftEvents = mysqlTable(
     id: int("id").autoincrement().primaryKey(),
     sessionId: int("session_id").notNull().references(() => workShiftSessions.id, { onDelete: "cascade" }),
     userId: int("user_id").notNull().references(() => users.id),
-    eventType: workShiftEventTypeEnum.notNull(),
-    previousState: workShiftStateEnum,
-    nextState: workShiftStateEnum.notNull(),
+    eventType: mysqlEnum("event_type", WORK_SHIFT_EVENT_TYPES).notNull(),
+    previousState: mysqlEnum("previous_state", WORK_SHIFT_STATES),
+    nextState: mysqlEnum("next_state", WORK_SHIFT_STATES).notNull(),
     occurredAt: timestamp("occurred_at").notNull(),
     actorUserId: int("actor_user_id").references(() => users.id, { onDelete: "set null" }),
     metadata: json("metadata").$type<Record<string, unknown>>(),
