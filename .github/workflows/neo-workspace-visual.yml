@@ -41,6 +41,13 @@ jobs:
       - name: Instalar dependências congeladas
         run: corepack pnpm install --frozen-lockfile
 
+      - name: Validar classificador de navegação NEO
+        run: node --test scripts/neo-auth-navigation.test.mjs
+
+      - name: Pré-diagnóstico de rede NEO
+        continue-on-error: true
+        run: node scripts/neo-auth-preflight.mjs
+
       - name: Informar modo de homologação
         shell: bash
         run: |
