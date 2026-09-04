@@ -10,10 +10,15 @@ export type OperationalPresenceState = {
 
 export function resolveOperationalPresenceState(input: {
   inShift: boolean;
+  shiftPaused?: boolean;
   teamStatus: TeamStatus;
 }): OperationalPresenceState {
   if (!input.inShift) {
     return { status: "out_of_shift", availableForDispatch: false };
+  }
+
+  if (input.shiftPaused) {
+    return { status: "paused", availableForDispatch: false };
   }
 
   switch (input.teamStatus) {
