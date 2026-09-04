@@ -33,10 +33,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
 
-      - name: Habilitar Corepack
-        run: corepack enable
+      - name: Habilitar Corepack e pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.4.1 --activate
+          pnpm --version
 
       - name: Instalar dependências congeladas
         run: pnpm install --frozen-lockfile
