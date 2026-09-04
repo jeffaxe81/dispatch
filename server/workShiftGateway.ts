@@ -3,13 +3,17 @@ import { workShiftSessions } from "../drizzle/workShiftSchema";
 
 export const ACTIVE_WORK_SHIFT_STATES = ["em_jornada", "em_intervalo"] as const;
 
-type ActiveWorkShiftSession = {
+type WorkShiftSessionRow = {
   id: number;
   userId: number;
-  state: "em_jornada" | "em_intervalo";
+  state: "fora_jornada" | "em_jornada" | "em_intervalo" | "encerrada";
   startedAt: Date | null;
   breakStartedAt: Date | null;
   endedAt: Date | null;
+};
+
+type ActiveWorkShiftSession = WorkShiftSessionRow & {
+  state: "em_jornada" | "em_intervalo";
 };
 
 type WorkShiftGatewayDb = {
@@ -17,7 +21,7 @@ type WorkShiftGatewayDb = {
     from: (table: unknown) => {
       where: (condition: unknown) => {
         orderBy: (order: unknown) => {
-          limit: (limit: number) => Promise<ActiveWorkShiftSession[]>;
+          limit: (limit: number) => Promise<WorkShiftSessionRow[]>;
         };
       };
     };
@@ -40,5 +44,19 @@ export async function selectActiveWorkShiftSession(
     .orderBy(desc(workShiftSessions.startedAt))
     .limit(1);
 
-  return rows[0] ?? null;
+  return (rows[0] as ActiveWorkShiftSession | undefined) ?? null;
+}
+
+export async function selectWorkShiftHistory(
+  db: WorkShiftGatewayDb,
+  userId: number,
+  limit = 10,
+): Promise<WorkShiftSessionRow[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 31));
+  return db
+    .select()
+    .from(workShiftSessions)
+    .where(eq(workShiftSessions.userId, userId))
+    .orderBy(desc(workShiftSessions.startedAt))
+    .limit(safeLimit);
 }
