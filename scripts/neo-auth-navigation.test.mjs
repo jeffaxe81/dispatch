@@ -123,3 +123,30 @@ test("waits for delayed login fields instead of failing immediately", async () =
   assert.equal(result.hasPassword, true);
   assert.equal(result.hasUsername, true);
 });
+
+test("does not treat the NEO root shell as authenticated before delayed login renders", async () => {
+  let attempt = 0;
+  const result = await waitForLoginProbe(async () => {
+    attempt += 1;
+    if (attempt < 4) {
+      return {
+        url: "https://gscprj.saas.digitro.cloud/neo/",
+        hasPassword: false,
+        hasUsername: false,
+      };
+    }
+    return {
+      url: "https://gscprj.saas.digitro.cloud/neo/",
+      hasPassword: true,
+      hasUsername: true,
+    };
+  }, {
+    attempts: 6,
+    delayMs: 0,
+    neoOrigin: "https://gscprj.saas.digitro.cloud",
+    authenticatedMinAttempts: 4,
+  });
+
+  assert.equal(attempt, 4);
+  assert.equal(result.status, "login-form-found");
+});
