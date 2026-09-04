@@ -39,6 +39,7 @@ import {
   integrationOpenapiSpecs,
   integrationWebhooks,
 } from "../drizzle/schema";
+import { workSessions, workSessionEvents } from "../drizzle/cp016Schema";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
@@ -974,22 +975,91 @@ export function resolveTeamShiftAction(input: { startedAt: Date | null; pausedAt
   return { shiftEndsAt: now, shiftPausedAt: null, shiftPausedTotalSeconds: pausedTotalSeconds };
 }
 
+export function resolveTeamShiftPersistence(input: { startedAt: Date | null; pausedAt: Date | null; endedAt: Date | null; pausedTotalSeconds: number }, action: TeamShiftAction, now = new Date()) {
+  const teamPatch = resolveTeamShiftAction(input, action, now);
+  const totalPauseSeconds = teamPatch.shiftPausedTotalSeconds ?? input.pausedTotalSeconds;
+  const sessionStatus: "open" | "paused" | "closed" = action === "pause" ? "paused" : action === "end" ? "closed" : "open";
+  return {
+    teamPatch,
+    eventType: action,
+    sessionStatus,
+    totalPauseSeconds,
+    endedAt: action === "end" ? now : null,
+  };
+}
+
+export function normalizeWorkSessionAdjustmentReason(reason: string) {
+  const normalized = reason.trim();
+  if (!normalized) throw new Error("Informe o motivo do ajuste administrativo.");
+  return normalized;
+}
+
 export async function updateTeamShift(input: { teamId: number; action: TeamShiftAction; actorUserId: number }) {
   const db = await requireDb();
   await db.transaction(async tx => {
     const before = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
     if (!before) throw new Error("Equipe não encontrada.");
     const now = new Date();
-    const patch = resolveTeamShiftAction({ startedAt: before.shiftStartedAt, pausedAt: before.shiftPausedAt, endedAt: before.shiftEndsAt, pausedTotalSeconds: before.shiftPausedTotalSeconds }, input.action, now);
+    const persistence = resolveTeamShiftPersistence({ startedAt: before.shiftStartedAt, pausedAt: before.shiftPausedAt, endedAt: before.shiftEndsAt, pausedTotalSeconds: before.shiftPausedTotalSeconds }, input.action, now);
+    const patch = persistence.teamPatch;
     await tx.update(teams).set(patch).where(eq(teams.id, input.teamId));
+
+    let session = (await tx.select().from(workSessions).where(and(eq(workSessions.teamId, input.teamId), inArray(workSessions.status, ["open", "paused"]))).orderBy(desc(workSessions.startedAt)).limit(1))[0];
+    if (input.action === "start") {
+      const [created] = await tx.insert(workSessions).values({ teamId: input.teamId, userId: input.actorUserId, startedAt: now, endedAt: null, totalPauseSeconds: 0, status: "open", source: "manual" }).$returningId();
+      session = (await tx.select().from(workSessions).where(eq(workSessions.id, created.id)).limit(1))[0];
+    } else if (!session && before.shiftStartedAt) {
+      const [created] = await tx.insert(workSessions).values({ teamId: input.teamId, userId: input.actorUserId, startedAt: before.shiftStartedAt, endedAt: before.shiftEndsAt, totalPauseSeconds: before.shiftPausedTotalSeconds, status: before.shiftPausedAt ? "paused" : "open", source: "manual" }).$returningId();
+      session = (await tx.select().from(workSessions).where(eq(workSessions.id, created.id)).limit(1))[0];
+    }
+    if (!session) throw new Error("Sessão de jornada não encontrada.");
+
+    await tx.update(workSessions).set({ status: persistence.sessionStatus, totalPauseSeconds: persistence.totalPauseSeconds, endedAt: persistence.endedAt }).where(eq(workSessions.id, session.id));
+    await tx.insert(workSessionEvents).values({
+      workSessionId: session.id,
+      eventType: persistence.eventType,
+      occurredAt: now,
+      actorUserId: input.actorUserId,
+      reason: null,
+      metadata: { teamId: input.teamId, legacySnapshotPreserved: true },
+    });
+
     await tx.insert(auditLogs).values({
       resourceType: "team",
       resourceId: input.teamId,
       action: ({ start: "shift_started", pause: "shift_paused", resume: "shift_resumed", end: "shift_ended" } as const)[input.action],
       actorUserId: input.actorUserId,
       beforeData: { shiftStartedAt: before.shiftStartedAt?.toISOString() ?? null, shiftPausedAt: before.shiftPausedAt?.toISOString() ?? null, shiftEndsAt: before.shiftEndsAt?.toISOString() ?? null, shiftPausedTotalSeconds: before.shiftPausedTotalSeconds },
-      afterData: { action: input.action, shiftStartedAt: patch.shiftStartedAt?.toISOString() ?? before.shiftStartedAt?.toISOString() ?? null, shiftPausedAt: patch.shiftPausedAt === null ? null : patch.shiftPausedAt?.toISOString() ?? before.shiftPausedAt?.toISOString() ?? null, shiftEndsAt: patch.shiftEndsAt === null ? null : patch.shiftEndsAt?.toISOString() ?? before.shiftEndsAt?.toISOString() ?? null, shiftPausedTotalSeconds: patch.shiftPausedTotalSeconds ?? before.shiftPausedTotalSeconds },
+      afterData: { action: input.action, workSessionId: session.id, eventType: persistence.eventType, shiftStartedAt: patch.shiftStartedAt?.toISOString() ?? before.shiftStartedAt?.toISOString() ?? null, shiftPausedAt: patch.shiftPausedAt === null ? null : patch.shiftPausedAt?.toISOString() ?? before.shiftPausedAt?.toISOString() ?? null, shiftEndsAt: patch.shiftEndsAt === null ? null : patch.shiftEndsAt?.toISOString() ?? before.shiftEndsAt?.toISOString() ?? null, shiftPausedTotalSeconds: patch.shiftPausedTotalSeconds ?? before.shiftPausedTotalSeconds },
     });
+  });
+}
+
+export async function adjustWorkSession(input: { workSessionId: number; actorUserId: number; reason: string; startedAt?: Date; endedAt?: Date | null; totalPauseSeconds?: number }) {
+  const reason = normalizeWorkSessionAdjustmentReason(input.reason);
+  if (input.totalPauseSeconds !== undefined && (!Number.isFinite(input.totalPauseSeconds) || input.totalPauseSeconds < 0)) throw new Error("O total de pausa deve ser um valor não negativo.");
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const before = (await tx.select().from(workSessions).where(eq(workSessions.id, input.workSessionId)).limit(1))[0];
+    if (!before) throw new Error("Jornada não encontrada.");
+    const patch: Partial<typeof workSessions.$inferInsert> = { source: "admin_adjustment" };
+    if (input.startedAt !== undefined) patch.startedAt = input.startedAt;
+    if (input.endedAt !== undefined) patch.endedAt = input.endedAt;
+    if (input.totalPauseSeconds !== undefined) patch.totalPauseSeconds = Math.floor(input.totalPauseSeconds);
+    await tx.update(workSessions).set(patch).where(eq(workSessions.id, input.workSessionId));
+    const after = (await tx.select().from(workSessions).where(eq(workSessions.id, input.workSessionId)).limit(1))[0];
+    if (!after) throw new Error("Falha ao ajustar a jornada.");
+    const now = new Date();
+    await tx.insert(workSessionEvents).values({ workSessionId: input.workSessionId, eventType: "adjustment", occurredAt: now, actorUserId: input.actorUserId, reason, metadata: { teamId: after.teamId, userId: after.userId } });
+    await tx.insert(auditLogs).values({
+      resourceType: "work_session",
+      resourceId: input.workSessionId,
+      action: "admin_adjustment",
+      actorUserId: input.actorUserId,
+      beforeData: { startedAt: before.startedAt.toISOString(), endedAt: before.endedAt?.toISOString() ?? null, totalPauseSeconds: before.totalPauseSeconds, status: before.status, source: before.source },
+      afterData: { startedAt: after.startedAt.toISOString(), endedAt: after.endedAt?.toISOString() ?? null, totalPauseSeconds: after.totalPauseSeconds, status: after.status, source: after.source, reason },
+    });
+    return after;
   });
 }
 
