@@ -1,7 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import { summarizeNavigateResult } from "./neo-auth-navigation.mjs";
+import {
+  summarizeNavigateResult,
+  summarizePageStructure,
+} from "./neo-auth-navigation.mjs";
 
 const NEO_URL = "https://gscprj.saas.digitro.cloud/neo/";
 const profile = resolve(`.tmp-neo-chrome-preflight-${process.pid}`);
@@ -69,7 +72,22 @@ function createClient(socket) {
   return { call, evaluate };
 }
 
-await rm(profile, { recursive: true, force: true });
+async function removeProfileSafely() {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rm(profile, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 7) {
+        console.warn("neo_chrome_profile_cleanup=deferred");
+        return;
+      }
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 150));
+    }
+  }
+}
+
+await removeProfileSafely();
 const chrome = findChrome();
 const chromeProcess = spawn(chrome, [
   "--headless=new",
@@ -93,15 +111,28 @@ try {
   await client.call("Page.enable");
   await client.call("Runtime.enable");
   const navigation = await client.call("Page.navigate", { url: NEO_URL });
-  await new Promise(resolvePromise => setTimeout(resolvePromise, 1500));
+  await new Promise(resolvePromise => setTimeout(resolvePromise, 5000));
   const currentUrl = await client.evaluate("location.href");
   const summary = summarizeNavigateResult({
     errorText: navigation.errorText,
     currentUrl,
   });
-  console.log(`neo_chrome_navigation_preflight=${JSON.stringify(summary)}`);
+  const rawStructure = await client.evaluate(`(() => ({
+    readyState: document.readyState,
+    forms: document.forms?.length || 0,
+    iframes: document.querySelectorAll('iframe').length,
+    shadowHosts: Array.from(document.querySelectorAll('*')).filter(node => Boolean(node.shadowRoot)).length,
+    inputs: Array.from(document.querySelectorAll('input')).map(input => input.type || 'text'),
+  }))()`);
+  const structure = summarizePageStructure(rawStructure);
+  console.log(`neo_chrome_navigation_preflight=${JSON.stringify({ ...summary, structure })}`);
   socket.close();
 } finally {
   chromeProcess.kill("SIGTERM");
-  await rm(profile, { recursive: true, force: true });
+  await new Promise(resolvePromise => {
+    if (chromeProcess.exitCode !== null) return resolvePromise();
+    chromeProcess.once("exit", resolvePromise);
+    setTimeout(resolvePromise, 1500);
+  });
+  await removeProfileSafely();
 }
