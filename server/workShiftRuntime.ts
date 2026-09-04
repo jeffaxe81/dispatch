@@ -35,6 +35,12 @@ export async function runWorkShiftCommand(
   return handleWorkShiftCommand(input, dependencies);
 }
 
+export async function getDatabaseWorkShiftStatus(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  return selectActiveWorkShiftSession(db as never, userId);
+}
+
 export async function runDatabaseWorkShiftCommand(input: RuntimeInput) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
