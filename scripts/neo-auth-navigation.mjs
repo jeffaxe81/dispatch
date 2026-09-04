@@ -60,13 +60,22 @@ export function classifyNeoAuthNavigation({
 
 export async function waitForLoginProbe(
   probe,
-  { attempts = 40, delayMs = 150, neoOrigin },
+  {
+    attempts = 40,
+    delayMs = 150,
+    neoOrigin,
+    authenticatedMinAttempts = 10,
+  },
 ) {
   let last = {
     url: "about:blank",
     hasPassword: false,
     hasUsername: false,
   };
+  const minAuthenticatedAttempt = Math.max(
+    1,
+    Math.min(Math.max(1, attempts), Math.trunc(authenticatedMinAttempts || 1)),
+  );
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     last = await probe();
@@ -74,10 +83,13 @@ export async function waitForLoginProbe(
 
     if (
       status === "login-form-found" ||
-      status === "authenticated" ||
       status === "redirect-or-sso" ||
       status === "network-error"
     ) {
+      return { ...last, status };
+    }
+
+    if (status === "authenticated" && attempt + 1 >= minAuthenticatedAttempt) {
       return { ...last, status };
     }
 
