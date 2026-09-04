@@ -3,6 +3,7 @@ import { resolveOperationalPresenceState } from "./operationalPresence";
 
 const base = {
   inShift: true,
+  shiftPaused: false,
   teamStatus: "disponivel" as const,
 };
 
@@ -14,8 +15,15 @@ describe("operational presence materialization", () => {
     });
   });
 
-  it("marks a paused team as not dispatchable", () => {
+  it("marks an explicitly paused team as not dispatchable", () => {
     expect(resolveOperationalPresenceState({ ...base, teamStatus: "pausada" })).toEqual({
+      status: "paused",
+      availableForDispatch: false,
+    });
+  });
+
+  it("marks a paused work session as not dispatchable even if the team snapshot is available", () => {
+    expect(resolveOperationalPresenceState({ ...base, shiftPaused: true })).toEqual({
       status: "paused",
       availableForDispatch: false,
     });
@@ -39,8 +47,8 @@ describe("operational presence materialization", () => {
     });
   });
 
-  it("gives out-of-shift precedence over the current team status", () => {
-    expect(resolveOperationalPresenceState({ ...base, inShift: false })).toEqual({
+  it("gives out-of-shift precedence over pause and current team status", () => {
+    expect(resolveOperationalPresenceState({ ...base, inShift: false, shiftPaused: true })).toEqual({
       status: "out_of_shift",
       availableForDispatch: false,
     });
