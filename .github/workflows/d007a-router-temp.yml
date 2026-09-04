@@ -1,3 +1,4 @@
+# Temporary D-007A patch gate; remove after the constrained router commit.
 name: D-007A router TEMP
 
 on:
