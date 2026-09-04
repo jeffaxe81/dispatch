@@ -44,50 +44,20 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           path = Path("server/routers.ts")
-          source = path.read_text()
-          old = '''  workShifts: router({
-          current: operationalProcedure.query(async ({ ctx }) => {
-            await assertPermission(ctx.user, "work_shifts.view");
-            return getOwnCurrentWorkShift(ctx.user.id);
-          }),
-          history: operationalProcedure.input(paginationInput).query(async ({ ctx, input }) => {
-            await assertPermission(ctx.user, "work_shifts.view");
-            return listOwnWorkShiftHistory({ userId: ctx.user.id, ...input });
-          }),
-          control: operationalProcedure
-            .input(z.object({ action: z.enum(WORK_SHIFT_ACTIONS) }))
-            .mutation(async ({ ctx, input }) => {
-              await assertPermission(ctx.user, "work_shifts.control");
-              return controlOwnWorkShift({
-                userId: ctx.user.id,
-                teamId: ctx.user.teamId,
-                action: input.action,
-              });
-            }),
-        }),'''
-          new = '''  workShifts: router({
-            current: operationalProcedure.query(async ({ ctx }) => {
-              await assertPermission(ctx.user, "work_shifts.view");
-              return getOwnCurrentWorkShift(ctx.user.id);
-            }),
-            history: operationalProcedure.input(paginationInput).query(async ({ ctx, input }) => {
-              await assertPermission(ctx.user, "work_shifts.view");
-              return listOwnWorkShiftHistory({ userId: ctx.user.id, ...input });
-            }),
-            control: operationalProcedure
-              .input(z.object({ action: z.enum(WORK_SHIFT_ACTIONS) }))
-              .mutation(async ({ ctx, input }) => {
-                await assertPermission(ctx.user, "work_shifts.control");
-                return controlOwnWorkShift({
-                  userId: ctx.user.id,
-                  teamId: ctx.user.teamId,
-                  action: input.action,
-                });
-              }),
-          }),'''
-          if source.count(old) != 1:
-              raise SystemExit("Bloco workShifts inesperado; patch recusado.")
-          path.write_text(source.replace(old, new, 1))
+          lines = path.read_text().splitlines(keepends=True)
+          start_marker = "  workShifts: router({\n"
+          end_marker = "  dashboard: router({\n"
+          starts = [i for i, line in enumerate(lines) if line == start_marker]
+          ends = [i for i, line in enumerate(lines) if line == end_marker]
+          if len(starts) != 1 or len(ends) != 1 or starts[0] >= ends[0]:
+              raise SystemExit("Marcadores workShifts/dashboard inesperados; patch recusado.")
+          start = starts[0]
+          end = ends[0]
+          block = lines[start + 1:end]
+          if not block or not block[0].startswith("  current:") or block[-1].strip() != "}),":
+              raise SystemExit("Estrutura workShifts inesperada; patch recusado.")
+          lines[start + 1:end] = ["  " + line for line in block]
+          path.write_text("".join(lines))
           PY
 
       - name: Validar teste de inventário
