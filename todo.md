@@ -133,3 +133,15 @@
 - [x] Criar teste visual automatizado com Chrome DevTools para o workspace responsivo e evidências PNG/DOM/relatório.
 - [ ] Homologar NEO Interact em ambiente autorizado.
 - [x] Implementar primeira composição operacional lado a lado Ocorrência + NEO em desktop e empilhada em mobile; dock/janela desacoplada permanecem evolução posterior.
+
+
+## D-007 — Controle de Jornada de Trabalho
+
+- [x] D-007A — Fundação histórica da jornada: sessões/eventos auditáveis, máquina de estados por usuário, compatibilidade legada e histórico básico; checkpoint `checkpoint/d007a-work-shift-history-20260904`.
+- [x] D-007B — Implementar escalas fixas e cíclicas 12x36, associação por usuário, exceções, bloqueio de sobreposição, snapshot planejado na sessão real e planejado x realizado.
+- [x] D-007B — Implementar cobertura `completed` / `in_progress` / `missing_start`, contratos tRPC e RBAC `work_shift_schedules.view/manage` com escopo fail-closed.
+- [x] D-007B — Materializar/versionar `drizzle/0004_d007b_work_shift_schedules.sql` sem aplicar migration em banco real e sem criar grants automáticos.
+- [x] D-007B — Validar segurança, TypeScript, 434 testes, build, GIS visual, NEO external e NEO workspace no SHA funcional `a60f62ddda24a08465f936e9ef62683f9eec9ece`.
+- [x] D-007B — Fechar documentação, inventário dos 110 contratos tRPC e evidência auditável; o checkpoint definitivo somente será criado após os quatro workflows remotos verdes na revisão final.
+- [ ] D-007C — Integrar elegibilidade de jornada ao despacho antes de GIS/OSRM, com razões explícitas de inelegibilidade. Não iniciado; deve partir exclusivamente de `checkpoint/d007b-work-shift-schedules-20260904`.
+- [ ] D-007D — Administração avançada, relatórios, alertas e ajustes de jornada. Não iniciado.
