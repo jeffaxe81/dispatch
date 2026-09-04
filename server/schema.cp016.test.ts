@@ -1,3 +1,4 @@
+import { getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   shiftTemplates,
@@ -20,5 +21,27 @@ describe("CP-016 database schema", () => {
     expect(routeTracks).toBeDefined();
     expect(routeTrackPoints).toBeDefined();
     expect(embeddedIntegrations).toBeDefined();
+  });
+
+  it("keeps stable physical table names for migration generation", () => {
+    expect([
+      getTableName(shiftTemplates),
+      getTableName(shiftSchedules),
+      getTableName(workSessions),
+      getTableName(workSessionEvents),
+      getTableName(operationalPresence),
+      getTableName(routeTracks),
+      getTableName(routeTrackPoints),
+      getTableName(embeddedIntegrations),
+    ]).toEqual([
+      "shift_templates",
+      "shift_schedules",
+      "work_sessions",
+      "work_session_events",
+      "operational_presence",
+      "route_tracks",
+      "route_track_points",
+      "embedded_integrations",
+    ]);
   });
 });
