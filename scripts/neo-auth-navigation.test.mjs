@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyNeoAuthNavigation } from "./neo-auth-navigation.mjs";
+import {
+  classifyNeoAuthNavigation,
+  summarizeNavigateResult,
+} from "./neo-auth-navigation.mjs";
 
 test("classifies Chrome internal error pages as network errors", () => {
   assert.equal(
@@ -47,5 +50,29 @@ test("recognizes an already authenticated NEO page", () => {
       neoOrigin: "https://gscprj.saas.digitro.cloud",
     }),
     "authenticated",
+  );
+});
+
+test("preserves only allowlisted Chrome navigation error codes", () => {
+  assert.deepEqual(
+    summarizeNavigateResult({
+      errorText: "net::ERR_NAME_NOT_RESOLVED",
+      currentUrl: "chrome-error://chromewebdata/",
+    }),
+    {
+      navigationError: "net::ERR_NAME_NOT_RESOLVED",
+      finalProtocol: "chrome-error:",
+    },
+  );
+
+  assert.deepEqual(
+    summarizeNavigateResult({
+      errorText: "private backend detail token=secret",
+      currentUrl: "https://login.example.test/oauth?token=secret",
+    }),
+    {
+      navigationError: "<redacted-error>",
+      finalProtocol: "https:",
+    },
   );
 });
