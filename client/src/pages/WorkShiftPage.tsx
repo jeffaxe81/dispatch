@@ -1,10 +1,10 @@
+import React, { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { Clock3, Coffee, LogIn, LogOut, PlayCircle } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
 
 type WorkShiftState = "fora_jornada" | "em_jornada" | "em_intervalo" | "encerrada";
