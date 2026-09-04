@@ -62,6 +62,8 @@ jobs:
         run: pnpm check
 
       - name: Gerar migração Drizzle para validação
+        env:
+          DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci
         run: |
           pnpm exec drizzle-kit generate
           git status --short drizzle drizzle.config.ts
