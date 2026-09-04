@@ -4,6 +4,7 @@ import {
   classifyNeoAuthNavigation,
   summarizeNavigateResult,
   summarizePageStructure,
+  waitForLoginProbe,
 } from "./neo-auth-navigation.mjs";
 
 test("classifies Chrome internal error pages as network errors", () => {
@@ -81,24 +82,44 @@ test("preserves only allowlisted Chrome navigation error codes", () => {
 test("summarizes page structure without text, values or selectors", () => {
   assert.deepEqual(
     summarizePageStructure({
-      readyState: "complete",
-      forms: 2,
-      iframes: 1,
-      shadowHosts: 3,
-      inputs: ["text", "password", "email", "hidden", "custom-secret-type"],
+      readyState: "interactive",
+      forms: 1,
+      iframes: 0,
+      shadowHosts: 0,
+      inputs: ["text", "password", "text", "checkbox"],
+      text: "do not persist",
+      value: "secret",
     }),
     {
-      readyState: "complete",
-      forms: 2,
-      iframes: 1,
-      shadowHosts: 3,
-      inputTypes: {
-        text: 1,
-        password: 1,
-        email: 1,
-        hidden: 1,
-        other: 1,
-      },
+      readyState: "interactive",
+      forms: 1,
+      iframes: 0,
+      shadowHosts: 0,
+      inputTypes: { text: 2, password: 1, email: 0, hidden: 0, other: 1 },
     },
   );
+});
+
+test("waits for delayed login fields instead of failing immediately", async () => {
+  let attempt = 0;
+  const result = await waitForLoginProbe(async () => {
+    attempt += 1;
+    if (attempt < 3) {
+      return {
+        url: "https://gscprj.saas.digitro.cloud/neo/login",
+        hasPassword: false,
+        hasUsername: false,
+      };
+    }
+    return {
+      url: "https://gscprj.saas.digitro.cloud/neo/login",
+      hasPassword: true,
+      hasUsername: true,
+    };
+  }, { attempts: 5, delayMs: 0, neoOrigin: "https://gscprj.saas.digitro.cloud" });
+
+  assert.equal(attempt, 3);
+  assert.equal(result.status, "login-form-found");
+  assert.equal(result.hasPassword, true);
+  assert.equal(result.hasUsername, true);
 });
