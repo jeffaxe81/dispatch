@@ -39,11 +39,14 @@ import {
   integrationOpenapiSpecs,
   integrationWebhooks,
 } from "../drizzle/schema";
+import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
+import type { WorkShiftAction } from "../shared/workShifts";
 import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
 import { parseOpenapiDocument } from "./openapi";
 import { storageGet, storagePut } from "./storage";
+import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
 
 let cachedDb: ReturnType<typeof drizzle> | null = null;
 
@@ -793,6 +796,92 @@ export async function updateTeamStatus(input: { teamId: number; status: typeof t
     if (!before) throw new Error("Equipe não encontrada.");
     await tx.update(teams).set({ status: input.status }).where(eq(teams.id, input.teamId));
     await tx.insert(auditLogs).values({ resourceType: "team", resourceId: input.teamId, action: "status_updated", actorUserId: input.actorUserId, beforeData: { status: before.status }, afterData: { status: input.status } });
+  });
+}
+
+export async function getOwnCurrentWorkShift(userId: number) {
+  const db = await requireDb();
+  return (
+    await db
+      .select()
+      .from(workShiftSessions)
+      .where(and(eq(workShiftSessions.userId, userId), inArray(workShiftSessions.status, ["active", "paused"])))
+      .orderBy(desc(workShiftSessions.startedAt))
+      .limit(1)
+  )[0] ?? null;
+}
+
+export async function listOwnWorkShiftHistory(input: { userId: number; page: number; pageSize: number }) {
+  const db = await requireDb();
+  const where = eq(workShiftSessions.userId, input.userId);
+  const [rows, totalRows] = await Promise.all([
+    db
+      .select()
+      .from(workShiftSessions)
+      .where(where)
+      .orderBy(desc(workShiftSessions.startedAt))
+      .limit(input.pageSize)
+      .offset((input.page - 1) * input.pageSize),
+    db.select({ total: count() }).from(workShiftSessions).where(where),
+  ]);
+  return { rows, total: Number(totalRows[0]?.total ?? 0) };
+}
+
+export async function controlOwnWorkShift(input: {
+  userId: number;
+  teamId: number | null;
+  action: WorkShiftAction;
+}) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const lockedUser = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, input.userId))
+      .limit(1)
+      .for("update");
+    if (!lockedUser[0]) throw new Error("Usuário não encontrado.");
+
+    const store: WorkShiftStore = {
+      async getOpenSession(userId) {
+        const row = (
+          await tx
+            .select({
+              id: workShiftSessions.id,
+              startedAt: workShiftSessions.startedAt,
+              pausedAt: workShiftSessions.pausedAt,
+              endedAt: workShiftSessions.endedAt,
+              status: workShiftSessions.status,
+              pausedSeconds: workShiftSessions.pausedSeconds,
+            })
+            .from(workShiftSessions)
+            .where(and(eq(workShiftSessions.userId, userId), inArray(workShiftSessions.status, ["active", "paused"])))
+            .orderBy(desc(workShiftSessions.startedAt))
+            .limit(1)
+        )[0];
+        if (!row) return null;
+        if (row.status !== "active" && row.status !== "paused") {
+          throw new Error("Estado aberto de jornada inválido.");
+        }
+        return { ...row, status: row.status };
+      },
+      async createSession(values) {
+        const [record] = await tx.insert(workShiftSessions).values(values).$returningId();
+        if (!record) throw new Error("Falha ao criar sessão de jornada.");
+        return { id: record.id };
+      },
+      async updateSession(sessionId, patch) {
+        await tx.update(workShiftSessions).set(patch).where(eq(workShiftSessions.id, sessionId));
+      },
+      async appendEvent(event) {
+        await tx.insert(workShiftEvents).values(event);
+      },
+      async mirrorTeam(teamId, patch) {
+        await tx.update(teams).set(patch).where(eq(teams.id, teamId));
+      },
+    };
+
+    return executeOwnWorkShiftAction(store, input);
   });
 }
 

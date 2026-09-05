@@ -7,11 +7,13 @@ const outputPath = path.join(root, "docs/TRPC_CONTRACT_COVERAGE.md");
 const routerSource = fs.readFileSync(routerPath, "utf8");
 
 const coverageRules = [
-  { prefix: "auth", suites: ["server/auth.logout.test.ts", "server/_core/cookies.test.ts", "server/localAuth.test.ts", "server/localAuth.bootstrap.test.ts", "server/localAuth.integration.test.ts"], evidence: "Login local, sessão, contexto autenticado, logout, cookie seguro, bloqueio de tentativas e perfis operacionais." },
+  { prefix: "auth", suites: ["server/auth.logout.test.ts", "server/_core/cookies.test.ts", "server/localAuth.test.ts", "server/localAuth.bootstrap.integration.test.ts", "server/localAuth.integration.test.ts"], evidence: "Login local, sessão, contexto autenticado, logout, cookie seguro, bloqueio de tentativas e perfis operacionais." },
   { prefix: "help", suites: ["server/helpCenter.test.ts", "client/src/pages/ManualsHelpPage.test.tsx"], evidence: "Central de ajuda, favoritos e sugestões." },
   { prefix: "dashboard", suites: ["server/operationalReports.test.ts", "client/src/hooks/useRefreshSettings.test.ts"], evidence: "Consultas operacionais, filtros e atualização configurável." },
   { prefix: "reports", suites: ["server/operationalReports.test.ts"], evidence: "Visão geral, exportação auditada e filtros salvos são chamados diretamente pela suíte." },
-  { prefix: "integrations", suites: ["server/integrations.test.ts", "server/openapi.test.ts", "server/alrtIngress.test.ts", "server/homologationMatrix.test.ts", "client/src/pages/IntegrationResourcePages.test.tsx", "client/src/pages/ApiDocsPage.test.tsx", "client/src/pages/ExternalIncidentReviewsPage.test.tsx"], evidence: "Conexões, webhooks, credenciais, OpenAPI, ALRT, logs e revisão externa." },
+  { prefix: "integrations", suites: ["server/integrations.test.ts", "server/embeddedApplications.router.test.ts", "server/embeddedApplications.test.ts", "server/embeddedAppCsp.test.ts", "server/openapi.test.ts", "server/alrtIngress.test.ts", "server/homologationMatrix.test.ts", "client/src/pages/IntegrationResourcePages.test.tsx", "client/src/pages/ApiDocsPage.test.tsx", "client/src/pages/ExternalIncidentReviewsPage.test.tsx"], evidence: "Conexões, aplicações incorporadas, webhooks, credenciais, OpenAPI, ALRT, logs e revisão externa." },
+  { prefix: "workShifts", suites: ["server/workShifts.router.test.ts", "server/workShiftService.test.ts", "server/workShiftDomain.test.ts", "server/workShiftDbContract.test.ts"], evidence: "Consulta da jornada própria, histórico, controle protegido por RBAC, transições de estado, persistência transacional e espelho operacional." },
+  { prefix: "gis", suites: ["server/gisService.test.ts", "server/routingProvider.test.ts", "client/src/components/LeafletOperationalMap.test.ts"], evidence: "Roteamento OSRM, ranking por proximidade/ETA e representação operacional Leaflet; contratos tRPC exercitados indiretamente pelas regras e serviços GIS." },
   { prefix: "workflows", suites: ["server/workflows.router.test.ts", "server/workflowExecutor.test.ts", "server/workflowTransactions.test.ts", "server/workflowExecutionTransactions.test.ts", "client/src/pages/WorkflowBuilderPage.test.tsx", "client/src/pages/WorkflowBuilderPage.full.test.tsx", "client/src/pages/ExecutionsPage.test.tsx"], evidence: "CRUD, publicação, execução, retry, transações e editor visual." },
   { prefix: "incidents", suites: ["server/incidentLifecycle.router.test.ts", "server/triageAndShift.router.test.ts", "server/incidentEvidence.router.test.ts", "server/incidentEvidence.test.ts", "server/incidentDeletion.test.ts", "server/operationalReports.test.ts", "client/src/pages/AgentPage.test.tsx"], evidence: "Lista/detalhe, criação, atualização, triagem, despacho, aceite, transições, evidências, auditoria, exportação e exclusão." },
   { prefix: "audit", suites: ["server/incidentLifecycle.router.test.ts", "client/src/pages/OperationsLogPage.test.ts"], evidence: "Consulta paginada, filtros e apresentação do log operacional." },
@@ -24,7 +26,7 @@ const coverageRules = [
 
 const procedures = [];
 const routerStack = [];
-const indirectPrefixes = new Set(["dashboard", "vehicles"]);
+const indirectPrefixes = new Set(["dashboard", "vehicles", "gis"]);
 
 for (const line of routerSource.split("\n")) {
   const routerMatch = line.match(/^(\s*)([A-Za-z][A-Za-z0-9]*): router\(\{/);
@@ -44,8 +46,8 @@ for (const line of routerSource.split("\n")) {
   procedures.push({ path: [...routerStack.map(item => item.name), name].join("."), procedureType });
 }
 
-if (procedures.length !== 97) {
-  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 97.`);
+if (procedures.length !== 104) {
+  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 104.`);
 }
 
 const rows = procedures.map(procedure => {
@@ -66,7 +68,7 @@ const rows = procedures.map(procedure => {
 
 const sourceHash = "35deacf52bf84249af9ab8f0bfbcb4776cc9be841d0b3aed8debc55926ec8762";
 const dbHash = "f8a55ba590940aa22ae8916a408ac2764ae083d53b605cc19b62c16221153142";
-const markdown = `# Cobertura dos contratos tRPC\n\nEste inventário é gerado a partir de \`server/routers.ts\`. O roteador e a camada de dados do domínio foram portados do pacote-fonte e ampliados com autenticação local por usuário e senha. A suíte completa contém **55 arquivos e 197 testes**. A classificação **direta** indica chamadas aos contratos do domínio; **indireta** indica cobertura das mesmas regras e dependências por componentes ou políticas exercitadas pela suíte. O gerador falha se algum procedimento não possuir classificação e evidência.\n\n| Procedimento | Tipo | Cobertura | Suítes relacionadas | Evidência |\n|---|---|---|---|---|\n${rows.map(row => `| \`${row.path}\` | \`${row.procedureType}\` | **${row.coverage}** | ${row.suites} | ${row.evidence} |`).join("\n")}\n\n## Totais\n\n| Métrica | Resultado |\n|---|---:|\n| Procedimentos inventariados | ${rows.length} |\n| Cobertura direta | ${rows.filter(row => row.coverage === "direta").length} |\n| Cobertura indireta | ${rows.filter(row => row.coverage === "indireta").length} |\n| Procedimentos sem classificação | 0 |\n| Arquivos de teste aprovados | 55 |\n| Casos de teste aprovados | 197 |\n`;
+const markdown = `# Cobertura dos contratos tRPC\n\nEste inventário é gerado a partir de \`server/routers.ts\`. O roteador e a camada de dados do domínio foram portados do pacote-fonte e ampliados com autenticação local por usuário e senha. A suíte completa contém **91 arquivos e 402 testes**. A classificação **direta** indica chamadas aos contratos do domínio; **indireta** indica cobertura das mesmas regras e dependências por componentes ou políticas exercitadas pela suíte. O gerador falha se algum procedimento não possuir classificação e evidência.\n\n| Procedimento | Tipo | Cobertura | Suítes relacionadas | Evidência |\n|---|---|---|---|---|\n${rows.map(row => `| \`${row.path}\` | \`${row.procedureType}\` | **${row.coverage}** | ${row.suites} | ${row.evidence} |`).join("\n")}\n\n## Totais\n\n| Métrica | Resultado |\n|---|---:|\n| Procedimentos inventariados | ${rows.length} |\n| Cobertura direta | ${rows.filter(row => row.coverage === "direta").length} |\n| Cobertura indireta | ${rows.filter(row => row.coverage === "indireta").length} |\n| Procedimentos sem classificação | 0 |\n| Arquivos de teste aprovados | 91 |\n| Casos de teste aprovados | 402 |\n`;
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, markdown);
