@@ -13,6 +13,7 @@ describe("CP-016 dispatch eligibility on disposable MySQL", () => {
   let actorId: number;
   let teamId: number;
   let incidentId: number;
+  let incidentIds: number[] = [];
 
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? "");
@@ -32,13 +33,16 @@ describe("CP-016 dispatch eligibility on disposable MySQL", () => {
     teamId = team.id;
     const [incident] = await db.insert(incidents).values({ code: `i-${token}`, category: "CI", description: "Disposable eligibility fixture", address: "CI", latitude: "-27.0000000", longitude: "-48.0000000", createdByUserId: actorId }).$returningId();
     incidentId = incident.id;
+    incidentIds = [incident.id];
   });
 
   afterEach(async () => {
     await db.delete(auditLogs).where(eq(auditLogs.actorUserId, actorId));
-    await db.delete(incidentEvents).where(eq(incidentEvents.incidentId, incidentId));
-    await db.delete(incidentAssignments).where(eq(incidentAssignments.incidentId, incidentId));
-    await db.delete(incidents).where(eq(incidents.id, incidentId));
+    for (const id of incidentIds) {
+      await db.delete(incidentEvents).where(eq(incidentEvents.incidentId, id));
+      await db.delete(incidentAssignments).where(eq(incidentAssignments.incidentId, id));
+      await db.delete(incidents).where(eq(incidents.id, id));
+    }
     const sessions = await db.select({ id: workSessions.id }).from(workSessions).where(eq(workSessions.teamId, teamId));
     for (const session of sessions) await db.delete(workSessionEvents).where(eq(workSessionEvents.workSessionId, session.id));
     await db.delete(operationalPresence).where(eq(operationalPresence.teamId, teamId));
@@ -87,5 +91,27 @@ describe("CP-016 dispatch eligibility on disposable MySQL", () => {
     await expect(assignTeamToIncident({ incidentId, teamId, actorUserId: actorId })).resolves.toMatchObject({ status: "despachada", assignedTeamId: teamId });
     expect(await db.select().from(incidentAssignments).where(eq(incidentAssignments.incidentId, incidentId))).toMatchObject([{ teamId, status: "pendente" }]);
     expect(await db.select().from(operationalPresence).where(eq(operationalPresence.teamId, teamId))).toMatchObject([{ workSessionId: sessionId, status: "busy", availableForDispatch: false }]);
+  });
+
+  it("allows only one of two concurrent dispatches for the same team", async () => {
+    await setCandidate("available");
+    const token = randomUUID().replaceAll("-", "").slice(0, 20);
+    const [second] = await db.insert(incidents).values({ code: `r-${token}`, category: "CI", description: "Concurrent eligibility fixture", address: "CI", latitude: "-27.0000000", longitude: "-48.0000000", createdByUserId: actorId }).$returningId();
+    incidentIds.push(second.id);
+
+    const results = await Promise.allSettled([
+      assignTeamToIncident({ incidentId, teamId, actorUserId: actorId }),
+      assignTeamToIncident({ incidentId: second.id, teamId, actorUserId: actorId }),
+    ]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+
+    const assignments = await db.select().from(incidentAssignments).where(eq(incidentAssignments.teamId, teamId));
+    expect(assignments).toHaveLength(1);
+    const persistedIncidents = await db.select().from(incidents).where(eq(incidents.assignedTeamId, teamId));
+    expect(persistedIncidents).toHaveLength(1);
+    const untouchedId = [incidentId, second.id].find(id => id !== persistedIncidents[0].id)!;
+    expect((await db.select().from(incidents).where(eq(incidents.id, untouchedId)))[0]).toMatchObject({ status: "triagem", assignedTeamId: null, dispatchedAt: null });
+    expect(await db.select().from(operationalPresence).where(eq(operationalPresence.teamId, teamId))).toMatchObject([{ status: "busy", availableForDispatch: false }]);
   });
 });
