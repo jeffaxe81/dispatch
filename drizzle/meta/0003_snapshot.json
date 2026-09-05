@@ -5208,8 +5208,8 @@
         }
       },
       "foreignKeys": {
-        "embedded_integrations_integration_connection_id_integration_connections_id_fk": {
-          "name": "embedded_integrations_integration_connection_id_integration_connections_id_fk",
+        "embedded_integrations_connection_fk": {
+          "name": "embedded_integrations_connection_fk",
           "tableFrom": "embedded_integrations",
           "tableTo": "integration_connections",
           "columnsFrom": [
