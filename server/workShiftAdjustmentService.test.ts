@@ -60,10 +60,10 @@ describe("D-007D1 work shift adjustment domain", () => {
     });
 
     expect(approved.status).toBe("approved");
-    expect(approved.afterSnapshot.workedSeconds).toBe(43200);
-    expect(approved.afterSnapshot.lateStartSeconds).toBe(0);
-    expect(approved.afterSnapshot.earlyEndSeconds).toBe(0);
-    expect(approved.afterSnapshot.overtimeSeconds).toBe(0);
+    expect(approved.afterSnapshot?.workedSeconds).toBe(43200);
+    expect(approved.afterSnapshot?.lateStartSeconds).toBe(0);
+    expect(approved.afterSnapshot?.earlyEndSeconds).toBe(0);
+    expect(approved.afterSnapshot?.overtimeSeconds).toBe(0);
   });
 
   it("fails closed when the session changed after the request", () => {
@@ -111,5 +111,47 @@ describe("D-007D1 work shift adjustment domain", () => {
       changes: { workedSeconds: 999999 } as never,
       now: new Date("2026-09-04T21:00:00.000Z"),
     })).toThrow(/unsupported|não permitida|invalid/i);
+  });
+
+  it("keeps repeated approval idempotent", () => {
+    const requested = requestWorkShiftAdjustment({
+      session: baseSession,
+      requestedByUserId: 10,
+      reason: "Correção",
+      changes: { endedAt: new Date("2026-09-04T20:00:00.000Z") },
+      now: new Date("2026-09-04T21:00:00.000Z"),
+    });
+    const approved = approveWorkShiftAdjustment({
+      adjustment: requested,
+      currentSession: baseSession,
+      decidedByUserId: 20,
+      now: new Date("2026-09-04T21:10:00.000Z"),
+    });
+
+    expect(approveWorkShiftAdjustment({
+      adjustment: approved,
+      currentSession: approved.afterSnapshot ?? baseSession,
+      decidedByUserId: 20,
+      now: new Date("2026-09-04T21:20:00.000Z"),
+    })).toEqual(approved);
+  });
+
+  it("supports administrative cancellation without deleting history", () => {
+    const requested = requestWorkShiftAdjustment({
+      session: baseSession,
+      requestedByUserId: 10,
+      reason: "Sessão criada indevidamente",
+      changes: { status: "cancelled" },
+      now: new Date("2026-09-04T21:00:00.000Z"),
+    });
+    const approved = approveWorkShiftAdjustment({
+      adjustment: requested,
+      currentSession: baseSession,
+      decidedByUserId: 20,
+      now: new Date("2026-09-04T21:10:00.000Z"),
+    });
+
+    expect(approved.afterSnapshot?.id).toBe(baseSession.id);
+    expect(approved.afterSnapshot?.status).toBe("cancelled");
   });
 });
