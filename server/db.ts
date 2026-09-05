@@ -726,10 +726,20 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
 export async function assignTeamToIncident(input: { incidentId: number; teamId: number; vehicleId?: number; actorUserId: number; estimatedArrivalMinutes?: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
-    const team = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
+    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
+    const team = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
     if (!team || !team.active || team.status === "indisponivel") throw new Error("Equipe indisponível para despacho.");
+    const presence = (await tx.select().from(operationalPresence).where(eq(operationalPresence.teamId, input.teamId)).orderBy(desc(operationalPresence.lastChangedAt)).limit(1))[0];
+    const session = presence?.workSessionId
+      ? (await tx.select().from(workSessions).where(and(eq(workSessions.id, presence.workSessionId), eq(workSessions.teamId, input.teamId))).limit(1))[0]
+      : undefined;
+    const eligible = Boolean(
+      team.shiftStartedAt && !team.shiftEndsAt && !team.shiftPausedAt &&
+      presence?.status === "available" && presence.availableForDispatch &&
+      session?.status === "open" && !session.endedAt,
+    );
+    if (!eligible) throw new Error("Equipe não elegível para despacho.");
     const now = new Date();
     const [assignment] = await tx.insert(incidentAssignments).values({
       incidentId: input.incidentId,
@@ -742,6 +752,7 @@ export async function assignTeamToIncident(input: { incidentId: number; teamId: 
     }).$returningId();
     await tx.update(incidents).set({ assignedTeamId: input.teamId, assignedVehicleId: input.vehicleId ?? null, status: "despachada", dispatchedAt: now }).where(eq(incidents.id, input.incidentId));
     await tx.update(teams).set({ status: "em_deslocamento" }).where(eq(teams.id, input.teamId));
+    await tx.update(operationalPresence).set({ status: "busy", availableForDispatch: false, lastChangedAt: now }).where(eq(operationalPresence.id, presence!.id));
     const after = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
     if (!after) throw new Error("Falha ao registrar despacho.");
     await tx.insert(incidentEvents).values({
@@ -2587,22 +2598,3 @@ export async function generateSimulatedConnectorFromOpenapiOperation(input: { op
     const code = normalizeIntegrationCode(`openapi-${operation.specId}-${operation.operationKey}`).slice(0, 100);
     const [connection] = await tx.insert(integrationConnections).values({ code, name: `${spec.name} — ${operation.summary || operation.operationKey}`.slice(0, 180), description: `Conector gerado da operação ${operation.method} ${operation.path} em SIMULAÇÃO / MOCK.`, connectionType: "openapi_simulado", environment: "simulacao", baseUrl: null, active: false, simulationOnly: true, configuration: { mode: "SIMULAÇÃO / MOCK", delivery: "desativada", source: "openapi_import", specId: spec.id, operationId: operation.id, operationKey: operation.operationKey, method: operation.method, path: operation.path, parameters: operation.parameters, requestBody: operation.requestBody, responses: operation.responses, externalRequests: 0 }, createdByUserId: input.actorUserId, updatedByUserId: input.actorUserId }).$returningId();
     await tx.update(integrationOpenapiOperations).set({ generatedConnectionId: connection.id }).where(eq(integrationOpenapiOperations.id, operation.id));
-    await tx.insert(auditLogs).values([
-      integrationAudit({ resourceType: "integration_connection", resourceId: connection.id, actorUserId: input.actorUserId, action: "generate_from_openapi_simulation", beforeData: null, afterData: { code, operationId: operation.id, specId: spec.id, active: false, simulationOnly: true, externalRequests: 0 } }),
-      integrationAudit({ resourceType: "openapi_operation", resourceId: operation.id, actorUserId: input.actorUserId, action: "generate_connector_simulation", beforeData: { generatedConnectionId: null }, afterData: { generatedConnectionId: connection.id, simulationOnly: true } }),
-    ]);
-    return { connectionId: connection.id, created: true };
-  });
-}
-
-export async function simulateOpenapiOperationTest(input: { operationId: number; actorUserId: number }) {
-  const db = await requireDb();
-  return db.transaction(async tx => {
-    const operation = (await tx.select().from(integrationOpenapiOperations).where(eq(integrationOpenapiOperations.id, input.operationId)).limit(1))[0];
-    if (!operation?.simulationOnly) throw new Error("Operação OpenAPI simulada não encontrada.");
-    const response = { mode: "SIMULAÇÃO / MOCK", delivered: false, externalRequests: 0, message: "Teste de contrato concluído sem enviar requisição externa." };
-    await tx.insert(integrationLogs).values({ level: "info", source: "openapi.docs.simulacao", message: `Teste simulado de contrato ${operation.method} ${operation.path} concluído sem chamada externa.`, endpoint: `${operation.method} ${operation.path}`, requestData: { operationId: operation.id, simulationOnly: true, externalRequests: 0 }, responseData: response, httpStatus: 202, durationMs: 0, retryAttempt: 0 });
-    await tx.insert(auditLogs).values(integrationAudit({ resourceType: "openapi_operation", resourceId: operation.id, actorUserId: input.actorUserId, action: "tryout_simulation", beforeData: null, afterData: { endpoint: `${operation.method} ${operation.path}`, httpStatus: 202, simulationOnly: true, externalRequests: 0 } }));
-    return { status: 202, durationMs: 0, response };
-  });
-}
