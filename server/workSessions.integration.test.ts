@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { auditLogs, users } from "../drizzle/schema";
-import { workSessionEvents, workSessions } from "../drizzle/cp016Schema";
-import { adjustWorkSession, setDbForTesting } from "./db";
+import { auditLogs, teams, users } from "../drizzle/schema";
+import { operationalPresence, workSessionEvents, workSessions } from "../drizzle/cp016Schema";
+import { adjustWorkSession, setDbForTesting, updateTeamShift } from "./db";
 
 describe("CP-016 administrative adjustment on disposable MySQL", () => {
   let pool: mysql.Pool | undefined;
@@ -92,5 +92,121 @@ describe("CP-016 administrative adjustment on disposable MySQL", () => {
         await admin.end();
       }
     }
+  });
+});
+
+describe("CP-016 team shift lifecycle on disposable MySQL", () => {
+  let pool: mysql.Pool | undefined;
+  let db: ReturnType<typeof drizzle>;
+  let actorId: number;
+  let teamId: number | undefined;
+  const at = (time: string) => new Date(`2026-09-05T${time}:00.000Z`);
+
+  beforeAll(async () => {
+    const url = new URL(process.env.DATABASE_URL ?? "");
+    if (process.env.CP016_DISPOSABLE_DB !== "1" || url.hostname !== "127.0.0.1" || url.pathname !== "/dispatch_cp016_ci") {
+      throw new Error("CP-016 lifecycle tests require the explicitly disposable local CI database.");
+    }
+    pool = mysql.createPool({ uri: url.toString(), timezone: "Z", connectionLimit: 4 });
+    db = drizzle(pool);
+    setDbForTesting(db);
+    const [actor] = await db.insert(users).values({ openId: `shift:${randomUUID()}`, name: "Shift test actor" }).$returningId();
+    actorId = actor.id;
+  });
+
+  beforeEach(async () => {
+    const [team] = await db.insert(teams).values({ code: `ci-${randomUUID().slice(0, 24)}`, name: "Disposable shift team", agency: "CI" }).$returningId();
+    teamId = team.id;
+    // Only Date is controlled; MySQL networking and timeout timers stay real.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(at("08:00"));
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    if (!teamId) return;
+    await db.delete(operationalPresence).where(eq(operationalPresence.teamId, teamId));
+    await db.delete(workSessions).where(eq(workSessions.teamId, teamId));
+    await db.delete(auditLogs).where(and(eq(auditLogs.resourceType, "team"), eq(auditLogs.resourceId, teamId)));
+    await db.delete(teams).where(eq(teams.id, teamId));
+    teamId = undefined;
+  });
+
+  afterAll(async () => {
+    try {
+      if (actorId) await db.delete(users).where(eq(users.id, actorId));
+    } finally {
+      setDbForTesting(null);
+      await pool?.end();
+    }
+  });
+
+  const act = async (action: "start" | "pause" | "resume" | "end", time: string) => {
+    vi.setSystemTime(at(time));
+    await updateTeamShift({ teamId: teamId!, actorUserId: actorId, action });
+  };
+  const snapshot = async () => ({
+    team: (await db.select().from(teams).where(eq(teams.id, teamId!)))[0],
+    sessions: await db.select().from(workSessions).where(eq(workSessions.teamId, teamId!)),
+    presence: await db.select().from(operationalPresence).where(eq(operationalPresence.teamId, teamId!)),
+    audits: await db.select().from(auditLogs).where(and(eq(auditLogs.resourceType, "team"), eq(auditLogs.resourceId, teamId!))).orderBy(auditLogs.id),
+  });
+
+  it("persists all four transitions and synchronizes presence with the same session", async () => {
+    await act("start", "08:00");
+    const start = await snapshot();
+    expect(start.team).toMatchObject({ shiftStartedAt: at("08:00"), shiftPausedAt: null, shiftEndsAt: null });
+    expect(start.sessions).toMatchObject([{ status: "open", userId: actorId, totalPauseSeconds: 0 }]);
+    const sessionId = start.sessions[0].id;
+    expect(start.presence).toMatchObject([{ workSessionId: sessionId, status: "available", availableForDispatch: true }]);
+
+    await act("pause", "10:00");
+    const pause = await snapshot();
+    expect(pause.team.shiftPausedAt).toEqual(at("10:00"));
+    expect(pause.sessions).toMatchObject([{ id: sessionId, status: "paused" }]);
+    expect(pause.presence).toMatchObject([{ workSessionId: sessionId, status: "paused", availableForDispatch: false }]);
+
+    await act("resume", "10:15");
+    const resume = await snapshot();
+    expect(resume.team).toMatchObject({ shiftPausedAt: null, shiftPausedTotalSeconds: 900 });
+    expect(resume.sessions).toMatchObject([{ id: sessionId, status: "open", totalPauseSeconds: 900 }]);
+    expect(resume.presence).toMatchObject([{ workSessionId: sessionId, status: "available", availableForDispatch: true }]);
+
+    await act("end", "12:00");
+    const end = await snapshot();
+    expect(end.team).toMatchObject({ shiftEndsAt: at("12:00"), shiftPausedAt: null, shiftPausedTotalSeconds: 900 });
+    expect(end.sessions).toMatchObject([{ id: sessionId, status: "closed", endedAt: at("12:00"), totalPauseSeconds: 900 }]);
+    expect(end.presence).toMatchObject([{ workSessionId: sessionId, status: "out_of_shift", availableForDispatch: false }]);
+    const events = await db.select().from(workSessionEvents).where(eq(workSessionEvents.workSessionId, sessionId)).orderBy(workSessionEvents.id);
+    expect(events.map(event => ({ type: event.eventType, at: event.occurredAt, actor: event.actorUserId }))).toEqual([
+      { type: "start", at: at("08:00"), actor: actorId },
+      { type: "pause", at: at("10:00"), actor: actorId },
+      { type: "resume", at: at("10:15"), actor: actorId },
+      { type: "end", at: at("12:00"), actor: actorId },
+    ]);
+    expect(end.audits.map(audit => audit.action)).toEqual(["shift_started", "shift_paused", "shift_resumed", "shift_ended"]);
+  });
+
+  it("includes an ongoing pause when ending the shift", async () => {
+    await act("start", "08:00");
+    await act("pause", "10:00");
+    await act("end", "10:20");
+    const end = await snapshot();
+    expect(end.team).toMatchObject({ shiftPausedAt: null, shiftPausedTotalSeconds: 1200, shiftEndsAt: at("10:20") });
+    expect(end.sessions).toMatchObject([{ status: "closed", totalPauseSeconds: 1200, endedAt: at("10:20") }]);
+    expect(end.presence).toMatchObject([{ status: "out_of_shift", availableForDispatch: false }]);
+  });
+
+  it("rejects invalid transitions without adding sessions or history", async () => {
+    const initial = await snapshot();
+    await expect(act("pause", "08:00")).rejects.toThrow(/Inicie a jornada/);
+    expect(await snapshot()).toEqual(initial);
+    await act("start", "08:00");
+    const started = await snapshot();
+    await expect(act("start", "08:01")).rejects.toThrow(/andamento/);
+    await expect(act("resume", "08:02")).rejects.toThrow(/pausa/);
+    expect(await snapshot()).toEqual(started);
+    const events = await db.select().from(workSessionEvents).where(eq(workSessionEvents.workSessionId, started.sessions[0].id));
+    expect(events.map(event => event.eventType)).toEqual(["start"]);
   });
 });
