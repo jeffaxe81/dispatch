@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { EMBEDDED_APPLICATIONS } from "@shared/embeddedApplications";
 import { INCIDENT_PRIORITIES, INCIDENT_STATUSES, INCIDENT_TRANSITIONS, OPERATIONAL_ROLES } from "../shared/operations";
 import {
   assertCanEditIncident,
@@ -109,6 +110,8 @@ import {
   updateVehicleStatus,
 } from "./db";
 import { getInternalOpenapiCatalog } from "./openapi";
+import { OsrmRouteProvider } from "./routingProvider";
+import { rankTeamCandidates } from "./gisService";
 
 const roleEnum = z.enum(OPERATIONAL_ROLES);
 const statusEnum = z.enum(INCIDENT_STATUSES);
@@ -195,6 +198,16 @@ export const appRouter = router({
     overview: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "integrations.view");
       return getSimulatedIntegrationsOverview(await getSimulatedIntegrationMetrics());
+    }),
+    embeddedApplications: router({
+      list: operationalProcedure.query(async ({ ctx }) => {
+        await assertPermission(ctx.user, "embedded_apps.view");
+        return EMBEDDED_APPLICATIONS.filter(application => application.enabled);
+      }),
+      adminList: operationalProcedure.query(async ({ ctx }) => {
+        await assertPermission(ctx.user, "embedded_apps.manage");
+        return EMBEDDED_APPLICATIONS;
+      }),
     }),
     events: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "integrations.view");
@@ -664,6 +677,39 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "users.edit");
         return uploadUserProfilePhoto({ ...input, actorUserId: ctx.user.id });
+      }),
+  }),
+  gis: router({
+    route: operationalProcedure
+      .input(z.object({
+        origin: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }),
+        destination: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }),
+        waypoints: z.array(z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) })).max(8).optional(),
+        profile: z.enum(["car", "bike", "foot"]).default("car"),
+      }))
+      .query(async ({ ctx, input }) => {
+        await assertPermission(ctx.user, "occurrences.view");
+        const provider = new OsrmRouteProvider();
+        return provider.calculateRoute(input);
+      }),
+    rankCandidates: operationalProcedure
+      .input(z.object({
+        incident: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }),
+        candidates: z.array(z.object({
+          teamId: z.number().int().positive(),
+          code: z.string().trim().min(1).max(32),
+          name: z.string().trim().min(1).max(160),
+          status: z.string().trim().min(1).max(64),
+          position: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }),
+        })).max(50),
+        maxRouteCandidates: z.number().int().min(1).max(10).default(3),
+      }))
+      .query(async ({ ctx, input }) => {
+        await assertPermission(ctx.user, "occurrences.view");
+        for (const candidate of input.candidates) {
+          await assertTeamScope(ctx.user, candidate.teamId, "teams.view");
+        }
+        return rankTeamCandidates(input.incident, input.candidates, new OsrmRouteProvider(), input.maxRouteCandidates);
       }),
   }),
   settings: router({
