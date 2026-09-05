@@ -37,7 +37,7 @@
 - Create: `server/workShiftAdjustmentsRouter.test.ts`.
 - Create: `server/workShiftAdjustmentsRuntime.ts` — wiring real.
 - Modify: `drizzle/workShiftSchema.ts` — tabela `work_shift_adjustments`.
-- Create: `drizzle/0005_d007d_work_shift_adjustments_alerts.sql` — migration conjunta D1/D3, inicialmente com ajustes e permissões D1; ampliar somente em D3 antes do checkpoint final D3.
+- Create: `drizzle/0005_d007d_work_shift_adjustments.sql` — migration imutável do ciclo D1.
 - Modify: `drizzle/meta/_journal.json`.
 - Modify: `server/rootRouter.ts` — registrar `workShiftAdjustments`.
 
@@ -62,7 +62,8 @@
 - Create: `server/workShiftAlertsRouter.test.ts`.
 - Create: `server/workShiftAlertsRuntime.ts`.
 - Modify: `drizzle/workShiftSchema.ts` — tabela `work_shift_alerts`.
-- Modify: `drizzle/0005_d007d_work_shift_adjustments_alerts.sql` — adicionar alertas/índices/permissões sem grants.
+- Create: `drizzle/0006_d007d_work_shift_alerts.sql` — migration imutável do ciclo D3.
+- Modify: `drizzle/meta/_journal.json`.
 - Modify: `server/rootRouter.ts` — registrar `workShiftAlerts`.
 
 ### D-007D4 — Painel e fechamento
@@ -127,7 +128,7 @@ git commit -m "feat: add audited work shift adjustment domain"
 
 **Files:**
 - Modify: `drizzle/workShiftSchema.ts`
-- Create: `drizzle/0005_d007d_work_shift_adjustments_alerts.sql`
+- Create: `drizzle/0005_d007d_work_shift_adjustments.sql`
 - Modify: `drizzle/meta/_journal.json`
 - Create: `server/workShiftAdjustmentDbStore.ts`
 - Test: `server/workShiftAdjustmentDbStore.test.ts`
@@ -138,7 +139,7 @@ git commit -m "feat: add audited work shift adjustment domain"
 
 **Interfaces:**
 - Produces tRPC: `workShiftAdjustments.list`, `.request`, `.approve`, `.reject`.
-- Permission mapping: view/list uses `work_shifts.view`; request uses `work_shifts.adjust`; approve/reject uses `work_shifts.approve`; all additionally validate scope da sessão/usuário no servidor.
+- Permission mapping: view/list usa `work_shifts.view`; request usa `work_shifts.adjust`; approve/reject usam `work_shifts.approve`; todos validam escopo da sessão/usuário no servidor.
 
 - [ ] **Step 1: Write RED for schema/store/router**. Exigir tabela `work_shift_adjustments`, migration sem `role_permissions`, transação de aprovação que: lock/re-read sessão, compara `beforeSnapshot`, atualiza sessão, grava ajuste e eventos `adjustment_approved` + `adjusted`. Rejeição grava `adjustment_rejected` e não atualiza sessão.
 
@@ -215,7 +216,8 @@ Expected: PASS.
 - Create: `server/workShiftAlertService.ts`
 - Test: `server/workShiftAlertService.test.ts`
 - Modify: `drizzle/workShiftSchema.ts`
-- Modify: `drizzle/0005_d007d_work_shift_adjustments_alerts.sql`
+- Create: `drizzle/0006_d007d_work_shift_alerts.sql`
+- Modify: `drizzle/meta/_journal.json`
 - Create: `server/workShiftAlertDbStore.ts`
 - Test: `server/workShiftAlertDbStore.test.ts`
 
@@ -226,7 +228,7 @@ Expected: PASS.
 - [ ] **Step 1: Write RED** para os oito tipos obrigatórios (`SHIFT_NOT_STARTED_NEAR_PLANNED_TIME`, `LATE_START`, `PAUSE_EXCEEDED`, `SHIFT_OVERRUN`, `SHIFT_NOT_ENDED`, `COVERAGE_GAP`, `AVAILABLE_OUTSIDE_SHIFT`, `LEGACY_SHIFT_STATE_DIVERGENCE`) e `DISPATCH_EXCLUDED_BY_SHIFT` apenas quando houver evidência persistível adequada.
 - [ ] **Step 2: Add dedupe RED**: mesma `dedupeKey` + condição ainda aberta não cria segundo alerta; condição resolvida pode gerar nova ocorrência futura com nova detecção.
 - [ ] **Step 3: Implement minimal deterministic evaluator** sem timers próprios/broker. Limites são parâmetros de policy/runtime e não magic numbers espalhados.
-- [ ] **Step 4: Implement table `work_shift_alerts`** com unique/index adequado para dedupe lógico, índices por status/detectedAt/user/team/session e JSON sanitizado.
+- [ ] **Step 4: Implement table `work_shift_alerts`** com índices para `dedupeKey`, `status`, `detectedAt`, `userId`, `teamId`, `sessionId`; a deduplicação atômica deve ocorrer no store/transação sem depender apenas de uma unique key permanente que impediria uma nova ocorrência após resolução.
 - [ ] **Step 5: Run GREEN** para service/store e migration test garantindo ausência de grants automáticos.
 
 ### Task 6: D-007D3 — Router/runtime de alertas e checkpoint
@@ -275,8 +277,9 @@ Expected: PASS.
 
 **Interfaces:**
 - Inventário deve descobrir explicitamente routers D1/D2/D3 compostos no `rootRouter` e classificar todos os novos procedures com evidência.
+- Total esperado ao fim da D-007D: **123 procedures tRPC** (`111` do checkpoint D-007C + `12` novos: 4 ajustes + 4 relatórios + 4 alertas).
 
-- [ ] **Step 1: Write RED do inventário** elevando o total real de procedures para o valor calculado pelo gerador e exigindo os 12 novos contratos D1/D2/D3 (`4 + 4 + 4`). Não hardcode o total antes de executar o gerador; o teste deve comparar a saída materializada ao conjunto esperado e falhar se houver procedure sem classificação.
+- [ ] **Step 1: Write RED do inventário** exigindo exatamente 123 procedures e os 12 novos contratos D1/D2/D3; falhar se qualquer procedure não tiver classificação/evidência.
 - [ ] **Step 2: GREEN do gerador** adicionando fontes `workShiftAdjustmentsRouter.ts`, `workShiftReportsRouter.ts`, `workShiftAlertsRouter.ts` com os prefixos correspondentes e evidência direta das suítes D1/D2/D3.
 - [ ] **Step 3: Materialize docs** executando o gerador do projeto; atualizar `todo.md` marcando D-007D concluída somente após gates finais.
 - [ ] **Step 4: Fresh final verification**:
