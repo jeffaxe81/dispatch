@@ -19,11 +19,14 @@ describe("D-007D1 adjustment migration contract", () => {
     expect(sql).not.toContain("role_permissions");
   });
 
-  it("registra somente a migration 0005 depois da D-007B", () => {
+  it("preserva a migration 0005 imediatamente depois da D-007B", () => {
     const journal = JSON.parse(readFileSync(journalUrl, "utf8")) as {
       entries: Array<{ idx: number; tag: string }>;
     };
 
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 5, tag: "0005_d007d_work_shift_adjustments" });
+    expect(journal.entries.find(entry => entry.idx === 5)).toMatchObject({
+      idx: 5,
+      tag: "0005_d007d_work_shift_adjustments",
+    });
   });
 });

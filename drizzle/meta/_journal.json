@@ -43,6 +43,13 @@
       "when": 1788571020000,
       "tag": "0005_d007d_work_shift_adjustments",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1788573000000,
+      "tag": "0006_d007d_work_shift_report_permissions",
+      "breakpoints": true
     }
   ]
 }
