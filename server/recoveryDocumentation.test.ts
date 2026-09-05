@@ -40,17 +40,19 @@ describe("D-005 recovery documentation", () => {
     expect(decision).toContain("D-005C");
   });
 
-  it("records candidate 1.15.5 consistently and truthfully", () => {
+  it("records final release 2.16.0 without rewriting historical recovery evidence", () => {
     const manifest = JSON.parse(read("package.json"));
     const security = read("scripts/security-regression-check.mjs");
-    const changelog = read("docs/source-package/CHANGELOG.md");
+    const releaseChangelog = read("CHANGELOG.md");
+    const historicalChangelog = read("docs/source-package/CHANGELOG.md");
 
-    expect(manifest.version).toBe("1.15.5");
-    expect(security).toContain('packageJson.version === "1.15.5"');
-    expect(changelog.indexOf("## [1.15.5]")).toBeLessThan(
-      changelog.indexOf("## [1.15.4]")
+    expect(manifest.version).toBe("2.16.0");
+    expect(security).toContain('packageJson.version === "2.16.0"');
+    expect(releaseChangelog).toContain("## [2.16.0]");
+    expect(historicalChangelog.indexOf("## [1.15.5]")).toBeLessThan(
+      historicalChangelog.indexOf("## [1.15.4]")
     );
-    expect(changelog).toContain("D-005B permanece pendente");
-    expect(changelog).toMatch(/\d+ testes[^\n]+\d+ arquivos/);
+    expect(historicalChangelog).toContain("D-005B permanece pendente");
+    expect(historicalChangelog).toMatch(/\d+ testes[^\n]+\d+ arquivos/);
   });
 });
