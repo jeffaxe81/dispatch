@@ -17,6 +17,29 @@ describe("decisão de permissões RBAC", () => {
     expect(evaluatePermission({ active: true, operationalRole: "operador", hasDynamicAssignments: true, dynamicPermissions: ["integrations.view"] }, "workflow.execute")).toBe(false);
   });
 
+  it("reconhece jornada dinâmica sem conceder controle ao agente legado", () => {
+    expect(evaluatePermission({
+      active: true,
+      operationalRole: "agente",
+      hasDynamicAssignments: true,
+      dynamicPermissions: ["work_shifts.view", "work_shifts.control"],
+    }, "work_shifts.control")).toBe(true);
+
+    expect(evaluatePermission({
+      active: true,
+      operationalRole: "agente",
+      hasDynamicAssignments: false,
+      dynamicPermissions: [],
+    }, "work_shifts.control")).toBe(false);
+
+    expect(evaluatePermission({
+      active: true,
+      operationalRole: "administrador",
+      hasDynamicAssignments: false,
+      dynamicPermissions: [],
+    }, "work_shifts.control")).toBe(true);
+  });
+
   it("nega permissões para usuário inativo", () => {
     expect(evaluatePermission({ active: false, operationalRole: "administrador", hasDynamicAssignments: false, dynamicPermissions: [] }, "users.edit")).toBe(false);
   });

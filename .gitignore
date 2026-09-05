@@ -46,6 +46,12 @@ pids
 *.pid.lock
 *.bak
 
+# Recovery packages and private evidence
+recovery-packages/
+*.recovery.enc
+*.sql.enc
+recovery-report.private.json
+
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov

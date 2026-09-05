@@ -22,6 +22,41 @@
       "when": 1787700292309,
       "tag": "0002_aromatic_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1788541539959,
+      "tag": "0003_d007a_work_shift_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1788564210000,
+      "tag": "0004_d007b_work_shift_schedules",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1788571020000,
+      "tag": "0005_d007d_work_shift_adjustments",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1788573000000,
+      "tag": "0006_d007d_work_shift_report_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1788574200000,
+      "tag": "0007_d007d_work_shift_alerts",
+      "breakpoints": true
     }
   ]
 }

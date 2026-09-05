@@ -83,3 +83,68 @@
 - [x] Comparar o HTML e os bundles do domínio publicado com a revisão de autenticação local atual; o domínio respondeu 503 sem assets e sem cache, confirmando implantação inativa.
 - [x] Acionar nova publicação automática da revisão validada para restaurar uma implantação ativa.
 - [x] Preparar a confirmação pública do login local após a nova publicação automática.
+
+
+## GIS-1 — Fundação open source
+
+- [x] Reconciliar a GIS-1 com o checkpoint D-005A 1.15.5 em `checkpoint/d005a-gis1-reconciled-20260903`, preservando recuperação, segurança e testes anteriores.
+
+- [x] Formalizar D-005 — Arquitetura GIS Open Source e Despacho Georreferenciado.
+- [x] Isolar a evolução em branch própria sem alterar a `main`.
+- [x] Tornar OpenStreetMap o provider preferencial no modo automático.
+- [x] Manter Google Maps somente como opção explícita de transição/rollback.
+- [x] Criar contratos GIS portáveis em `shared/gis.ts`.
+- [x] Padronizar geometria de rota como GeoJSON LineString.
+- [x] Implementar adapter OSRM desacoplado do domínio.
+- [x] Tratar coordenada inválida, indisponibilidade de rede, timeout e resposta inválida.
+- [x] Adicionar testes unitários do adapter OSRM.
+- [x] Executar testes GIS direcionados (11/11), `pnpm check` e build em CI com dependências instaladas via lockfile congelado.
+- [x] Reexecutar a suíte local Vitest completa sobre a base D-005A reconciliada; integração e recovery com infraestrutura real permanecem suítes separadas e não foram simuladas.
+- [x] Integrar o provider OSRM a uma procedure autenticada do backend.
+- [x] Exibir distância e ETA da equipe candidata no fluxo de despacho.
+- [x] Implementar pré-seleção por distância geodésica e ranking das equipes candidatas.
+- [x] Desenhar a geometria GeoJSON da rota no mapa Leaflet do fluxo de despacho.
+- [x] Substituir o embed OSM por renderização Leaflet nativa com carregamento lazy e rollback Google preservado.
+- [x] Validar GIS-1 em desktop/mobile com o componente real `OperationalMap`, evidência Chrome 1440×900 e 390×844, sem overflow horizontal; checkpoint de homologação preparado.
+
+
+## D-006 — Módulo iFrame Responsivo e Aplicações Incorporadas
+
+- [x] Validar workspace D-006B em CI: Qualidade #30, GIS visual #25 e NEO workspace visual #5 aprovados no commit `b34798782ce1f95971d711ee5af1c78abe376f8a`.
+- [x] Validar D-006A em CI: Qualidade #14 e GIS visual #9 aprovados no commit `354d6a8396605117a0ca6bc840034fbaa5f7720e`.
+- [x] Validar D-006D RBAC no commit `8854eba41d4c35080464093c6eddb73ea023d229`: Qualidade #115, GIS visual #110, NEO external #47 e NEO visual #90 aprovados; checkpoint `checkpoint/d006d-embedded-app-rbac-20260904`.
+- [x] Validar D-006E CSP no commit `7b71fcd24fcb290c9e5bfa42165df2bd3f2e7d4f`: Qualidade #121, GIS visual #116, NEO external #53 e NEO visual #96 aprovados.
+
+- [x] Formalizar arquitetura e requisitos do módulo iFrame responsivo.
+- [x] Registrar NEO Interact como primeira aplicação de referência.
+- [x] Registrar URL do iframe `https://gscprj.saas.digitro.cloud/neo/` e origin `https://gscprj.saas.digitro.cloud`.
+- [x] Criar modelo tipado de configuração de aplicações incorporadas, com NEO Interact na allowlist inicial.
+- [x] Criar RBAC específico: `embedded_apps.view` para visualizar/abrir e `embedded_apps.manage` para administração, preservando wildcard administrativo legado.
+- [x] Implementar componente `EmbeddedApplicationFrame`.
+- [x] Implementar allowlist de URL/origin e bloqueio de URL arbitrária.
+- [x] Implementar comunicação bidirecional via `postMessage` (`init` + recepção controlada).
+- [x] Validar mensagens com schema tipado e rejeitar payload desconhecido.
+- [x] Implementar `TOGGLE_IFRAME_SIZE` com limites de viewport/container.
+- [x] Implementar loading, timeout, erro e retry/fallback controlado.
+- [x] Implementar permissões declarativas de câmera, microfone e clipboard na configuração da aplicação.
+- [x] Verificar CSP `frame-src`, `frame-ancestors` e X-Frame-Options: o AXE Dispatch restringe `frame-src` a `'self'` + `https://gscprj.saas.digitro.cloud`; no HTTP externo observado do NEO não houve `frame-ancestors` nem X-Frame-Options, portanto a classificação externa permanece `undetermined` e não constitui autorização comprovada de embedding autenticado.
+- [ ] Homologar sessão/login/cookies no contexto incorporado.
+- [x] Validar layout D-006B em desktop 1440×900 e mobile real 390×844 sem overflow horizontal.
+- [x] Criar teste visual automatizado com Chrome DevTools para o workspace responsivo e evidências PNG/DOM/relatório.
+- [ ] Homologar NEO Interact em ambiente autorizado.
+- [x] Implementar primeira composição operacional lado a lado Ocorrência + NEO em desktop e empilhada em mobile; dock/janela desacoplada permanecem evolução posterior.
+
+
+## D-007 — Controle de Jornada de Trabalho
+
+- [x] D-007A — Fundação histórica da jornada: sessões/eventos auditáveis, máquina de estados por usuário, compatibilidade legada e histórico básico; checkpoint `checkpoint/d007a-work-shift-history-20260904`.
+- [x] D-007B — Implementar escalas fixas e cíclicas 12x36, associação por usuário, exceções, bloqueio de sobreposição, snapshot planejado na sessão real e planejado x realizado.
+- [x] D-007B — Implementar cobertura `completed` / `in_progress` / `missing_start`, contratos tRPC e RBAC `work_shift_schedules.view/manage` com escopo fail-closed.
+- [x] D-007B — Materializar/versionar `drizzle/0004_d007b_work_shift_schedules.sql` sem aplicar migration em banco real e sem criar grants automáticos.
+- [x] D-007B — Validar segurança, TypeScript, 434 testes, build, GIS visual, NEO external e NEO workspace no SHA funcional `a60f62ddda24a08465f936e9ef62683f9eec9ece`.
+- [x] D-007B — Fechar documentação, inventário dos 110 contratos tRPC e evidência auditável; checkpoint definitivo `checkpoint/d007b-work-shift-schedules-20260904` @ `be9b63e9e62f9e28620bb1fa753b89fdef5242f5`.
+- [x] D-007C — Implementar elegibilidade individual D-007A/B, consolidação por equipe e razões explícitas de inelegibilidade antes do GIS/OSRM.
+- [x] D-007C — Carregar membros, sessões e planejamento exclusivamente server-side, com consultas somente leitura, fallback D-007A quando não há D-007B e falha técnica fail-closed.
+- [x] D-007C — Adicionar `dispatch.rankEligibleCandidates`, validar `dispatch.view`/escopo de cada equipe e impedir que candidatos inelegíveis sejam enviados ao GIS/OSRM; `gis.rankCandidates` legado permanece compatível.
+- [x] D-007C — Implementação funcional concluída; fechamento condicionado aos quatro gates finais e ao checkpoint `checkpoint/d007c-dispatch-work-shift-eligibility-20260904`, a ser registrado sem merge/deploy.
+- [ ] D-007D — Administração avançada, relatórios, alertas e ajustes de jornada. Não iniciado.
