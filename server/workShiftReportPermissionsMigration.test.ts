@@ -13,11 +13,11 @@ describe("D-007D2 report permission migration", () => {
     expect(sql).not.toContain("role_permissions");
   });
 
-  it("registra 0006 depois do checkpoint D1", () => {
+  it("preserva 0006 na sequência depois do checkpoint D1", () => {
     const journal = JSON.parse(readFileSync(journalUrl, "utf8")) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(journal.entries.find(entry => entry.idx === 6)).toMatchObject({
       idx: 6,
       tag: "0006_d007d_work_shift_report_permissions",
     });
