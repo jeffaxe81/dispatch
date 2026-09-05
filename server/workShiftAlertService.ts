@@ -128,6 +128,18 @@ export function evaluateWorkShiftAlerts(context: WorkShiftAlertEvaluationContext
   return alerts;
 }
 
+export function selectNewAlertsForPersistence(
+  detected: WorkShiftAlertSnapshot[],
+  existing: WorkShiftAlertSnapshot[],
+): WorkShiftAlertSnapshot[] {
+  const activeKeys = new Set(
+    existing
+      .filter(alert => alert.status === "open" || alert.status === "acknowledged")
+      .map(alert => alert.dedupeKey),
+  );
+  return detected.filter(alert => !activeKeys.has(alert.dedupeKey));
+}
+
 export function acknowledgeWorkShiftAlert(
   current: WorkShiftAlertSnapshot,
   input: { actorUserId: number; at: Date },
