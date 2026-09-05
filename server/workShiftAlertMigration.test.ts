@@ -9,7 +9,7 @@ describe("D-007D3 alert migration contract", () => {
     const sql = readFileSync(migrationUrl, "utf8");
     expect(sql).toContain("CREATE TABLE `work_shift_alerts`");
     expect(sql).toContain("`dedupe_key`");
-    expect(sql).toContain("`status`");
+    expect(sql).toContain("`work_shift_alert_status`");
     expect(sql).toContain("`detected_at`");
     expect(sql).toContain("`user_id`");
     expect(sql).toContain("`team_id`");
