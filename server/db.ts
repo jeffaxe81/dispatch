@@ -39,9 +39,11 @@ import {
   integrationOpenapiSpecs,
   integrationWebhooks,
 } from "../drizzle/schema";
+import { operationalPresence, workSessions, workSessionEvents } from "../drizzle/cp016Schema";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
+import { resolveOperationalPresenceState } from "./operationalPresence";
 import { parseOpenapiDocument } from "./openapi";
 import { storageGet, storagePut } from "./storage";
 
@@ -724,10 +726,20 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
 export async function assignTeamToIncident(input: { incidentId: number; teamId: number; vehicleId?: number; actorUserId: number; estimatedArrivalMinutes?: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
-    const team = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
+    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
+    const team = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
     if (!team || !team.active || team.status === "indisponivel") throw new Error("Equipe indisponível para despacho.");
+    const presence = (await tx.select().from(operationalPresence).where(eq(operationalPresence.teamId, input.teamId)).orderBy(desc(operationalPresence.lastChangedAt)).limit(1))[0];
+    const session = presence?.workSessionId
+      ? (await tx.select().from(workSessions).where(and(eq(workSessions.id, presence.workSessionId), eq(workSessions.teamId, input.teamId))).limit(1))[0]
+      : undefined;
+    const eligible = Boolean(
+      team.shiftStartedAt && !team.shiftEndsAt && !team.shiftPausedAt &&
+      presence?.status === "available" && presence.availableForDispatch &&
+      session?.status === "open" && !session.endedAt,
+    );
+    if (!eligible) throw new Error("Equipe não elegível para despacho.");
     const now = new Date();
     const [assignment] = await tx.insert(incidentAssignments).values({
       incidentId: input.incidentId,
@@ -740,6 +752,7 @@ export async function assignTeamToIncident(input: { incidentId: number; teamId: 
     }).$returningId();
     await tx.update(incidents).set({ assignedTeamId: input.teamId, assignedVehicleId: input.vehicleId ?? null, status: "despachada", dispatchedAt: now }).where(eq(incidents.id, input.incidentId));
     await tx.update(teams).set({ status: "em_deslocamento" }).where(eq(teams.id, input.teamId));
+    await tx.update(operationalPresence).set({ status: "busy", availableForDispatch: false, lastChangedAt: now }).where(eq(operationalPresence.id, presence!.id));
     const after = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
     if (!after) throw new Error("Falha ao registrar despacho.");
     await tx.insert(incidentEvents).values({
@@ -940,12 +953,79 @@ export async function listTeams(teamId?: number) {
   return db.select({ team: teams, vehiclePrefix: vehicles.prefix, vehicleType: vehicles.type, vehicleStatus: vehicles.status }).from(teams).leftJoin(vehicles, eq(vehicles.teamId, teams.id)).where(where).orderBy(teams.code);
 }
 
-export async function updateTeamStatus(input: { teamId: number; status: typeof teams.$inferInsert.status; actorUserId: number }) {
+type OperationalPresenceSyncInput = {
+  teamId: number;
+  userId: number | null;
+  workSessionId: number | null;
+  teamStatus: typeof teams.$inferSelect.status;
+  inShift: boolean;
+  shiftPaused: boolean;
+  changedAt: Date;
+};
+
+async function syncOperationalPresenceTx(tx: any, input: OperationalPresenceSyncInput) {
+  const state = resolveOperationalPresenceState({
+    inShift: input.inShift,
+    shiftPaused: input.shiftPaused,
+    teamStatus: input.teamStatus,
+  });
+  const existing = (await tx
+    .select({ id: operationalPresence.id })
+    .from(operationalPresence)
+    .where(eq(operationalPresence.teamId, input.teamId))
+    .orderBy(desc(operationalPresence.lastChangedAt))
+    .limit(1))[0];
+  const values = {
+    userId: input.userId,
+    teamId: input.teamId,
+    workSessionId: input.workSessionId,
+    status: state.status,
+    availableForDispatch: state.availableForDispatch,
+    lastChangedAt: input.changedAt,
+  };
+  if (existing) {
+    await tx.update(operationalPresence).set(values).where(eq(operationalPresence.id, existing.id));
+  } else {
+    await tx.insert(operationalPresence).values(values);
+  }
+  return state;
+}
+
+export async function upsertOperationalPresence(input: OperationalPresenceSyncInput) {
+  const db = await requireDb();
+  return db.transaction(async tx => syncOperationalPresenceTx(tx, input));
+}
+
+export async function getEligibleTeamCandidates() {
+  const db = await requireDb();
+  return db
+    .select({ team: teams, presence: operationalPresence })
+    .from(operationalPresence)
+    .innerJoin(teams, eq(operationalPresence.teamId, teams.id))
+    .where(and(
+      eq(teams.active, true),
+      eq(operationalPresence.status, "available"),
+      eq(operationalPresence.availableForDispatch, true),
+    ))
+    .orderBy(teams.code);
+}
+
+export async function updateTeamStatus(input: { teamId: number; status: typeof teams.$inferSelect.status; actorUserId: number }) {
   const db = await requireDb();
   await db.transaction(async tx => {
     const before = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
     if (!before) throw new Error("Equipe não encontrada.");
     await tx.update(teams).set({ status: input.status }).where(eq(teams.id, input.teamId));
+    const session = (await tx.select().from(workSessions).where(and(eq(workSessions.teamId, input.teamId), inArray(workSessions.status, ["open", "paused"]))).orderBy(desc(workSessions.startedAt)).limit(1))[0];
+    await syncOperationalPresenceTx(tx, {
+      teamId: input.teamId,
+      userId: session?.userId ?? null,
+      workSessionId: session?.id ?? null,
+      teamStatus: input.status,
+      inShift: Boolean(before.shiftStartedAt && !before.shiftEndsAt),
+      shiftPaused: Boolean(before.shiftPausedAt),
+      changedAt: new Date(),
+    });
     await tx.insert(auditLogs).values({ resourceType: "team", resourceId: input.teamId, action: "status_updated", actorUserId: input.actorUserId, beforeData: { status: before.status }, afterData: { status: input.status } });
   });
 }
@@ -974,22 +1054,100 @@ export function resolveTeamShiftAction(input: { startedAt: Date | null; pausedAt
   return { shiftEndsAt: now, shiftPausedAt: null, shiftPausedTotalSeconds: pausedTotalSeconds };
 }
 
+export function resolveTeamShiftPersistence(input: { startedAt: Date | null; pausedAt: Date | null; endedAt: Date | null; pausedTotalSeconds: number }, action: TeamShiftAction, now = new Date()) {
+  const teamPatch = resolveTeamShiftAction(input, action, now);
+  const totalPauseSeconds = teamPatch.shiftPausedTotalSeconds ?? input.pausedTotalSeconds;
+  const sessionStatus: "open" | "paused" | "closed" = action === "pause" ? "paused" : action === "end" ? "closed" : "open";
+  return {
+    teamPatch,
+    eventType: action,
+    sessionStatus,
+    totalPauseSeconds,
+    endedAt: action === "end" ? now : null,
+  };
+}
+
+export function normalizeWorkSessionAdjustmentReason(reason: string) {
+  const normalized = reason.trim();
+  if (!normalized) throw new Error("Informe o motivo do ajuste administrativo.");
+  return normalized;
+}
+
 export async function updateTeamShift(input: { teamId: number; action: TeamShiftAction; actorUserId: number }) {
   const db = await requireDb();
   await db.transaction(async tx => {
     const before = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
     if (!before) throw new Error("Equipe não encontrada.");
     const now = new Date();
-    const patch = resolveTeamShiftAction({ startedAt: before.shiftStartedAt, pausedAt: before.shiftPausedAt, endedAt: before.shiftEndsAt, pausedTotalSeconds: before.shiftPausedTotalSeconds }, input.action, now);
+    const persistence = resolveTeamShiftPersistence({ startedAt: before.shiftStartedAt, pausedAt: before.shiftPausedAt, endedAt: before.shiftEndsAt, pausedTotalSeconds: before.shiftPausedTotalSeconds }, input.action, now);
+    const patch = persistence.teamPatch;
     await tx.update(teams).set(patch).where(eq(teams.id, input.teamId));
+
+    let session = (await tx.select().from(workSessions).where(and(eq(workSessions.teamId, input.teamId), inArray(workSessions.status, ["open", "paused"]))).orderBy(desc(workSessions.startedAt)).limit(1))[0];
+    if (input.action === "start") {
+      const [created] = await tx.insert(workSessions).values({ teamId: input.teamId, userId: input.actorUserId, startedAt: now, endedAt: null, totalPauseSeconds: 0, status: "open", source: "manual" }).$returningId();
+      session = (await tx.select().from(workSessions).where(eq(workSessions.id, created.id)).limit(1))[0];
+    } else if (!session && before.shiftStartedAt) {
+      const [created] = await tx.insert(workSessions).values({ teamId: input.teamId, userId: input.actorUserId, startedAt: before.shiftStartedAt, endedAt: before.shiftEndsAt, totalPauseSeconds: before.shiftPausedTotalSeconds, status: before.shiftPausedAt ? "paused" : "open", source: "manual" }).$returningId();
+      session = (await tx.select().from(workSessions).where(eq(workSessions.id, created.id)).limit(1))[0];
+    }
+    if (!session) throw new Error("Sessão de jornada não encontrada.");
+
+    await tx.update(workSessions).set({ status: persistence.sessionStatus, totalPauseSeconds: persistence.totalPauseSeconds, endedAt: persistence.endedAt }).where(eq(workSessions.id, session.id));
+    await tx.insert(workSessionEvents).values({
+      workSessionId: session.id,
+      eventType: persistence.eventType,
+      occurredAt: now,
+      actorUserId: input.actorUserId,
+      reason: null,
+      metadata: { teamId: input.teamId, legacySnapshotPreserved: true },
+    });
+    await syncOperationalPresenceTx(tx, {
+      teamId: input.teamId,
+      userId: session.userId,
+      workSessionId: session.id,
+      teamStatus: before.status,
+      inShift: input.action !== "end",
+      shiftPaused: input.action === "pause",
+      changedAt: now,
+    });
+
     await tx.insert(auditLogs).values({
       resourceType: "team",
       resourceId: input.teamId,
       action: ({ start: "shift_started", pause: "shift_paused", resume: "shift_resumed", end: "shift_ended" } as const)[input.action],
       actorUserId: input.actorUserId,
       beforeData: { shiftStartedAt: before.shiftStartedAt?.toISOString() ?? null, shiftPausedAt: before.shiftPausedAt?.toISOString() ?? null, shiftEndsAt: before.shiftEndsAt?.toISOString() ?? null, shiftPausedTotalSeconds: before.shiftPausedTotalSeconds },
-      afterData: { action: input.action, shiftStartedAt: patch.shiftStartedAt?.toISOString() ?? before.shiftStartedAt?.toISOString() ?? null, shiftPausedAt: patch.shiftPausedAt === null ? null : patch.shiftPausedAt?.toISOString() ?? before.shiftPausedAt?.toISOString() ?? null, shiftEndsAt: patch.shiftEndsAt === null ? null : patch.shiftEndsAt?.toISOString() ?? before.shiftEndsAt?.toISOString() ?? null, shiftPausedTotalSeconds: patch.shiftPausedTotalSeconds ?? before.shiftPausedTotalSeconds },
+      afterData: { action: input.action, workSessionId: session.id, eventType: persistence.eventType, shiftStartedAt: patch.shiftStartedAt?.toISOString() ?? before.shiftStartedAt?.toISOString() ?? null, shiftPausedAt: patch.shiftPausedAt === null ? null : patch.shiftPausedAt?.toISOString() ?? before.shiftPausedAt?.toISOString() ?? null, shiftEndsAt: patch.shiftEndsAt === null ? null : patch.shiftEndsAt?.toISOString() ?? before.shiftEndsAt?.toISOString() ?? null, shiftPausedTotalSeconds: patch.shiftPausedTotalSeconds ?? before.shiftPausedTotalSeconds },
     });
+  });
+}
+
+export async function adjustWorkSession(input: { workSessionId: number; actorUserId: number; reason: string; startedAt?: Date; endedAt?: Date | null; totalPauseSeconds?: number }) {
+  const reason = normalizeWorkSessionAdjustmentReason(input.reason);
+  if (input.totalPauseSeconds !== undefined && (!Number.isFinite(input.totalPauseSeconds) || input.totalPauseSeconds < 0)) throw new Error("O total de pausa deve ser um valor não negativo.");
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const before = (await tx.select().from(workSessions).where(eq(workSessions.id, input.workSessionId)).limit(1))[0];
+    if (!before) throw new Error("Jornada não encontrada.");
+    const patch: Partial<typeof workSessions.$inferInsert> = { source: "admin_adjustment" };
+    if (input.startedAt !== undefined) patch.startedAt = input.startedAt;
+    if (input.endedAt !== undefined) patch.endedAt = input.endedAt;
+    if (input.totalPauseSeconds !== undefined) patch.totalPauseSeconds = Math.floor(input.totalPauseSeconds);
+    await tx.update(workSessions).set(patch).where(eq(workSessions.id, input.workSessionId));
+    const after = (await tx.select().from(workSessions).where(eq(workSessions.id, input.workSessionId)).limit(1))[0];
+    if (!after) throw new Error("Falha ao ajustar a jornada.");
+    const now = new Date();
+    await tx.insert(workSessionEvents).values({ workSessionId: input.workSessionId, eventType: "adjustment", occurredAt: now, actorUserId: input.actorUserId, reason, metadata: { teamId: after.teamId, userId: after.userId } });
+    await tx.insert(auditLogs).values({
+      resourceType: "work_session",
+      resourceId: input.workSessionId,
+      action: "admin_adjustment",
+      actorUserId: input.actorUserId,
+      beforeData: { startedAt: before.startedAt.toISOString(), endedAt: before.endedAt?.toISOString() ?? null, totalPauseSeconds: before.totalPauseSeconds, status: before.status, source: before.source },
+      afterData: { startedAt: after.startedAt.toISOString(), endedAt: after.endedAt?.toISOString() ?? null, totalPauseSeconds: after.totalPauseSeconds, status: after.status, source: after.source, reason },
+    });
+    return after;
   });
 }
 
