@@ -57,7 +57,7 @@ jobs:
       - name: Typecheck
         run: corepack pnpm check
       - name: Apply committed migrations to disposable database
-        run: corepack pnpm exec drizzle-kit migrate --config drizzle.config.ts
+        run: node scripts/cp016-ci-migrate.mjs
       - name: Bootstrap disposable administrator
         run: corepack pnpm exec vitest run --config vitest.integration.config.ts server/localAuth.bootstrap.integration.test.ts
       - name: Authentication integration
