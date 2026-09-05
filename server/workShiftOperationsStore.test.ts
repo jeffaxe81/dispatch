@@ -31,11 +31,12 @@ describe("D-007D operations store", () => {
     expect((await store.getEffectiveSlaPolicy(7, "missing_start", "warning")).id).toBe(2);
   });
 
-  it("usa fallback seguro quando não há SLA configurado", async () => {
+  it("não inventa prazo quando não há SLA configurado", async () => {
     const store = createWorkShiftOperationsStore(persistence());
     const policy = await store.getEffectiveSlaPolicy(7, "missing_start", "warning");
     expect(policy.source).toBe("default");
-    expect(policy.criticalAfterMinutes).toBeGreaterThan(0);
+    expect(policy.criticalAfterMinutes).toBeNull();
+    expect((await store.upsertPendingFromAnomaly(anomaly)).slaDueAt).toBeNull();
   });
 
   it("protege auditoria quando não há política de retenção explícita", async () => {
