@@ -32,6 +32,8 @@ const rejectInput = z.object({
 
 export type WorkShiftAdjustmentActor = {
   userId: number;
+  organizationId: number | null;
+  organizationalUnitId: number | null;
   permissions: string[];
 };
 
