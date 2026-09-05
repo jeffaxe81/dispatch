@@ -1,6 +1,6 @@
 {
   "name": "dispatch-brusque-live",
-  "version": "1.15.5",
+  "version": "2.16.0",
   "type": "module",
   "license": "MIT",
   "scripts": {
