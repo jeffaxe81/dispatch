@@ -3,6 +3,7 @@ import {
   acknowledgeWorkShiftAlert,
   evaluateWorkShiftAlerts,
   resolveWorkShiftAlert,
+  selectNewAlertsForPersistence,
   type WorkShiftAlertEvaluationContext,
 } from "./workShiftAlertService";
 
@@ -69,6 +70,18 @@ describe("D-007D3 deterministic work shift alerts", () => {
     const first = evaluateWorkShiftAlerts(context());
     const second = evaluateWorkShiftAlerts(context());
     expect(second.map(alert => alert.dedupeKey)).toEqual(first.map(alert => alert.dedupeKey));
+  });
+
+  it("suprime condição ainda aberta e permite nova ocorrência depois de resolvida", () => {
+    const [detected] = evaluateWorkShiftAlerts(context());
+    const openExisting = { ...detected, detectedAt: new Date("2026-09-04T11:30:00.000Z") };
+    expect(selectNewAlertsForPersistence([detected], [openExisting])).toEqual([]);
+
+    const resolvedExisting = resolveWorkShiftAlert(openExisting, {
+      actorUserId: 100,
+      at: new Date("2026-09-04T11:45:00.000Z"),
+    });
+    expect(selectNewAlertsForPersistence([detected], [resolvedExisting])).toEqual([detected]);
   });
 
   it("acknowledge e resolve preservam identidade e registram ator/data", () => {
