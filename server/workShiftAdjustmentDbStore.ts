@@ -119,8 +119,9 @@ export function createWorkShiftAdjustmentDbStore(db: WorkShiftAdjustmentDbExecut
 
     async approveAdjustment(record: WorkShiftAdjustmentRecord) {
       if (!record.id || !record.afterSnapshot) throw new Error("Ajuste aprovado inválido.");
+      const adjustmentId = record.id;
+      const after = record.afterSnapshot;
       return inTransaction(async tx => {
-        const after = record.afterSnapshot!;
         await tx.update(workShiftSessions).set({
           teamId: after.teamId,
           startedAt: after.startedAt,
@@ -139,7 +140,7 @@ export function createWorkShiftAdjustmentDbStore(db: WorkShiftAdjustmentDbExecut
           afterSnapshot: jsonSafe(after),
           decidedAt: record.decidedAt,
           appliedAt: record.appliedAt,
-        }).where(eq(workShiftAdjustments.id, record.id));
+        }).where(eq(workShiftAdjustments.id, adjustmentId));
 
         await tx.insert(workShiftEvents).values([
           {
@@ -150,7 +151,7 @@ export function createWorkShiftAdjustmentDbStore(db: WorkShiftAdjustmentDbExecut
             reason: record.reason,
             beforeData: jsonSafe(record.beforeSnapshot),
             afterData: jsonSafe(after),
-            metadata: { adjustmentId: record.id },
+            metadata: { adjustmentId },
           },
           {
             sessionId: record.sessionId,
@@ -160,7 +161,7 @@ export function createWorkShiftAdjustmentDbStore(db: WorkShiftAdjustmentDbExecut
             reason: record.reason,
             beforeData: jsonSafe(record.beforeSnapshot),
             afterData: jsonSafe(after),
-            metadata: { adjustmentId: record.id },
+            metadata: { adjustmentId },
           },
         ]);
         return record;
@@ -169,13 +170,14 @@ export function createWorkShiftAdjustmentDbStore(db: WorkShiftAdjustmentDbExecut
 
     async rejectAdjustment(record: WorkShiftAdjustmentRecord) {
       if (!record.id) throw new Error("Ajuste rejeitado inválido.");
+      const adjustmentId = record.id;
       return inTransaction(async tx => {
         await tx.update(workShiftAdjustments).set({
           decidedByUserId: record.decidedByUserId,
           status: "rejected",
           decisionReason: record.decisionReason,
           decidedAt: record.decidedAt,
-        }).where(eq(workShiftAdjustments.id, record.id));
+        }).where(eq(workShiftAdjustments.id, adjustmentId));
         await tx.insert(workShiftEvents).values({
           sessionId: record.sessionId,
           eventType: "adjustment_rejected",
@@ -184,7 +186,7 @@ export function createWorkShiftAdjustmentDbStore(db: WorkShiftAdjustmentDbExecut
           reason: record.decisionReason,
           beforeData: jsonSafe(record.beforeSnapshot),
           afterData: null,
-          metadata: { adjustmentId: record.id },
+          metadata: { adjustmentId },
         });
         return record;
       });
