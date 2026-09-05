@@ -64,3 +64,5 @@ jobs:
         run: corepack pnpm exec vitest run --config vitest.integration.config.ts server/localAuth.integration.test.ts
       - name: CP-016 persistence and rollback
         run: corepack pnpm exec vitest run --config vitest.integration.config.ts server/workSessions.integration.test.ts
+      - name: CP-016 dispatch eligibility
+        run: corepack pnpm exec vitest run --config vitest.integration.config.ts server/dispatchEligibility.integration.test.ts
