@@ -10,11 +10,11 @@ const anomaly: WorkShiftAnomalyCandidate = {
   anomalyType: "missing_start",
   severity: "warning",
   detectedAt: new Date("2026-09-05T12:00:00.000Z"),
-  referenceType: "schedule_assignment",
   referenceId: "assignment:99",
   windowKey: "2026-09-05T11:00:00.000Z",
   dedupeKey: "7:42:missing_start:assignment:99:2026-09-05T11:00:00.000Z",
-  details: { assignmentId: 99 },
+  expected: { plannedStartAt: "2026-09-05T11:00:00.000Z" },
+  observed: { session: null },
 };
 
 function pending(overrides: Partial<PendingRecord> = {}): PendingRecord {
