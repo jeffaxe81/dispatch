@@ -17,7 +17,7 @@ import { trpc } from "@/lib/trpc";
 import { isFieldAgent, type AccessAssignmentLike } from "@/lib/operationalAccess";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { BarChart3, CarFront, CircleHelp, ClipboardList, DoorOpen, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
+import { BarChart3, CarFront, CircleHelp, ClipboardList, Clock3, DoorOpen, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
 import React, { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -29,6 +29,7 @@ export function getMenuItems(permissions: string[] | undefined, role?: string, i
   const fieldAgent = isFieldAgent(role, assignments);
   const items = [] as { icon: typeof LayoutDashboard; label: string; path: string }[];
   if (!fieldAgent && can("occurrences.view")) items.push({ icon: LayoutDashboard, label: "Central", path: "/" }, { icon: MapPinned, label: "Ocorrências", path: "/ocorrencias" });
+  if (!fieldAgent && can("work_shift_operations.view")) items.push({ icon: Clock3, label: "Operação de Jornada", path: "/operacao-jornada" });
   if (!fieldAgent && can("reports.view")) items.push({ icon: BarChart3, label: "Dashboards e Relatórios", path: "/dashboards-relatorios" });
   if (can("teams.view")) items.push({ icon: UsersRound, label: "Equipes", path: "/equipes" });
   if (!fieldAgent && can("dispatch.view")) items.push({ icon: ClipboardList, label: "Kanban", path: "/kanban" });
@@ -63,11 +64,7 @@ const DEFAULT_WIDTH = 280;
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 480;
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
@@ -78,58 +75,32 @@ export default function DashboardLayout({
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (loading) {
-    return <DashboardLayoutSkeleton />
-  }
+  if (loading) return <DashboardLayoutSkeleton />;
 
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Acesso operacional
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Entre com seu usuário e senha para acessar os recursos autorizados do AXE Dispatch.
-            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-center">Acesso operacional</h1>
+            <p className="text-sm text-muted-foreground text-center max-w-sm">Entre com seu usuário e senha para acessar os recursos autorizados do AXE Dispatch.</p>
           </div>
-          <Button
-            onClick={() => window.location.assign("/login")}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            Entrar
-          </Button>
+          <Button onClick={() => window.location.assign("/login")} size="lg" className="w-full shadow-lg hover:shadow-xl transition-all">Entrar</Button>
         </div>
       </div>
     );
   }
 
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": `${sidebarWidth}px`,
-        } as CSSProperties
-      }
-    >
-      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
-        {children}
-      </DashboardLayoutContent>
+    <SidebarProvider style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>{children}</DashboardLayoutContent>
     </SidebarProvider>
   );
 }
 
-type DashboardLayoutContentProps = {
-  children: React.ReactNode;
-  setSidebarWidth: (width: number) => void;
-};
+type DashboardLayoutContentProps = { children: React.ReactNode; setSidebarWidth: (width: number) => void };
 
-function DashboardLayoutContent({
-  children,
-  setSidebarWidth,
-}: DashboardLayoutContentProps) {
+function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const { state, toggleSidebar } = useSidebar();
@@ -159,39 +130,28 @@ function DashboardLayoutContent({
       event.preventDefault();
       void handleLogout();
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleLogout]);
 
   useEffect(() => {
-    if (isCollapsed) {
-      setIsResizing(false);
-    }
+    if (isCollapsed) setIsResizing(false);
   }, [isCollapsed]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-
       const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
       const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
-        setSidebarWidth(newWidth);
-      }
+      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) setSidebarWidth(newWidth);
     };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
+    const handleMouseUp = () => setIsResizing(false);
     if (isResizing) {
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     }
-
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
@@ -203,35 +163,20 @@ function DashboardLayoutContent({
   return (
     <>
       <div className="relative" ref={sidebarRef}>
-        <Sidebar
-          collapsible="icon"
-          className="border-r-0"
-          disableTransition={isResizing}
-        >
+        <Sidebar collapsible="icon" className="border-r-0" disableTransition={isResizing}>
           <SidebarHeader className="h-16 justify-center">
             <div className="flex items-center gap-3 px-2 transition-all w-full">
-              <button
-                onClick={toggleSidebar}
-                className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                aria-label="Toggle navigation"
-              >
+              <button onClick={toggleSidebar} className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0" aria-label="Toggle navigation">
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed ? (
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <span
-                    aria-hidden="true"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-700 to-teal-600 text-white shadow-sm shadow-sky-900/15"
-                  >
+                  <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-700 to-teal-600 text-white shadow-sm shadow-sky-900/15">
                     <ShieldCheck className="h-4 w-4" strokeWidth={1.8} />
                   </span>
                   <div className="min-w-0 leading-none">
-                    <span className="block text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-700">
-                      AXE Sistemas
-                    </span>
-                    <span className="mt-1 block truncate font-semibold tracking-tight">
-                      AXE Dispatch
-                    </span>
+                    <span className="block text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-700">AXE Sistemas</span>
+                    <span className="mt-1 block truncate font-semibold tracking-tight">AXE Dispatch</span>
                   </div>
                 </div>
               ) : null}
@@ -244,15 +189,8 @@ function DashboardLayoutContent({
                 const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className={`h-10 transition-all font-normal`}
-                    >
-                      <item.icon
-                        className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
-                      />
+                    <SidebarMenuButton isActive={isActive} onClick={() => setLocation(item.path)} tooltip={item.label} className="h-10 transition-all font-normal">
+                      <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -265,9 +203,7 @@ function DashboardLayoutContent({
             <div className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-white/70 p-2 group-data-[collapsible=icon]:justify-center">
               <Avatar className="h-9 w-9 border border-sky-100 shrink-0">
                 <AvatarImage src={profilePhoto.data?.url ?? undefined} alt={`Foto de ${user?.name ?? "usuário"}`} />
-                <AvatarFallback className="bg-sky-50 text-xs font-semibold text-sky-800">
-                  {user?.name?.charAt(0).toUpperCase()}
-                </AvatarFallback>
+                <AvatarFallback className="bg-sky-50 text-xs font-semibold text-sky-800">{user?.name?.charAt(0).toUpperCase()}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
                 <p className="truncate text-sm font-medium leading-none text-slate-900">{user?.name || "Usuário"}</p>
@@ -286,14 +222,7 @@ function DashboardLayoutContent({
             {logoutError && <p role="alert" className="text-xs leading-4 text-rose-700 group-data-[collapsible=icon]:hidden">{logoutError}</p>}
           </SidebarFooter>
         </Sidebar>
-        <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
-          onMouseDown={() => {
-            if (isCollapsed) return;
-            setIsResizing(true);
-          }}
-          style={{ zIndex: 50 }}
-        />
+        <div className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`} onMouseDown={() => { if (!isCollapsed) setIsResizing(true); }} style={{ zIndex: 50 }} />
       </div>
 
       <SidebarInset>
@@ -304,8 +233,7 @@ function DashboardLayoutContent({
               <p className="truncate text-xs text-slate-500">AXE Dispatch</p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => setLocation("/manuais-ajuda")} className="gap-2 border-sky-200 bg-sky-50/60 text-sky-900 hover:bg-sky-100 hover:text-sky-950" title="Abrir Manuais e Ajuda">
-              <CircleHelp className="h-4 w-4" aria-hidden="true" />
-              Manuais e Ajuda
+              <CircleHelp className="h-4 w-4" aria-hidden="true" /> Manuais e Ajuda
             </Button>
           </header>
         )}
@@ -313,13 +241,7 @@ function DashboardLayoutContent({
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-foreground">
-                    {activeMenuItem?.label ?? "Menu"}
-                  </span>
-                </div>
-              </div>
+              <div className="flex items-center gap-3"><div className="flex flex-col gap-1"><span className="tracking-tight text-foreground">{activeMenuItem?.label ?? "Menu"}</span></div></div>
             </div>
             <Button type="button" variant="outline" size="icon" onClick={() => setLocation("/manuais-ajuda")} className="h-9 w-9 border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100 hover:text-sky-950" aria-label="Abrir Manuais e Ajuda" title="Manuais e Ajuda">
               <CircleHelp className="h-4 w-4" aria-hidden="true" />

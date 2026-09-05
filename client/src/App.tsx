@@ -15,6 +15,7 @@ import RolesPermissionsPage from "@/pages/RolesPermissionsPage";
 import GeneralSettingsPage from "@/pages/GeneralSettingsPage";
 import OperationsLogPage from "@/pages/OperationsLogPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
+import EmbeddedApplicationsPage from "@/pages/EmbeddedApplicationsPage";
 import WorkflowsPage from "@/pages/WorkflowsPage";
 import WorkflowBuilderPage from "@/pages/WorkflowBuilderPage";
 import ExecutionsPage from "@/pages/ExecutionsPage";
@@ -22,6 +23,7 @@ import { ConnectionsPage, CredentialsPage, IntegrationLogsPage, WebhooksPage } f
 import ExternalIncidentReviewsPage from "@/pages/ExternalIncidentReviewsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
 import DashboardsReportsPage from "@/pages/DashboardsReportsPage";
+import WorkShiftOperations from "@/pages/WorkShiftOperations";
 import ManualsHelpPage from "@/pages/ManualsHelpPage";
 import LoginPage from "@/pages/LoginPage";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -47,6 +49,7 @@ function Router() {
       <Route path={"/login"} component={LoginPage} />
       <Route path={"/"} component={() => <FieldRestrictedRoute component={Home} />} />
       <Route path={"/dashboards-relatorios"} component={() => <FieldRestrictedRoute component={DashboardsReportsPage} />} />
+      <Route path={"/operacao-jornada"} component={() => <FieldRestrictedRoute component={WorkShiftOperations} />} />
       <Route path={"/ocorrencias"} component={IncidentsPage} />
       <Route path={"/ocorrencias/:id"} component={IncidentDetailPage} />
       <Route path={"/equipes"} component={TeamsPage} />
@@ -54,6 +57,7 @@ function Router() {
       <Route path={"/agente"} component={AgentPage} />
       <Route path={"/viaturas"} component={VehiclesPage} />
       <Route path={"/integracoes"} component={IntegrationsPage} />
+      <Route path={"/integracoes/aplicacoes-incorporadas"} component={EmbeddedApplicationsPage} />
       <Route path={"/integracoes/workflows"} component={WorkflowsPage} />
       <Route path={"/integracoes/workflows/:id"} component={WorkflowBuilderPage} />
       <Route path={"/integracoes/execucoes"} component={ExecutionsPage} />

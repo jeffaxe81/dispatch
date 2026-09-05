@@ -15,20 +15,37 @@ describe("bootstrap do administrador local", () => {
   });
 
   it("aceita as credenciais de implantação pelo procedimento de login e cria sessão HTTP-only", async () => {
-    const cookieCalls: Array<{ name: string; value: string; options: Record<string, unknown> }> = [];
+    const cookieCalls: Array<{
+      name: string;
+      value: string;
+      options: Record<string, unknown>;
+    }> = [];
     const ctx: TrpcContext = {
       user: null,
       req: { protocol: "https", headers: {} } as TrpcContext["req"],
-      res: { cookie: (name: string, value: string, options: Record<string, unknown>) => cookieCalls.push({ name, value, options }) } as TrpcContext["res"],
+      res: {
+        cookie: (
+          name: string,
+          value: string,
+          options: Record<string, unknown>,
+        ) => cookieCalls.push({ name, value, options }),
+      } as TrpcContext["res"],
     };
 
-    const result = await appRouter.createCaller(ctx).auth.login({ username, password });
+    const result = await appRouter.createCaller(ctx).auth.login({
+      username,
+      password,
+    });
 
     expect(result.username).toBe(username.toLowerCase());
     expect(result.role).toBe("admin");
     expect(cookieCalls).toHaveLength(1);
     expect(cookieCalls[0]?.name).toBe(COOKIE_NAME);
     expect(cookieCalls[0]?.value.split(".")).toHaveLength(3);
-    expect(cookieCalls[0]?.options).toMatchObject({ httpOnly: true, secure: true, sameSite: "none" });
+    expect(cookieCalls[0]?.options).toMatchObject({
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    });
   });
 });

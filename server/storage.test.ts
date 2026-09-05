@@ -6,7 +6,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("armazenamento gerenciado", () => {
+describe("armazenamento gerenciado simulado", () => {
   it("obtém URL de upload, envia o arquivo e mantém a URL interna", async () => {
     const fetchMock = vi
       .fn()
