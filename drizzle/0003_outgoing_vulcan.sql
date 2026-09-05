@@ -111,7 +111,7 @@ CREATE TABLE `work_sessions` (
 	CONSTRAINT `work_sessions_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-ALTER TABLE `embedded_integrations` ADD CONSTRAINT `embedded_integrations_integration_connection_id_integration_connections_id_fk` FOREIGN KEY (`integration_connection_id`) REFERENCES `integration_connections`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `embedded_integrations` ADD CONSTRAINT `embedded_integrations_connection_fk` FOREIGN KEY (`integration_connection_id`) REFERENCES `integration_connections`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `operational_presence` ADD CONSTRAINT `operational_presence_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `operational_presence` ADD CONSTRAINT `operational_presence_team_id_teams_id_fk` FOREIGN KEY (`team_id`) REFERENCES `teams`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `operational_presence` ADD CONSTRAINT `operational_presence_work_session_id_work_sessions_id_fk` FOREIGN KEY (`work_session_id`) REFERENCES `work_sessions`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
