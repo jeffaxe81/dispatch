@@ -36,6 +36,13 @@
       "when": 1788564210000,
       "tag": "0004_d007b_work_shift_schedules",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1788647200000,
+      "tag": "0005_d007d_work_shift_operations",
+      "breakpoints": true
     }
   ]
 }
