@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { workShiftAdjustments } from "../drizzle/workShiftAdjustmentSchema";
+import { teams } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 import type {
   WorkShiftAdjustmentRecord,
@@ -82,6 +83,27 @@ export function createWorkShiftAdjustmentDbStore(db: WorkShiftAdjustmentDbExecut
         await db.select().from(workShiftSessions).where(eq(workShiftSessions.id, sessionId)).limit(1)
       )[0];
       return row ? hydrateSnapshot(row) : null;
+    },
+
+    async getSessionScope(sessionId: number) {
+      const session = (
+        await db.select({ teamId: workShiftSessions.teamId })
+          .from(workShiftSessions)
+          .where(eq(workShiftSessions.id, sessionId))
+          .limit(1)
+      )[0];
+      if (!session || session.teamId === null) {
+        return { organizationId: null, organizationalUnitId: null };
+      }
+
+      const team = (
+        await db.select({
+          organizationId: teams.organizationId,
+          organizationalUnitId: teams.organizationalUnitId,
+        }).from(teams).where(eq(teams.id, session.teamId)).limit(1)
+      )[0];
+
+      return team ?? { organizationId: null, organizationalUnitId: null };
     },
 
     async createAdjustment(record: WorkShiftAdjustmentRecord) {
