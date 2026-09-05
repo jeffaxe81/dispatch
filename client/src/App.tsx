@@ -23,6 +23,7 @@ import { ConnectionsPage, CredentialsPage, IntegrationLogsPage, WebhooksPage } f
 import ExternalIncidentReviewsPage from "@/pages/ExternalIncidentReviewsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
 import DashboardsReportsPage from "@/pages/DashboardsReportsPage";
+import WorkShiftOperations from "@/pages/WorkShiftOperations";
 import ManualsHelpPage from "@/pages/ManualsHelpPage";
 import LoginPage from "@/pages/LoginPage";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -42,12 +43,12 @@ function FieldRestrictedRoute({ component: Component }: { component: React.Compo
 }
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/login"} component={LoginPage} />
       <Route path={"/"} component={() => <FieldRestrictedRoute component={Home} />} />
       <Route path={"/dashboards-relatorios"} component={() => <FieldRestrictedRoute component={DashboardsReportsPage} />} />
+      <Route path={"/operacao-jornada"} component={() => <FieldRestrictedRoute component={WorkShiftOperations} />} />
       <Route path={"/ocorrencias"} component={IncidentsPage} />
       <Route path={"/ocorrencias/:id"} component={IncidentDetailPage} />
       <Route path={"/equipes"} component={TeamsPage} />
@@ -74,31 +75,12 @@ function Router() {
       <Route path={"/administracao/configuracoes"} component={GeneralSettingsPage} />
       <Route path={"/administracao/log-operacoes"} component={OperationsLogPage} />
       <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
 function App() {
-  return (
-    <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  );
+  return <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><Router /></TooltipProvider></ThemeProvider></ErrorBoundary>;
 }
-
 export default App;
