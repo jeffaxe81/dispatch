@@ -2598,3 +2598,22 @@ export async function generateSimulatedConnectorFromOpenapiOperation(input: { op
     const code = normalizeIntegrationCode(`openapi-${operation.specId}-${operation.operationKey}`).slice(0, 100);
     const [connection] = await tx.insert(integrationConnections).values({ code, name: `${spec.name} — ${operation.summary || operation.operationKey}`.slice(0, 180), description: `Conector gerado da operação ${operation.method} ${operation.path} em SIMULAÇÃO / MOCK.`, connectionType: "openapi_simulado", environment: "simulacao", baseUrl: null, active: false, simulationOnly: true, configuration: { mode: "SIMULAÇÃO / MOCK", delivery: "desativada", source: "openapi_import", specId: spec.id, operationId: operation.id, operationKey: operation.operationKey, method: operation.method, path: operation.path, parameters: operation.parameters, requestBody: operation.requestBody, responses: operation.responses, externalRequests: 0 }, createdByUserId: input.actorUserId, updatedByUserId: input.actorUserId }).$returningId();
     await tx.update(integrationOpenapiOperations).set({ generatedConnectionId: connection.id }).where(eq(integrationOpenapiOperations.id, operation.id));
+    await tx.insert(auditLogs).values([
+      integrationAudit({ resourceType: "integration_connection", resourceId: connection.id, actorUserId: input.actorUserId, action: "generate_from_openapi_simulation", beforeData: null, afterData: { code, operationId: operation.id, specId: spec.id, active: false, simulationOnly: true, externalRequests: 0 } }),
+      integrationAudit({ resourceType: "openapi_operation", resourceId: operation.id, actorUserId: input.actorUserId, action: "generate_connector_simulation", beforeData: { generatedConnectionId: null }, afterData: { generatedConnectionId: connection.id, simulationOnly: true } }),
+    ]);
+    return { connectionId: connection.id, created: true };
+  });
+}
+
+export async function simulateOpenapiOperationTest(input: { operationId: number; actorUserId: number }) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const operation = (await tx.select().from(integrationOpenapiOperations).where(eq(integrationOpenapiOperations.id, input.operationId)).limit(1))[0];
+    if (!operation?.simulationOnly) throw new Error("Operação OpenAPI simulada não encontrada.");
+    const response = { mode: "SIMULAÇÃO / MOCK", delivered: false, externalRequests: 0, message: "Teste de contrato concluído sem enviar requisição externa." };
+    await tx.insert(integrationLogs).values({ level: "info", source: "openapi.docs.simulacao", message: `Teste simulado de contrato ${operation.method} ${operation.path} concluído sem chamada externa.`, endpoint: `${operation.method} ${operation.path}`, requestData: { operationId: operation.id, simulationOnly: true, externalRequests: 0 }, responseData: response, httpStatus: 202, durationMs: 0, retryAttempt: 0 });
+    await tx.insert(auditLogs).values(integrationAudit({ resourceType: "openapi_operation", resourceId: operation.id, actorUserId: input.actorUserId, action: "tryout_simulation", beforeData: null, afterData: { endpoint: `${operation.method} ${operation.path}`, httpStatus: 202, simulationOnly: true, externalRequests: 0 } }));
+    return { status: 202, durationMs: 0, response };
+  });
+}
