@@ -10,77 +10,44 @@ export type WorkShiftInternalAlert = {
   level?: number;
 };
 
-export type WorkShiftEscalationCandidate = {
-  pending: PendingRecord;
-  level: number;
-};
+export type WorkShiftEscalationCandidate = { pending: PendingRecord; level: number };
 
 export type WorkShiftOperationsAlertingDependencies = {
   upsertPendingFromAnomaly(anomaly: WorkShiftAnomalyCandidate): Promise<PendingRecord>;
   publishInternalAlert(alert: WorkShiftInternalAlert): Promise<void>;
   publishExternalAlert(alert: WorkShiftInternalAlert): Promise<void>;
   listEscalationCandidates(input: { tenantId: number; now: Date }): Promise<WorkShiftEscalationCandidate[]>;
-  markEscalationLevel(input: { tenantId: number; pendingId: number; level: number; now: Date }): Promise<boolean>;
+  markEscalationLevel(input: { tenantId: number; pendingId: number; level: number; expectedVersion: number; now: Date }): Promise<boolean>;
 };
 
 export function createWorkShiftOperationsAlerting(deps: WorkShiftOperationsAlertingDependencies) {
+  async function publishExternalSafely(alert: WorkShiftInternalAlert) {
+    try { await deps.publishExternalAlert(alert); return "delivered" as const; }
+    catch { return "failed" as const; }
+  }
+
   return {
     async processWorkShiftAnomaly(anomaly: WorkShiftAnomalyCandidate) {
       const pending = await deps.upsertPendingFromAnomaly(anomaly);
-      const alert: WorkShiftInternalAlert = {
-        kind: "anomaly",
-        tenantId: pending.tenantId,
-        pendingId: pending.id,
-        severity: pending.severity,
-        anomalyType: pending.anomalyType,
-      };
-
+      const alert: WorkShiftInternalAlert = { kind:"anomaly", tenantId:pending.tenantId, pendingId:pending.id, severity:pending.severity, anomalyType:pending.anomalyType };
       await deps.publishInternalAlert(alert);
-
-      let externalDelivery: "delivered" | "failed" = "delivered";
-      try {
-        await deps.publishExternalAlert(alert);
-      } catch {
-        externalDelivery = "failed";
-      }
-
-      return { pending, externalDelivery };
+      return { pending, externalDelivery: await publishExternalSafely(alert) };
     },
 
     async evaluatePendingEscalations(input: { tenantId: number; now: Date }) {
       const candidates = await deps.listEscalationCandidates(input);
       let published = 0;
-
+      let externalFailures = 0;
       for (const candidate of candidates) {
         if (candidate.pending.tenantId !== input.tenantId) continue;
-
-        const claimed = await deps.markEscalationLevel({
-          tenantId: input.tenantId,
-          pendingId: candidate.pending.id,
-          level: candidate.level,
-          now: input.now,
-        });
+        const claimed = await deps.markEscalationLevel({ tenantId:input.tenantId, pendingId:candidate.pending.id, level:candidate.level, expectedVersion:candidate.pending.version, now:input.now });
         if (!claimed) continue;
-
-        const alert: WorkShiftInternalAlert = {
-          kind: "sla_escalation",
-          tenantId: input.tenantId,
-          pendingId: candidate.pending.id,
-          severity: candidate.pending.severity,
-          anomalyType: candidate.pending.anomalyType,
-          level: candidate.level,
-        };
-
+        const alert: WorkShiftInternalAlert = { kind:"sla_escalation", tenantId:input.tenantId, pendingId:candidate.pending.id, severity:candidate.pending.severity, anomalyType:candidate.pending.anomalyType, level:candidate.level };
         await deps.publishInternalAlert(alert);
-        try {
-          await deps.publishExternalAlert(alert);
-        } catch {
-          // External adapters are best-effort and never undo the internal operational state.
-        }
+        if ((await publishExternalSafely(alert)) === "failed") externalFailures += 1;
         published += 1;
       }
-
-      return { evaluated: candidates.length, published };
+      return { evaluated:candidates.length, published, externalFailures };
     },
   };
 }
