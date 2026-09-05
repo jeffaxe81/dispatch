@@ -10,7 +10,7 @@ export type ExpectedWorkShiftWindow = { userId:number; teamId:number|null; assig
 export type ScannedWorkShiftSession = { id:number; status:"active"|"paused"|"ended"|"cancelled"; pausedAt:Date|null; pausedSeconds:number };
 export type WorkShiftAnomalyScanStore = {
   listExpectedWindows(tenantId:number, now:Date):Promise<ExpectedWorkShiftWindow[]>;
-  findSessionForWindow(userId:number, plannedStartAt:Date, plannedEndAt:Date):Promise<ScannedWorkShiftSession|null>;
+  findSessionForWindow(tenantId:number, userId:number, plannedStartAt:Date, plannedEndAt:Date):Promise<ScannedWorkShiftSession|null>;
 };
 
 function positiveNumber(value:unknown):number{return typeof value==="number"&&Number.isFinite(value)&&value>0?value:0;}
@@ -22,7 +22,7 @@ export function detectEventAnomalies(event:WorkShiftOperationalEvent):WorkShiftA
 export async function scanExpectedWorkShiftAnomalies(input:{tenantId:number;now:Date},store:WorkShiftAnomalyScanStore):Promise<WorkShiftAnomalyCandidate[]>{
   const result:WorkShiftAnomalyCandidate[]=[];const windows=await store.listExpectedWindows(input.tenantId,input.now);
   for(const window of windows){
-    const session=await store.findSessionForWindow(window.userId,window.plannedStartAt,window.plannedEndAt);const windowKey=window.plannedStartAt.toISOString();const referenceId=`assignment:${window.assignmentId}`;
+    const session=await store.findSessionForWindow(input.tenantId,window.userId,window.plannedStartAt,window.plannedEndAt);const windowKey=window.plannedStartAt.toISOString();const referenceId=`assignment:${window.assignmentId}`;
     if(input.now>=window.plannedStartAt&&!session){result.push(anomaly({tenantId:input.tenantId,userId:window.userId,teamId:window.teamId,anomalyType:"missing_start",severity:"warning",referenceId,windowKey,detectedAt:input.now,expected:{plannedStartAt:window.plannedStartAt.toISOString(),plannedEndAt:window.plannedEndAt.toISOString()},observed:{session:null}}));continue;}
     if(session&&input.now>=window.plannedEndAt&&(session.status==="active"||session.status==="paused")){result.push(anomaly({tenantId:input.tenantId,userId:window.userId,teamId:window.teamId,anomalyType:"missing_end",severity:"critical",referenceId,windowKey,detectedAt:input.now,expected:{plannedEndAt:window.plannedEndAt.toISOString()},observed:{sessionId:session.id,status:session.status}}));}
     if(session?.status==="paused"&&session.pausedAt&&window.breakPolicyMinutes&&window.breakPolicyMinutes>0){const currentPauseSeconds=Math.max(0,Math.floor((input.now.getTime()-session.pausedAt.getTime())/1000));const totalPauseSeconds=session.pausedSeconds+currentPauseSeconds;if(totalPauseSeconds>window.breakPolicyMinutes*60)result.push(anomaly({tenantId:input.tenantId,userId:window.userId,teamId:window.teamId,anomalyType:"excessive_pause",severity:"warning",referenceId,windowKey,detectedAt:input.now,expected:{breakPolicyMinutes:window.breakPolicyMinutes},observed:{sessionId:session.id,pausedSeconds:totalPauseSeconds}}));}
