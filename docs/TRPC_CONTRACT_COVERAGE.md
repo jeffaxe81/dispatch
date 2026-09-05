@@ -1,6 +1,6 @@
 # Cobertura dos contratos tRPC
 
-Este inventário é gerado a partir de `server/routers.ts` e `server/workShiftSchedulesRouter.ts`, compostos pelo `server/rootRouter.ts`. O backend preserva os contratos anteriores e acrescenta a D-007B sem remover a D-007A. A suíte completa contém **100 arquivos e 434 testes**. A classificação **direta** indica chamadas aos contratos do domínio; **indireta** indica cobertura das mesmas regras e dependências por componentes ou políticas exercitadas pela suíte. O gerador falha se algum procedimento não possuir classificação e evidência.
+Este inventário é gerado a partir de `server/routers.ts`, `server/workShiftSchedulesRouter.ts` e `server/dispatchRouter.ts`, compostos pelo `server/rootRouter.ts`. O backend preserva os contratos anteriores e acrescenta D-007B e D-007C sem remover D-007A nem o GIS legado. A suíte completa contém **105 arquivos e 461 testes**. A classificação **direta** indica chamadas aos contratos do domínio; **indireta** indica cobertura das mesmas regras e dependências por componentes ou políticas exercitadas pela suíte. O gerador falha se algum procedimento não possuir classificação e evidência.
 
 | Procedimento | Tipo | Cobertura | Suítes relacionadas | Evidência |
 |---|---|---|---|---|
@@ -114,14 +114,15 @@ Este inventário é gerado a partir de `server/routers.ts` e `server/workShiftSc
 | `workShiftSchedules.addException` | `protectedProcedure` | **direta** | `server/workShiftSchedules.router.test.ts`<br>`server/workShiftSchedules.rootRouter.test.ts`<br>`server/workShiftSchedulesRuntime.coverage.test.ts`<br>`server/workShiftScheduleService.test.ts`<br>`server/workShiftCoverageService.test.ts`<br>`server/workShiftScheduleDomain.test.ts`<br>`server/workShiftScheduleSchema.test.ts`<br>`server/workShiftScheduleMigration.test.ts`<br>`server/accessControl.test.ts` | D-007B: consulta/criação de escalas, associações, exceções, resolução por usuário e cobertura planejada x realizada, com RBAC e escopo organizacional. |
 | `workShiftSchedules.resolveForUser` | `protectedProcedure` | **direta** | `server/workShiftSchedules.router.test.ts`<br>`server/workShiftSchedules.rootRouter.test.ts`<br>`server/workShiftSchedulesRuntime.coverage.test.ts`<br>`server/workShiftScheduleService.test.ts`<br>`server/workShiftCoverageService.test.ts`<br>`server/workShiftScheduleDomain.test.ts`<br>`server/workShiftScheduleSchema.test.ts`<br>`server/workShiftScheduleMigration.test.ts`<br>`server/accessControl.test.ts` | D-007B: consulta/criação de escalas, associações, exceções, resolução por usuário e cobertura planejada x realizada, com RBAC e escopo organizacional. |
 | `workShiftSchedules.coverage` | `protectedProcedure` | **direta** | `server/workShiftSchedules.router.test.ts`<br>`server/workShiftSchedules.rootRouter.test.ts`<br>`server/workShiftSchedulesRuntime.coverage.test.ts`<br>`server/workShiftScheduleService.test.ts`<br>`server/workShiftCoverageService.test.ts`<br>`server/workShiftScheduleDomain.test.ts`<br>`server/workShiftScheduleSchema.test.ts`<br>`server/workShiftScheduleMigration.test.ts`<br>`server/accessControl.test.ts` | D-007B: consulta/criação de escalas, associações, exceções, resolução por usuário e cobertura planejada x realizada, com RBAC e escopo organizacional. |
+| `dispatch.rankEligibleCandidates` | `protectedProcedure` | **direta** | `server/dispatchRouter.test.ts`<br>`server/dispatch.rootRouter.test.ts`<br>`server/dispatchEligibilityService.test.ts`<br>`server/dispatchEligibilityRuntime.test.ts`<br>`server/dispatchEligibilityDb.test.ts` | D-007C: autorização e escopo server-side, elegibilidade por membro/equipe e filtro de candidatos inelegíveis antes do GIS/OSRM. |
 
 ## Totais
 
 | Métrica | Resultado |
 |---|---:|
-| Procedimentos inventariados | 110 |
-| Cobertura direta | 104 |
+| Procedimentos inventariados | 111 |
+| Cobertura direta | 105 |
 | Cobertura indireta | 6 |
 | Procedimentos sem classificação | 0 |
-| Arquivos de teste aprovados | 100 |
-| Casos de teste aprovados | 434 |
+| Arquivos de teste aprovados | 105 |
+| Casos de teste aprovados | 461 |
