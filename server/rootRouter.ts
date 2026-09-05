@@ -2,6 +2,8 @@ import { mergeRouters, router } from "./_core/trpc";
 import { createDispatchRouter } from "./dispatchRouter";
 import { dispatchRouterDependencies } from "./dispatchRuntime";
 import { appRouter } from "./routers";
+import { createWorkShiftAdjustmentsRouter } from "./workShiftAdjustmentsRouter";
+import { workShiftAdjustmentsRouterDependencies } from "./workShiftAdjustmentsRuntime";
 import { createWorkShiftSchedulesRouter } from "./workShiftSchedulesRouter";
 import { workShiftSchedulesRouterDependencies } from "./workShiftSchedulesRuntime";
 
@@ -9,9 +11,18 @@ const workShiftSchedulesRoot = router({
   workShiftSchedules: createWorkShiftSchedulesRouter(workShiftSchedulesRouterDependencies),
 });
 
+const workShiftAdjustmentsRoot = router({
+  workShiftAdjustments: createWorkShiftAdjustmentsRouter(workShiftAdjustmentsRouterDependencies),
+});
+
 const dispatchRoot = router({
   dispatch: createDispatchRouter(dispatchRouterDependencies),
 });
 
-export const rootRouter = mergeRouters(appRouter, workShiftSchedulesRoot, dispatchRoot);
+export const rootRouter = mergeRouters(
+  appRouter,
+  workShiftSchedulesRoot,
+  workShiftAdjustmentsRoot,
+  dispatchRoot,
+);
 export type RootRouter = typeof rootRouter;

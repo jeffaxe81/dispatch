@@ -19,17 +19,18 @@ describe("D-007B migration contract", () => {
     expect(sql).not.toContain("role_permissions");
   });
 
-  it("registra a migration no journal sem alterar migrations anteriores", () => {
+  it("preserva a migration 0004 no journal sem alterar migrations anteriores", () => {
     const journal = JSON.parse(readFileSync(journalUrl, "utf8")) as {
       entries: Array<{ idx: number; tag: string }>;
     };
 
-    expect(journal.entries.slice(0, 4).map(entry => entry.tag)).toEqual([
+    expect(journal.entries.slice(0, 5).map(entry => entry.tag)).toEqual([
       "0000_useful_giant_man",
       "0001_abandoned_kinsey_walden",
       "0002_aromatic_warhawk",
       "0003_d007a_work_shift_history",
+      "0004_d007b_work_shift_schedules",
     ]);
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 4, tag: "0004_d007b_work_shift_schedules" });
+    expect(journal.entries[4]).toMatchObject({ idx: 4, tag: "0004_d007b_work_shift_schedules" });
   });
 });
