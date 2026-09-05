@@ -30,6 +30,6 @@ describe("D-007B migration contract", () => {
       "0002_aromatic_warhawk",
       "0003_d007a_work_shift_history",
     ]);
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 4, tag: "0004_d007b_work_shift_schedules" });
+    expect(journal.entries[4]).toMatchObject({ idx: 4, tag: "0004_d007b_work_shift_schedules" });
   });
 });
