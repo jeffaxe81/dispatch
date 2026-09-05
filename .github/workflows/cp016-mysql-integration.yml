@@ -1,0 +1,66 @@
+name: CP-016 disposable MySQL integration
+
+on:
+  push:
+    branches: [feature/cp016-operational-data-model]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cp016-mysql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: cp016-disposable-root-only
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_DATABASE: dispatch_cp016_ci
+          MYSQL_USER: cp016_ci
+          MYSQL_PASSWORD: cp016-disposable-test-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      CI: true
+      TZ: UTC
+      CP016_DISPOSABLE_DB: "1"
+      CP016_TEST_ROOT_PASSWORD: cp016-disposable-root-only
+      DATABASE_URL: mysql://cp016_ci:cp016-disposable-test-only@127.0.0.1:3306/dispatch_cp016_ci
+      JWT_SECRET: cp016-disposable-session-secret-not-for-production-2026
+      LOCAL_AUTH_BOOTSTRAP_USERNAME: cp016-ci-admin
+      LOCAL_AUTH_BOOTSTRAP_PASSWORD: CP016-disposable-admin-only-2026
+    steps:
+      - name: Checkout exact pushed candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - name: Record candidate SHA
+        run: git rev-parse HEAD
+      - name: Typecheck
+        run: corepack pnpm check
+      - name: Apply committed migrations to disposable database
+        run: corepack pnpm exec drizzle-kit migrate --config drizzle.config.ts
+      - name: Bootstrap disposable administrator
+        run: corepack pnpm exec vitest run --config vitest.integration.config.ts server/localAuth.bootstrap.integration.test.ts
+      - name: Authentication integration
+        run: corepack pnpm exec vitest run --config vitest.integration.config.ts server/localAuth.integration.test.ts
+      - name: CP-016 persistence and rollback
+        run: corepack pnpm exec vitest run --config vitest.integration.config.ts server/workSessions.integration.test.ts
