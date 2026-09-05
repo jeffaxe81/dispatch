@@ -11,7 +11,7 @@ describe("D-007D1 adjustment migration contract", () => {
     expect(sql).toContain("CREATE TABLE `work_shift_adjustments`");
     expect(sql).toContain("`session_id` int NOT NULL");
     expect(sql).toContain("`requested_by_user_id` int NOT NULL");
-    expect(sql).toContain("`status`");
+    expect(sql).toContain("`work_shift_adjustment_status` enum('pending','approved','rejected')");
     expect(sql).toContain("`before_snapshot` json NOT NULL");
     expect(sql).toContain("`requested_changes` json NOT NULL");
     expect(sql).toContain("'work_shifts.adjust'");
