@@ -25,12 +25,12 @@ describe("D-008 operational form workspace", () => {
     const onSubmit = vi.fn(async () => ({ submissionId: "22", status: "submitted" as const, incidentTransitionRequested: false as const }));
     render(<IncidentFormWorkspace {...base} state="not_started" onStart={onStart} onSubmit={onSubmit} onCorrect={vi.fn()} />);
 
-    expect(screen.getByLabelText("Observações *")).toBeDisabled();
+    expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
     fireEvent.click(screen.getByRole("button", { name: /iniciar preenchimento/i }));
     await waitFor(() => expect(onStart).toHaveBeenCalledWith({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88" }));
 
     const notes = screen.getByLabelText("Observações *");
-    expect(notes).not.toBeDisabled();
+    expect(notes).not.toHaveAttribute("readonly");
     fireEvent.change(notes, { target: { value: "Condição verificada" } });
     fireEvent.click(screen.getByRole("button", { name: /enviar formulário/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88", answers: { notes: "Condição verificada" } }));
@@ -41,8 +41,9 @@ describe("D-008 operational form workspace", () => {
     const onCorrect = vi.fn(async () => ({ status: "corrected" as const, revision: 2 }));
     render(<IncidentFormWorkspace {...base} state="submitted" submissionId={21} initialAnswers={{ notes: "Antes" }} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={onCorrect} />);
 
-    expect(screen.getByLabelText("Observações *")).toBeDisabled();
+    expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
     fireEvent.click(screen.getByRole("button", { name: /corrigir resposta/i }));
+    expect(screen.getByLabelText("Observações *")).not.toHaveAttribute("readonly");
     fireEvent.change(screen.getByLabelText("Observações *"), { target: { value: "Depois" } });
     fireEvent.change(screen.getByLabelText(/motivo da correção/i), { target: { value: "Ajuste após conferência de campo" } });
     fireEvent.click(screen.getByRole("button", { name: /salvar correção/i }));
