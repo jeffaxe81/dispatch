@@ -115,6 +115,23 @@ describe("workspaceLayout domain", () => {
     });
   });
 
+  it("normalizes v1 input by migrating it to v2", () => {
+    expect(normalizeWorkspaceLayoutV2(validLayout, allowedTypes)).toEqual({
+      id: validLayout.id,
+      name: validLayout.name,
+      version: 2,
+      screens: [
+        {
+          screenId: "primary",
+          name: "Principal",
+          order: 0,
+          mode: "primary",
+          widgets: validLayout.widgets,
+        },
+      ],
+    });
+  });
+
   it("requires exactly one primary screen", () => {
     expect(() => workspaceLayoutV2Schema.parse({
       ...validV2Layout,
