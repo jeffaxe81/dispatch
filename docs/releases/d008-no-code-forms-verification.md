@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `3fbeb07454a09c6bc19fb3cc2792586dda157397`  
+**Head documentado:** `b2610ef3ddbfdf7b71bda3d4d01e0a043f026ef0`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -65,9 +65,14 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - `/formularios` está conectado a `forms.list`, `forms.capabilities` e `forms.createDraft`.
 - `/formularios/:id` carrega a versão corrente real por `forms.get`.
 - Salvar rascunho usa `forms.updateDraft`; publicar usa `forms.publish`; nova versão usa `forms.createNewVersion`.
+- O menu lateral exibe `Formulários` somente com `forms.view`, respeita o curinga administrativo e permanece oculto para agente de campo.
+- O Designer permite adicionar, remover e reordenar campos; novas chaves/IDs são gerados sem depender apenas da contagem atual, evitando colisão após remoções.
+- Em draft é possível editar rótulo, chave, obrigatório, limites de texto, regex, limites numéricos, moeda, opções de seleção e limites de múltipla seleção.
+- Campo calculado novo não nasce com expressão vazia inválida; o Designer permite configurar apenas referência simples de outra chave nesta release.
+- Antes de salvar ou publicar, a página valida a definição pelo schema canônico e bloqueia a ação com erro visível quando inválida.
+- Ao publicar alterações válidas ainda não salvas, a definição atual é salva antes da publicação para evitar publicar silenciosamente uma versão anterior.
 - Após publicação ou criação de nova versão, a página refaz a consulta e o estado interno do Designer é ressincronizado com o novo `versionId`/definition.
 - Versões diferentes de `draft` ficam em modo imutável no Designer.
-- Campo calculado novo não nasce com expressão vazia inválida; o Designer permite configurar apenas referência simples de outra chave nesta release.
 - `forms` está registrado no `rootRouter` com procedures administrativas e operacionais sem remover Dispatch ou Jornada.
 
 ### Integração operacional
