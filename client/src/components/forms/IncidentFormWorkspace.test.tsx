@@ -57,6 +57,15 @@ describe("D-008 operational form workspace", () => {
     expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
   });
 
+  it("não oferece início ou envio quando o perfil é somente consulta", () => {
+    const onStart = vi.fn(), onSubmit = vi.fn();
+    const { rerender } = render(<IncidentFormWorkspace {...base} state="not_started" canFill={false} onStart={onStart} onSubmit={onSubmit} onCorrect={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /iniciar preenchimento/i })).toBeNull();
+    rerender(<IncidentFormWorkspace {...base} state="in_progress" initialAnswers={{ notes: "Parcial" }} canFill={false} onStart={onStart} onSubmit={onSubmit} onCorrect={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /enviar formulário/i })).toBeNull();
+    expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
+  });
+
   it("não permite correção sem motivo", async () => {
     const onCorrect = vi.fn();
     render(<IncidentFormWorkspace {...base} state="corrected" submissionId={21} initialAnswers={{ notes: "Antes" }} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={onCorrect} />);
