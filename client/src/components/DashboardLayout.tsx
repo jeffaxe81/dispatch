@@ -30,6 +30,7 @@ export function getMenuItems(permissions: string[] | undefined, role?: string, i
   const items = [] as { icon: typeof LayoutDashboard; label: string; path: string }[];
   if (!fieldAgent && can("occurrences.view")) items.push({ icon: LayoutDashboard, label: "Central", path: "/" }, { icon: MapPinned, label: "Ocorrências", path: "/ocorrencias" });
   if (!fieldAgent && can("work_shift_operations.view")) items.push({ icon: Clock3, label: "Operação de Jornada", path: "/operacao-jornada" });
+  if (!fieldAgent && can("forms.view")) items.push({ icon: ClipboardList, label: "Formulários", path: "/formularios" });
   if (!fieldAgent && can("reports.view")) items.push({ icon: BarChart3, label: "Dashboards e Relatórios", path: "/dashboards-relatorios" });
   if (can("teams.view")) items.push({ icon: UsersRound, label: "Equipes", path: "/equipes" });
   if (!fieldAgent && can("dispatch.view")) items.push({ icon: ClipboardList, label: "Kanban", path: "/kanban" });
