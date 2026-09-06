@@ -119,6 +119,17 @@ export const formSchemaDefinitionSchema = z.object({
       });
     }
   });
+
+  schema.fields.forEach((field, index) => {
+    if (field.type !== "calculated" || !field.expression) return;
+    if (field.expression === field.key) {
+      ctx.addIssue({ code: "custom", path: ["fields", index, "expression"], message: "Campo calculado não pode referenciar a própria chave." });
+      return;
+    }
+    if (!keys.has(field.expression)) {
+      ctx.addIssue({ code: "custom", path: ["fields", index, "expression"], message: `Referência calculada inexistente: ${field.expression}` });
+    }
+  });
 });
 
 export type FormSchemaDefinition = z.infer<typeof formSchemaDefinitionSchema>;
