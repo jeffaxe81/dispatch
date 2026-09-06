@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceLayout, WorkspaceLayoutV2 } from "@shared/workspaceLayout";
-import { InMemoryWorkspaceLayoutRepository } from "./workspaceLayoutRepository";
+import {
+  DrizzleWorkspaceLayoutRepository,
+  InMemoryWorkspaceLayoutRepository,
+} from "./workspaceLayoutRepository";
 
 const layoutV1: WorkspaceLayout = {
   id: "workspace:default",
@@ -73,5 +76,44 @@ describe("WorkspaceLayoutRepository", () => {
 
     expect(await repository.findOwn(10, 100, "default")).toBeNull();
     expect(await repository.findOwn(10, 101, "default")).toEqual(layoutV2);
+  });
+
+  it("uses the drizzle adapter for persisted reads, writes and resets", async () => {
+    const limit = vi.fn(async () => [{ layoutJson: layoutV2 }]);
+    const whereSelect = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where: whereSelect }));
+    const select = vi.fn(() => ({ from }));
+
+    const onDuplicateKeyUpdate = vi.fn(async () => undefined);
+    const values = vi.fn(() => ({ onDuplicateKeyUpdate }));
+    const insert = vi.fn(() => ({ values }));
+
+    const whereDelete = vi.fn(async () => undefined);
+    const deleteFn = vi.fn(() => ({ where: whereDelete }));
+
+    const db = { select, insert, delete: deleteFn };
+    const repository = new DrizzleWorkspaceLayoutRepository(async () => db as never);
+
+    expect(await repository.findOwn(10, 100, "default")).toEqual(layoutV2);
+    await repository.saveOwn(10, 100, "default", layoutV2);
+    await repository.resetOwn(10, 100, "default");
+
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 10,
+      userId: 100,
+      name: "default",
+      layoutVersion: 2,
+      layoutJson: layoutV2,
+    }));
+    expect(onDuplicateKeyUpdate).toHaveBeenCalledWith({
+      set: { layoutVersion: 2, layoutJson: layoutV2 },
+    });
+    expect(deleteFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the database is unavailable", async () => {
+    const repository = new DrizzleWorkspaceLayoutRepository(async () => null);
+    await expect(repository.findOwn(10, 100, "default")).rejects.toThrow("Banco de dados indisponível");
   });
 });
