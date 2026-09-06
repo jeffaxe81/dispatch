@@ -58,10 +58,25 @@ describe("D-008 application service", () => {
     expect(p.events.append).toHaveBeenCalledWith(expect.objectContaining({ eventType: "form.disabled" }));
   });
 
-  it("cria binding operacional auditável sem transição automática", async () => {
+  it("vincula a versão publicada exata sem transição automática da ocorrência", async () => {
     const p = ports();
-    const result = await createFormService(7, p).bindForm({ formId: 3, contextType: "incident", contextId: "88", actorUserId: 9, now: new Date() });
-    expect(p.repository.bindForm).toHaveBeenCalledWith(expect.objectContaining({ formId: 3, contextType: "incident", contextId: "88" }));
+    p.repository.getVersion = vi.fn(async id => ({ id, tenantId: 7, formId: 3, version: 2, status: "published" as const, definition: publishedDefinition }));
+    const createBinding = vi.fn(async (input: unknown) => ({ id: 41, ...(input as object) }));
+    (p.repository as FormServicePorts["repository"] & { createBinding: typeof createBinding }).createBinding = createBinding;
+
+    const service = createFormService(7, p) as ReturnType<typeof createFormService> & {
+      bindForm(input: { formId: number; formVersionId: number; contextType: "occurrence"; contextId: string; actorUserId: number; now: Date }): Promise<{ incidentTransitionRequested: false }>;
+    };
+    const result = await service.bindForm({ formId: 3, formVersionId: 5, contextType: "occurrence", contextId: "88", actorUserId: 9, now: new Date() });
+
+    expect(p.repository.getVersion).toHaveBeenCalledWith(5);
+    expect(createBinding).toHaveBeenCalledWith({
+      formId: 3,
+      formVersionId: 5,
+      contextType: "occurrence",
+      contextId: "88",
+      createdByUserId: 9,
+    });
     expect(result.incidentTransitionRequested).toBe(false);
   });
 });
