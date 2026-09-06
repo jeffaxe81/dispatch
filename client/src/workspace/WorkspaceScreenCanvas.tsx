@@ -1,3 +1,4 @@
+import React from "react";
 import type { WorkspaceScreen } from "@shared/workspaceLayout";
 import { getWorkspaceWidgetDefinition } from "./widgetRegistry";
 
