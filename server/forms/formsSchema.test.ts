@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   formAttachments,
@@ -44,5 +45,15 @@ describe("D-008 Drizzle schema", () => {
     expect(formDomainEvents.deliveryStatus).toBeDefined();
     expect(formDomainEvents.attemptCount).toBeDefined();
     expect(formDomainEvents.nextAttemptAt).toBeDefined();
+  });
+
+  it("usa nos enums os mesmos nomes de coluna da migration MySQL", () => {
+    const source = readFileSync(new URL("../../drizzle/formsSchema.ts", import.meta.url), "utf8");
+    expect(source).toContain('status: mysqlEnum("status", ["draft", "active", "disabled"])');
+    expect(source).toContain('contextType: mysqlEnum("context_type", ["incident_category", "incident", "field_activity"])');
+    expect(source).toContain('kind: mysqlEnum("kind", ["image", "file", "simple_signature"])');
+    expect(source).toContain('deliveryStatus: mysqlEnum("delivery_status", ["pending", "published", "failed"])');
+    expect(source).not.toContain('mysqlEnum("form_status"');
+    expect(source).not.toContain('mysqlEnum("form_context_type"');
   });
 });
