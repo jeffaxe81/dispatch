@@ -33,10 +33,13 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
   const [selected, setSelected] = useState<IncidentFormItem | null>(null);
   const validIncident = Number.isInteger(incidentId) && incidentId > 0;
   const query = trpc.forms.forIncident.useQuery({ incidentId: String(incidentId) }, { enabled: validIncident && open, retry: false });
+  const access = trpc.access.me.useQuery(undefined, { enabled: open, retry: false });
   const start = trpc.forms.startSubmission.useMutation();
   const submit = trpc.forms.submit.useMutation();
   const correct = trpc.forms.correct.useMutation();
 
+  const permissions = access.data?.permissions ?? [];
+  const canCorrect = Boolean(access.data?.isSuperAdministrator || permissions.includes("*") || permissions.includes("forms.responses.correct"));
   const bindings = (query.data?.bindings ?? []) as HydratedBinding[];
   const submissions = ((query.data?.submissions ?? []) as OperationalSubmission[]).map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }));
   const items = useMemo(() => deriveIncidentFormItems(bindings, submissions.map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }))), [bindings, submissions]);
@@ -76,6 +79,7 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
               state={currentItem.state}
               submissionId={currentSubmission?.id}
               initialAnswers={currentSubmission?.answers ?? {}}
+              canCorrect={canCorrect}
               onClose={() => setSelected(null)}
               onStart={async input => { const result = await start.mutateAsync(input); await refresh(); return result; }}
               onSubmit={async input => { const result = await submit.mutateAsync(input); await refresh(); return result; }}
