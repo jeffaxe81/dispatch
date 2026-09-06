@@ -1,14 +1,32 @@
 import { describe, expect, it, vi } from "vitest";
 import { TRPCError } from "@trpc/server";
 import type { TrpcContext } from "../_core/context";
+import type { WorkspaceLayoutV2 } from "@shared/workspaceLayout";
 import { createWorkspaceRouter } from "./workspace";
 
-const layout = {
+const layout: WorkspaceLayoutV2 = {
   id: "workspace:test",
   name: "default",
-  version: 1 as const,
-  widgets: [
-    { instanceId: "map-1", type: "operational-map" as const, x: 0, y: 0, w: 8, h: 6, settings: {} },
+  version: 2,
+  screens: [
+    {
+      screenId: "primary",
+      name: "Principal",
+      order: 0,
+      mode: "primary",
+      widgets: [
+        { instanceId: "map-1", type: "operational-map", x: 0, y: 0, w: 8, h: 6, settings: {} },
+      ],
+    },
+    {
+      screenId: "screen-2",
+      name: "Monitor 2",
+      order: 1,
+      mode: "external",
+      widgets: [
+        { instanceId: "incidents-1", type: "incidents", x: 0, y: 0, w: 6, h: 4, settings: {} },
+      ],
+    },
   ],
 };
 
@@ -33,57 +51,81 @@ function context(user = true): TrpcContext {
   };
 }
 
-describe("workspace tRPC router", () => {
-  it("resolves tenant/user only from authenticated server context", async () => {
-    const resolveAccessContext = vi.fn(async () => ({
+function dependencies() {
+  return {
+    resolveAccessContext: vi.fn(async () => ({
       tenantId: 10,
       userId: 7,
-      allowedWidgetTypes: new Set(["operational-map"] as const),
-    }));
-    const service = {
+      allowedWidgetTypes: new Set(["operational-map", "incidents"] as const),
+    })),
+    service: {
       getOwnWorkspace: vi.fn(async () => layout),
       saveOwnWorkspace: vi.fn(async () => layout),
       resetOwnWorkspace: vi.fn(async () => layout),
-    };
-    const caller = createWorkspaceRouter({ resolveAccessContext, service }).createCaller(context());
+    },
+  };
+}
+
+describe("workspace tRPC router", () => {
+  it("resolves tenant/user only from authenticated server context", async () => {
+    const deps = dependencies();
+    const caller = createWorkspaceRouter(deps).createCaller(context());
 
     await caller.saveOwn({ name: "default", layout });
 
-    expect(resolveAccessContext).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ id: 7 }) }));
-    expect(service.saveOwnWorkspace).toHaveBeenCalledWith(
+    expect(deps.resolveAccessContext).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ id: 7 }) }));
+    expect(deps.service.saveOwnWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 10, userId: 7 }),
       "default",
       layout,
     );
   });
 
-  it("rejects tenantId/userId supplied by the request body", async () => {
-    const caller = createWorkspaceRouter({
-      resolveAccessContext: vi.fn(async () => ({ tenantId: 10, userId: 7, allowedWidgetTypes: new Set(["operational-map"] as const) })),
-      service: {
-        getOwnWorkspace: vi.fn(async () => layout),
-        saveOwnWorkspace: vi.fn(async () => layout),
-        resetOwnWorkspace: vi.fn(async () => layout),
-      },
-    }).createCaller(context());
+  it("rejects tenantId/userId supplied by request bodies", async () => {
+    const caller = createWorkspaceRouter(dependencies()).createCaller(context());
 
     await expect(caller.saveOwn({ name: "default", layout, tenantId: 999 } as never)).rejects.toBeInstanceOf(TRPCError);
     await expect(caller.getOwn({ name: "default", userId: 999 } as never)).rejects.toBeInstanceOf(TRPCError);
+    await expect(caller.getOwnScreen({ name: "default", screenId: "screen-2", tenantId: 999 } as never)).rejects.toBeInstanceOf(TRPCError);
+  });
+
+  it("returns only the requested authorized screen", async () => {
+    const caller = createWorkspaceRouter(dependencies()).createCaller(context());
+
+    expect(await caller.getOwnScreen({ name: "default", screenId: "screen-2" })).toEqual(layout.screens[1]);
+  });
+
+  it("returns NOT_FOUND for an unknown screen selector", async () => {
+    const caller = createWorkspaceRouter(dependencies()).createCaller(context());
+
+    await expect(caller.getOwnScreen({ name: "default", screenId: "missing" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("returns screen widgets already filtered by the server-side workspace service", async () => {
+    const filteredLayout: WorkspaceLayoutV2 = {
+      ...layout,
+      screens: layout.screens.map(screen => ({
+        ...screen,
+        widgets: screen.widgets.filter(widget => widget.type === "operational-map"),
+      })),
+    };
+    const deps = dependencies();
+    deps.service.getOwnWorkspace.mockResolvedValue(filteredLayout);
+    const caller = createWorkspaceRouter(deps).createCaller(context());
+
+    const result = await caller.getOwnScreen({ name: "default", screenId: "screen-2" });
+    expect(result.widgets).toEqual([]);
   });
 
   it("requires authentication and exposes get/save/reset", async () => {
-    const service = {
-      getOwnWorkspace: vi.fn(async () => layout),
-      saveOwnWorkspace: vi.fn(async () => layout),
-      resetOwnWorkspace: vi.fn(async () => layout),
-    };
-    const router = createWorkspaceRouter({
-      resolveAccessContext: vi.fn(async ctx => {
-        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-        return { tenantId: 10, userId: ctx.user.id, allowedWidgetTypes: new Set(["operational-map"] as const) };
-      }),
-      service,
+    const deps = dependencies();
+    deps.resolveAccessContext.mockImplementation(async ctx => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      return { tenantId: 10, userId: ctx.user.id, allowedWidgetTypes: new Set(["operational-map", "incidents"] as const) };
     });
+    const router = createWorkspaceRouter(deps);
 
     const caller = router.createCaller(context());
     expect(await caller.getOwn({ name: "default" })).toEqual(layout);
