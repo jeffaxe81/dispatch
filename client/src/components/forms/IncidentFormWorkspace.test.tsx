@@ -51,6 +51,12 @@ describe("D-008 operational form workspace", () => {
     await waitFor(() => expect(onCorrect).toHaveBeenCalledWith({ submissionId: 21, answers: { notes: "Depois" }, reason: "Ajuste após conferência de campo" }));
   });
 
+  it("não oferece correção quando o perfil não possui permissão", () => {
+    render(<IncidentFormWorkspace {...base} state="submitted" submissionId={21} initialAnswers={{ notes: "Antes" }} canCorrect={false} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /corrigir resposta/i })).toBeNull();
+    expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
+  });
+
   it("não permite correção sem motivo", async () => {
     const onCorrect = vi.fn();
     render(<IncidentFormWorkspace {...base} state="corrected" submissionId={21} initialAnswers={{ notes: "Antes" }} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={onCorrect} />);
