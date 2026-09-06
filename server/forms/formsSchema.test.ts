@@ -5,15 +5,15 @@ import {
   formDomainEvents,
   formSubmissionRevisions,
   formSubmissions,
+  formTemplates,
   formVersions,
-  forms,
 } from "../../drizzle/formsSchema";
 
 const tableName = (table: unknown) => (table as { [key: symbol]: unknown })[Symbol.for("drizzle:Name")];
 
 describe("D-008 Drizzle schema", () => {
-  it("expõe as sete tabelas centrais do motor de formulários", () => {
-    expect(tableName(forms)).toBe("forms");
+  it("expõe exatamente as sete tabelas centrais aprovadas", () => {
+    expect(tableName(formTemplates)).toBe("form_templates");
     expect(tableName(formVersions)).toBe("form_versions");
     expect(tableName(formBindings)).toBe("form_bindings");
     expect(tableName(formSubmissions)).toBe("form_submissions");
@@ -22,20 +22,20 @@ describe("D-008 Drizzle schema", () => {
     expect(tableName(formDomainEvents)).toBe("form_domain_events");
   });
 
-  it("mantém a versão publicada separada das respostas operacionais", () => {
+  it("mantém versão, respostas e tenant como primeira classe", () => {
     expect(formVersions.definition).toBeDefined();
     expect(formVersions.definitionHash).toBeDefined();
     expect(formSubmissions.formVersionId).toBeDefined();
     expect(formSubmissions.answers).toBeDefined();
+    expect(formTemplates.tenantId).toBeDefined();
+    expect(formSubmissionRevisions.tenantId).toBeDefined();
   });
 
-  it("mantém tenant e histórico de correção como campos de primeira classe", () => {
-    expect(forms.tenantId).toBeDefined();
-    expect(formBindings.tenantId).toBeDefined();
-    expect(formSubmissions.tenantId).toBeDefined();
-    expect(formSubmissionRevisions.tenantId).toBeDefined();
-    expect(formDomainEvents.tenantId).toBeDefined();
+  it("modela correção, anexos tipados e hash obrigatório no schema", () => {
     expect(formSubmissionRevisions.reason).toBeDefined();
+    expect(formAttachments.kind).toBeDefined();
+    expect(formAttachments.sha256).toBeDefined();
+    expect(formAttachments.sha256.notNull).toBe(true);
   });
 
   it("modela bindings desacoplados e outbox retryable", () => {
