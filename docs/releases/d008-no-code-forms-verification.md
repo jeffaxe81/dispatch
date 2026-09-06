@@ -3,7 +3,7 @@
 **Estado:** CANDIDATO TÉCNICO — GATES GREEN; MERGE/DEPLOY NÃO AUTORIZADOS  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head funcional GREEN registrado:** `7be14056dc7ae264a7ff7cce5c4250bbae23bb9d`  
+**Head funcional GREEN registrado:** `5748265d245a36d9ba7553d18f72eed29c95eefb`  
 **PR de homologação existente:** #44  
 **Data:** 2026-09-06
 
@@ -11,7 +11,7 @@
 
 Este documento registra evidência real de CI para a D-008, mas **não** autoriza merge em `main`, deploy, aplicação de migration real ou grants automáticos. Esses atos permanecem sujeitos à autorização explícita do responsável pelo projeto.
 
-Os quatro gates obrigatórios foram executados no workflow `Qualidade`, run `34038330667`, job `101500393731`, contra o merge sintético do branch D-008 com a `main` atual.
+Os quatro gates obrigatórios foram executados no workflow `Qualidade`, run `34044751822`, job `101517720344`, contra o merge sintético do branch D-008 com a `main` atual.
 
 ```sh
 pnpm security:check
@@ -24,7 +24,7 @@ pnpm build
 | --- | --- | --- |
 | `pnpm security:check` | GREEN | `Verificação de segurança aprovada: 7 migrações e 17 correções preservadas.` |
 | `pnpm check` | GREEN | `tsc --noEmit`, exit code 0 |
-| `pnpm test` | GREEN | 158/158 arquivos; 664/664 testes; 0 falhas |
+| `pnpm test` | GREEN | 161/161 arquivos; 674/674 testes; 0 falhas |
 | `pnpm build` | GREEN | Vite + esbuild concluídos com exit code 0 |
 
 ### Warnings não bloqueantes do build
@@ -43,7 +43,7 @@ Esses avisos não impediram o build. Otimização de chunking pode permanecer em
 - Contrato canônico de formulários em `shared/forms.ts`.
 - Persistência D-008 em exatamente sete tabelas: templates, versões, vínculos, submissões, revisões, anexos e domain events.
 - Migration `drizzle/0006_d008_no_code_forms.sql` criada e registrada no journal, **não aplicada em banco real**.
-- Schema Drizzle D-008 e migration usam os mesmos nomes físicos para colunas enum (`status`, `context_type`, `kind`, `event_type`, `aggregate_type`, `delivery_status`); o schema não reutiliza builders MySQL enum com aliases que divergem do SQL.
+- Schema Drizzle D-008 e migration usam os mesmos nomes físicos para colunas enum (`status`, `context_type`, `kind`, `event_type`, `aggregate_type`, `delivery_status`).
 - Limites tRPC foram alinhados aos limites persistentes (`contextId` 180, `fieldKey` 120, `name` 240 e `mimeType` 160).
 - Criação inicial de formulário é atômica: template e versão draft v1 são criados na mesma transação.
 - Versão draft inicial recebe `definitionHash`; salvamentos de draft atualizam definição e hash conjuntamente.
@@ -51,7 +51,8 @@ Esses avisos não impediram o build. Otimização de chunking pode permanecer em
 - Versões publicadas/retiradas permanecem imutáveis; `createNewVersion` cria novo draft com próximo número, definição copiada e novo hash.
 - Correções são persistidas de forma atômica: a submissão atual é lida no tenant, `before_hash` e `after_hash` são calculados, a revisão é inserida e o snapshot da submissão é atualizado dentro da mesma transação.
 - Anexos armazenam metadados/hash e referência de storage; binários não são gravados no JSON de respostas.
-- O nome do anexo só entra nas respostas após upload bem-sucedido; falha de storage não confirma referência inexistente no JSON.
+- Respostas de `image`, `file` e `simple_signature` são server-authoritative: referências enviadas pelo cliente são descartadas e rematerializadas somente a partir dos anexos realmente persistidos para a própria submissão/campo.
+- Upload de anexo só é permitido enquanto a submissão está `in_progress`; anexos em revisão permanecem bloqueados até existir ownership de revisão validado de ponta a ponta.
 
 ### Segurança e governança
 
@@ -60,7 +61,9 @@ Esses avisos não impediram o build. Otimização de chunking pode permanecer em
 - Schemas tRPC de submissão são estritos e validam o par `contextType/contextId`.
 - Contextos operacionais aceitos nesta entrega: `incident_category`, `incident`, `field_activity`.
 - Consulta/preenchimento de ocorrência reaplica escopo operacional.
-- Upload de anexo exige `forms.fill`, valida tenant da submissão e reaplica escopo da ocorrência/equipe a partir da submissão resolvida no servidor.
+- Correção e upload de anexos reaplicam `assertSubmissionScope` antes de tocar no service.
+- `field_activity` é autorizado como uma atividade atribuída (`incident_assignments.id`): o runtime valida a atribuição, a organização da equipe contra o tenant, a ocorrência vinculada e, para agente, a própria equipe. O mesmo escopo é aplicado em vínculo, início, envio e em submissões já existentes.
+- Upload valida, no servidor, que `fieldKey` existe na versão exata e que `kind` corresponde a `image`, `file` ou `simple_signature` do schema publicado.
 - O payload Base64 é limitado no schema tRPC antes da decodificação, com teto equivalente ao limite de 8 MiB do anexo.
 - Storage persiste a chave efetivamente retornada pelo backend de armazenamento e falha fechado se ela não existir.
 - Correção exige justificativa e cria revisão auditável.
@@ -94,18 +97,17 @@ Esses avisos não impediram o build. Otimização de chunking pode permanecer em
 - Foto/arquivo usam endpoint de anexo separado do JSON de respostas.
 - Assinatura simples é capturada na própria tela por superfície de desenho, confirmada como PNG e enviada pelo mesmo fluxo de anexos.
 - Assinatura simples permanece explicitamente **não ICP-Brasil**.
+- Durante correção textual, campos de anexo ficam deliberadamente bloqueados nesta release, porque anexos de revisão exigem vínculo de revisão auditável ainda não exposto no fluxo operacional.
 - Envio/correção de formulário não solicita transição automática de status da ocorrência nesta release.
-- `forIncident()` hidrata submissões pelo repository para devolver revisão e respostas efetivas após correções.
+- `forIncident()` hidrata submissões pelo repository para devolver revisão, respostas efetivas e metadados reais de anexos.
 
 ## 3. Homologações visuais e de compatibilidade
 
-No mesmo head funcional `7be14056dc7ae264a7ff7cce5c4250bbae23bb9d`:
+No mesmo head funcional `5748265d245a36d9ba7553d18f72eed29c95eefb`:
 
-- GIS visual homologation — run `34038330729`: **GREEN**;
-- NEO external compatibility — run `34038330690`: **GREEN**;
-- NEO workspace visual homologation — run `34038330816`: **GREEN**.
-
-No NEO workspace, etapas autenticadas condicionais foram corretamente ignoradas quando não aplicáveis ao ambiente, enquanto classificador, pré-diagnósticos e geração de evidência visual concluíram com sucesso.
+- GIS visual homologation — run `34044751799` (#583): **GREEN**;
+- NEO external compatibility — run `34044751785` (#520): **GREEN**;
+- NEO workspace visual homologation — run `34044751813` (#563): **GREEN**.
 
 ## 4. Gates administrativos ainda bloqueados
 
@@ -125,6 +127,7 @@ No NEO workspace, etapas autenticadas condicionais foram corretamente ignoradas 
 - automações e workflow avançado;
 - retenção/anônimização/legal hold avançados, quando não forem requisito obrigatório;
 - módulo ICP-Brasil separado consumindo representação estável/hash do formulário finalizado;
+- anexos em correções/revisões com ownership explícito de `revision_id` e histórico auditável de evidências;
 - otimização de code splitting/chunking do frontend, se não se tornar requisito bloqueante;
 - revisar separadamente o padrão legado de reutilização de `mysqlEnum(...)` em schemas anteriores, sem alterar esses módulos dentro do escopo D-008.
 
@@ -144,4 +147,4 @@ Este relatório **não autoriza**:
 - remoção de checkpoints;
 - limpeza destrutiva de dados ou artefatos.
 
-Como este documento altera o head após o primeiro GREEN completo, o head documental final deve repetir os gates automáticos antes de qualquer decisão de integração.
+Como este documento cria um novo head documental após o GREEN funcional acima, o head documental final deve repetir os gates automáticos antes de qualquer decisão de integração.
