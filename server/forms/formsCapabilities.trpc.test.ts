@@ -19,6 +19,10 @@ describe("D-008 capabilities tRPC", () => {
       canViewResponses: false,
       canCorrectResponses: false,
       canManage: false,
+      canCreate: false,
+      canEdit: false,
+      canPublish: false,
+      canDisable: false,
     });
     expect(createContext).toHaveBeenCalledTimes(1);
   });
