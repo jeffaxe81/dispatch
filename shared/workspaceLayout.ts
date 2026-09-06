@@ -153,6 +153,10 @@ export function normalizeWorkspaceLayoutV2(
   input: unknown,
   allowedTypes: ReadonlySet<WorkspaceWidgetType>,
 ): WorkspaceLayoutV2 {
+  if (untrustedWorkspaceLayoutSchema.safeParse(input).success) {
+    return migrateWorkspaceV1ToV2(normalizeWorkspaceLayout(input, allowedTypes));
+  }
+
   const parsed = untrustedWorkspaceLayoutV2Schema.parse(input);
   const screens = parsed.screens.map(screen => ({
     ...screen,
