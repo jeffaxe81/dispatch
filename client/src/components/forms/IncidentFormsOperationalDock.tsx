@@ -4,28 +4,26 @@ import { trpc } from "@/lib/trpc";
 import { IncidentFormsPanel, deriveIncidentFormItems, type IncidentFormItem } from "./IncidentFormsPanel";
 import { IncidentFormWorkspace } from "./IncidentFormWorkspace";
 
-type HydratedBinding = {
-  id: number;
-  formId: number;
-  formVersionId: number;
-  name?: string | null;
-  contextId: string;
-  definition: FormSchemaDefinition;
-};
-
-type OperationalSubmission = {
-  id: number;
-  formId: number;
-  formVersionId: number;
-  status: "in_progress" | "submitted" | "corrected";
-  revision?: number | null;
-  answers?: FormAnswers | null;
-};
+type HydratedBinding = { id: number; formId: number; formVersionId: number; name?: string | null; contextId: string; definition: FormSchemaDefinition };
+type OperationalSubmission = { id: number; formId: number; formVersionId: number; status: "in_progress" | "submitted" | "corrected"; revision?: number | null; answers?: FormAnswers | null };
 
 export function activeSubmissionFor(item: IncidentFormItem, submissions: OperationalSubmission[]) {
-  return submissions
-    .filter(submission => submission.formId === item.formId && submission.formVersionId === item.formVersionId)
-    .sort((a, b) => Number(b.revision ?? 1) - Number(a.revision ?? 1) || b.id - a.id)[0] ?? null;
+  return submissions.filter(submission => submission.formId === item.formId && submission.formVersionId === item.formVersionId).sort((a, b) => Number(b.revision ?? 1) - Number(a.revision ?? 1) || b.id - a.id)[0] ?? null;
+}
+
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo selecionado."));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") return reject(new Error("Conteúdo do arquivo inválido."));
+      const comma = result.indexOf(",");
+      if (comma < 0) return reject(new Error("Conteúdo Base64 do arquivo inválido."));
+      resolve(result.slice(comma + 1));
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export function IncidentFormsOperationalDock({ incidentId }: { incidentId: number }) {
@@ -37,6 +35,7 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
   const start = trpc.forms.startSubmission.useMutation();
   const submit = trpc.forms.submit.useMutation();
   const correct = trpc.forms.correct.useMutation();
+  const uploadAttachment = trpc.forms.uploadAttachment.useMutation();
 
   const permissions = access.data?.permissions ?? [];
   const privileged = Boolean(access.data?.isSuperAdministrator || permissions.includes("*"));
@@ -49,10 +48,7 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
   const currentBinding = currentItem ? bindings.find(binding => binding.id === currentItem.id) ?? null : null;
   const currentSubmission = currentItem ? activeSubmissionFor(currentItem, submissions) : null;
 
-  async function refresh() {
-    await query.refetch();
-  }
-
+  async function refresh() { await query.refetch(); }
   if (!validIncident) return null;
 
   return (
@@ -63,38 +59,24 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
             <div><p className="text-xs font-semibold uppercase tracking-[.12em] text-sky-700">D-008</p><h2 className="font-semibold text-slate-950">Formulários da ocorrência</h2></div>
             <button type="button" onClick={() => { setOpen(false); setSelected(null); }} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm">Fechar</button>
           </div>
-
           {query.isLoading && <p className="rounded-lg bg-white p-4 text-sm text-slate-500">Carregando formulários...</p>}
           {query.error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{query.error.message}</p>}
-
-          {!query.isLoading && !query.error && !currentItem && (
-            <IncidentFormsPanel bindings={bindings} submissions={submissions.map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }))} onOpen={setSelected} />
-          )}
-
+          {!query.isLoading && !query.error && !currentItem && <IncidentFormsPanel bindings={bindings} submissions={submissions.map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }))} onOpen={setSelected} />}
           {currentItem && currentBinding && (
             <IncidentFormWorkspace
-              incidentId={String(incidentId)}
-              formId={currentBinding.formId}
-              formVersionId={currentBinding.formVersionId}
-              formName={currentBinding.name?.trim() || `Formulário #${currentBinding.formId}`}
-              definition={currentBinding.definition}
-              state={currentItem.state}
-              submissionId={currentSubmission?.id}
-              initialAnswers={currentSubmission?.answers ?? {}}
-              canFill={canFill}
-              canCorrect={canCorrect}
-              onClose={() => setSelected(null)}
+              incidentId={String(incidentId)} formId={currentBinding.formId} formVersionId={currentBinding.formVersionId}
+              formName={currentBinding.name?.trim() || `Formulário #${currentBinding.formId}`} definition={currentBinding.definition}
+              state={currentItem.state} submissionId={currentSubmission?.id} initialAnswers={currentSubmission?.answers ?? {}}
+              canFill={canFill} canCorrect={canCorrect} onClose={() => setSelected(null)}
               onStart={async input => { const result = await start.mutateAsync(input); await refresh(); return result; }}
               onSubmit={async input => { const result = await submit.mutateAsync(input); await refresh(); return result; }}
               onCorrect={async input => { const result = await correct.mutateAsync(input); await refresh(); return result; }}
+              onUploadAttachment={async ({ submissionId, fieldKey, kind, file }) => uploadAttachment.mutateAsync({ submissionId, fieldKey, kind, fileName: file.name, mimeType: file.type, base64: await fileToBase64(file) })}
             />
           )}
         </div>
       )}
-
-      <button type="button" onClick={() => setOpen(value => !value)} className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/25" aria-expanded={open} aria-label="Abrir formulários operacionais">
-        Formulários operacionais
-      </button>
+      <button type="button" onClick={() => setOpen(value => !value)} className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/25" aria-expanded={open} aria-label="Abrir formulários operacionais">Formulários operacionais</button>
     </div>
   );
 }
