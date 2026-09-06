@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `7ec9ab92beff46ab8b73a457642f473d7758a5e7`  
+**Head documentado:** `21b0317857f6b12e58a12ae987513a866cdbb3c6`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -19,38 +19,27 @@ pnpm build
 
 | Gate | Estado | Evidência |
 | --- | --- | --- |
-| `pnpm security:check` | PENDENTE | runner não disponível nesta sessão; verificador ampliado para D-008 |
-| `pnpm check` | PENDENTE | runner não disponível nesta sessão |
-| `pnpm test` | PENDENTE | runner não disponível nesta sessão |
-| `pnpm build` | PENDENTE | runner não disponível nesta sessão |
+| `pnpm security:check` | PENDENTE | sem runner/CI associado ao head atual; verificador ampliado para D-008 |
+| `pnpm check` | PENDENTE | sem runner/CI associado ao head atual |
+| `pnpm test` | PENDENTE | sem runner/CI associado ao head atual |
+| `pnpm build` | PENDENTE | sem runner/CI associado ao head atual |
 
-Não registrar contagem de testes, warnings ou resultado GREEN até existir saída real dos comandos.
+Consulta de status GitHub do head `21b0317857f6b12e58a12ae987513a866cdbb3c6`: nenhum status/check registrado. Não registrar contagem de testes, warnings ou resultado GREEN até existir saída real dos comandos.
 
 ## 2. Evidência estática concluída
 
 ### Contrato e persistência
 
-- Contrato canônico de formulários em `shared/forms.ts`, com 19 tipos aprovados.
-- Versões publicadas/retiradas são imutáveis; alterações posteriores usam uma nova versão draft.
-- Persistência D-008 permanece em exatamente sete tabelas: templates, versões, vínculos, submissões, revisões, anexos e domain events.
-- Migration `drizzle/0006_d008_no_code_forms.sql` criada e registrada no journal.
-- A migration **não foi aplicada em banco real**.
-- Limites tRPC foram alinhados aos limites persistidos (`contextId` 180, `fieldKey` 120, `mimeType` 160, nome 240).
-- Criação de formulário persiste template + versão draft v1, com `definitionHash` SHA-256.
-- Criação inicial de template + versão v1 ocorre dentro de uma única transação; falha da versão não deve deixar template parcial.
-- Salvamento de draft atualiza definição e `definitionHash` conjuntamente.
-- Definições são validadas pelo schema canônico em runtime antes de salvar, copiar para nova versão ou publicar.
+- Contrato canônico de formulários em `shared/forms.ts`.
+- Persistência D-008 em exatamente sete tabelas: templates, versões, vínculos, submissões, revisões, anexos e domain events.
+- Migration `drizzle/0006_d008_no_code_forms.sql` criada e registrada no journal, **não aplicada em banco real**.
+- Limites tRPC foram alinhados aos limites persistentes (`contextId` 180, `fieldKey` 120, `name` 240 e `mimeType` 160).
+- Criação inicial de formulário é atômica: template e versão draft v1 são criados na mesma transação.
+- Versão draft inicial recebe `definitionHash`; salvamentos de draft atualizam definição e hash conjuntamente.
+- Definições são validadas pelo schema canônico em runtime antes de salvar, publicar ou derivar nova versão.
+- Versões publicadas/retiradas permanecem imutáveis; `createNewVersion` cria novo draft com próximo número, definição copiada e novo hash.
 - Anexos armazenam metadados/hash e referência de storage; binários não são gravados no JSON de respostas.
 - O nome do anexo só entra nas respostas após upload bem-sucedido; falha de storage não confirma referência inexistente no JSON.
-
-### Administração e versionamento
-
-- `forms.list` e `forms.get` hidratam o template com a versão corrente, definição e status de versão.
-- `FormsPage` está conectada a `forms.list`, `forms.capabilities` e `forms.createDraft`.
-- `FormDesignerPage` está conectada a `forms.get`, `forms.updateDraft`, `forms.publish` e `forms.createNewVersion`.
-- `createNewVersion` exige `forms.edit`, parte apenas de versão publicada/retirada, copia a definição validada e usa o próximo número de versão.
-- A UI usa as capabilities do próprio módulo para criação, edição e publicação; não replica política de autorização.
-- Versões não draft são exibidas como imutáveis e só oferecem nova versão quando o usuário possui permissão de edição.
 
 ### Segurança e governança
 
@@ -63,12 +52,21 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - Storage persiste a chave efetivamente retornada pelo backend de armazenamento e falha fechado se ela não existir.
 - Correção exige justificativa e cria revisão auditável.
 - A UI usa `forms.capabilities`, calculado pelo mesmo avaliador de autorização do backend; falha da consulta mantém ações de escrita ocultas.
-- `security-regression-check.mjs` protege quatro invariantes D-008: contexto tRPC estrito, escopo de submissão antes do upload, chave real do storage e registro do namespace `forms` no root router.
+- Capabilities administrativas incluem `canCreate`, `canEdit`, `canPublish`, `canDisable` e permanecem somente informativas: não concedem privilégios.
+- `security-regression-check.mjs` protege invariantes D-008 de contexto tRPC, escopo de submissão, chave real do storage e registro do namespace `forms`.
 - Nenhum grant produtivo ou alteração automática de papéis dinâmicos foi aplicado.
+
+### Administração / Designer
+
+- `/formularios` está conectado a `forms.list`, `forms.capabilities` e `forms.createDraft`.
+- `/formularios/:id` carrega a versão corrente real por `forms.get`.
+- Salvar rascunho usa `forms.updateDraft`; publicar usa `forms.publish`; nova versão usa `forms.createNewVersion`.
+- Após publicação ou criação de nova versão, a página refaz a consulta e o estado interno do Designer é ressincronizado com o novo `versionId`/definition.
+- Versões diferentes de `draft` ficam em modo imutável no Designer.
+- `forms` está registrado no `rootRouter` com procedures administrativas e operacionais sem remover Dispatch ou Jornada.
 
 ### Integração operacional
 
-- `forms` está registrado no `rootRouter` sem remover `dispatch` ou jornada; o contrato raiz também cobre procedures administrativas e operacionais D-008.
 - Ocorrência e Aplicativo Agente usam o dock operacional D-008.
 - Estados visuais: Não iniciado, Em preenchimento, Enviado e Corrigido.
 - `startSubmission` seguido de `submit` preserva o mesmo `submissionId`, evitando anexos órfãos.
@@ -81,7 +79,7 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 
 1. **Permissões dinâmicas `forms.*`:** o módulo já respeita assignments dinâmicos como autoridade. O mapeamento/grant produtivo para perfis como `agente_campo` não será criado automaticamente e depende de autorização explícita.
 2. **Migration real:** `0006_d008_no_code_forms.sql` permanece somente como artefato versionado; aplicação em banco real depende de autorização explícita.
-3. **PR/merge:** nenhum merge em `main` deve ocorrer sem gates GREEN e autorização.
+3. **PR/merge:** nenhum PR de integração/merge em `main` deve ocorrer antes dos quatro gates GREEN e autorização.
 4. **Deploy:** não autorizado nesta etapa.
 
 ## 4. Backlog sem prazo desta entrega
@@ -97,4 +95,4 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 
 ## 5. Critério para transformar este documento em evidência final
 
-Após disponibilidade de runner, executar exatamente os quatro gates da seção 1. Registrar neste arquivo: data/hora, commit testado, comando, exit code, contagem real dos testes, warnings relevantes, resultado do build e qualquer correção necessária. Somente após todos os gates GREEN preparar o draft PR D-008 para `main`.
+Após disponibilidade de runner, executar exatamente os quatro gates da seção 1 no mesmo commit candidato. Registrar neste arquivo: data/hora, commit testado, comando, exit code, contagem real dos testes, warnings relevantes, resultado do build e qualquer correção necessária. Se qualquer comando exigir correção, o head muda e todos os gates devem ser executados novamente no novo head antes de preparar o draft PR D-008 para `main`.
