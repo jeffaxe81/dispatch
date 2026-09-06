@@ -4,6 +4,7 @@
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
 **Head funcional GREEN registrado:** `5748265d245a36d9ba7553d18f72eed29c95eefb`  
+**Head documental GREEN anterior a este registro:** `1511fe270fbaf870b3f8265562baa74cc64ea736`  
 **PR de homologação existente:** #44  
 **Data:** 2026-09-06
 
@@ -11,7 +12,7 @@
 
 Este documento registra evidência real de CI para a D-008, mas **não** autoriza merge em `main`, deploy, aplicação de migration real ou grants automáticos. Esses atos permanecem sujeitos à autorização explícita do responsável pelo projeto.
 
-Os quatro gates obrigatórios foram executados no workflow `Qualidade`, run `34044751822`, job `101517720344`, contra o merge sintético do branch D-008 com a `main` atual.
+Os quatro gates obrigatórios foram executados no workflow `Qualidade`, run `34044974627`, job `101518313843`, contra o merge sintético do branch D-008 com a `main` atual, no head documental `1511fe270fbaf870b3f8265562baa74cc64ea736`.
 
 ```sh
 pnpm security:check
@@ -103,11 +104,12 @@ Esses avisos não impediram o build. Otimização de chunking pode permanecer em
 
 ## 3. Homologações visuais e de compatibilidade
 
-No mesmo head funcional `5748265d245a36d9ba7553d18f72eed29c95eefb`:
+No head documental `1511fe270fbaf870b3f8265562baa74cc64ea736`:
 
-- GIS visual homologation — run `34044751799` (#583): **GREEN**;
-- NEO external compatibility — run `34044751785` (#520): **GREEN**;
-- NEO workspace visual homologation — run `34044751813` (#563): **GREEN**.
+- GIS visual homologation — run `34044974600` (#584): **GREEN**;
+- NEO external compatibility — run `34044974622` (#521): **GREEN**;
+- NEO workspace visual homologation — run `34044974623` (#564): **GREEN**;
+- Qualidade — run `34044974627` (#591): **GREEN**.
 
 ## 4. Gates administrativos ainda bloqueados
 
@@ -147,4 +149,4 @@ Este relatório **não autoriza**:
 - remoção de checkpoints;
 - limpeza destrutiva de dados ou artefatos.
 
-Como este documento cria um novo head documental após o GREEN funcional acima, o head documental final deve repetir os gates automáticos antes de qualquer decisão de integração.
+Este registro é documental. Qualquer novo commit posterior deve repetir os gates automáticos antes de uma decisão de integração.
