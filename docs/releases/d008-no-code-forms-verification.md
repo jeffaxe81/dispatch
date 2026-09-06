@@ -4,9 +4,11 @@
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
 **Head funcional GREEN:** `5748265d245a36d9ba7553d18f72eed29c95eefb`  
-**Head documental GREEN verificado:** `522a2eb48b4f4c3becb95367122cc0723abac2b3`  
+**Último head documental registrado no relatório:** `522a2eb48b4f4c3becb95367122cc0723abac2b3`  
 **PR de homologação existente:** #44  
 **Data:** 2026-09-06
+
+> Observação: o estado corrente do branch e os runs mais recentes devem ser consultados no PR #44. Este relatório não será alterado apenas para registrar novos SHAs, evitando criar ciclos de commits documentais após cada validação.
 
 ## 1. Regra de aprovação e evidência de runtime
 
@@ -104,7 +106,7 @@ Esses avisos não impediram o build. Otimização de chunking pode permanecer em
 
 ## 3. Homologações visuais e de compatibilidade
 
-No head documental final `522a2eb48b4f4c3becb95367122cc0723abac2b3`:
+No head documental `522a2eb48b4f4c3becb95367122cc0723abac2b3`:
 
 - GIS visual homologation — run `34045248017` (#586): **GREEN**;
 - NEO external compatibility — run `34045248006` (#523): **GREEN**;
@@ -149,4 +151,4 @@ Este relatório **não autoriza**:
 - remoção de checkpoints;
 - limpeza destrutiva de dados ou artefatos.
 
-Qualquer novo commit posterior deve repetir os gates automáticos antes de uma decisão de integração.
+O estado corrente do branch deve ser lido no PR #44 e nos workflows associados ao seu head atual.
