@@ -16,6 +16,7 @@ export type IncidentFormWorkspaceProps = {
   state: IncidentFormState;
   submissionId?: number;
   initialAnswers?: FormAnswers;
+  canFill?: boolean;
   canCorrect?: boolean;
   onStart(input: StartInput): Promise<unknown>;
   onSubmit(input: SubmitInput): Promise<unknown>;
@@ -41,9 +42,10 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const canFill = props.canFill ?? true;
   const canCorrect = props.canCorrect ?? true;
 
-  const editable = state === "in_progress" || (canCorrect && correctionMode);
+  const editable = (canFill && state === "in_progress") || (canCorrect && correctionMode);
   const operationalContext = { formId: props.formId, formVersionId: props.formVersionId, contextType: "incident" as const, contextId: props.incidentId };
 
   async function run(operation: () => Promise<void>) {
@@ -59,11 +61,13 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
   }
 
   const start = () => run(async () => {
+    if (!canFill) throw new Error("Seu perfil não possui permissão para preencher formulários.");
     await props.onStart(operationalContext);
     setState("in_progress");
   });
 
   const submit = () => run(async () => {
+    if (!canFill) throw new Error("Seu perfil não possui permissão para preencher formulários.");
     await props.onSubmit({ ...operationalContext, answers });
     setState("submitted");
   });
@@ -114,8 +118,8 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {state === "not_started" && <button type="button" disabled={busy} onClick={() => void start()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Iniciar preenchimento</button>}
-        {state === "in_progress" && <button type="button" disabled={busy} onClick={() => void submit()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Enviar formulário</button>}
+        {canFill && state === "not_started" && <button type="button" disabled={busy} onClick={() => void start()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Iniciar preenchimento</button>}
+        {canFill && state === "in_progress" && <button type="button" disabled={busy} onClick={() => void submit()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Enviar formulário</button>}
         {canCorrect && (state === "submitted" || state === "corrected") && !correctionMode && <button type="button" disabled={busy || !props.submissionId} onClick={() => setCorrectionMode(true)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Corrigir resposta</button>}
         {canCorrect && correctionMode && <>
           <button type="button" disabled={busy} onClick={correct} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Salvar correção</button>
