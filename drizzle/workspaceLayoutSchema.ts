@@ -1,5 +1,5 @@
 import { index, int, json, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
-import type { WorkspaceLayout } from "../shared/workspaceLayout";
+import type { WorkspaceLayout, WorkspaceLayoutV2 } from "../shared/workspaceLayout";
 
 export const workspaceLayouts = mysqlTable(
   "workspace_layouts",
@@ -9,7 +9,7 @@ export const workspaceLayouts = mysqlTable(
     userId: int("user_id").notNull(),
     name: varchar("name", { length: 80 }).notNull(),
     layoutVersion: int("layout_version").notNull().default(1),
-    layoutJson: json("layout_json").$type<WorkspaceLayout>().notNull(),
+    layoutJson: json("layout_json").$type<WorkspaceLayout | WorkspaceLayoutV2>().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   },
