@@ -1,4 +1,4 @@
-import type { FormAnswers } from "../../shared/forms";
+import { validateFormAnswers, type FormAnswers } from "../../shared/forms";
 import { assertDraftVersionEditable } from "./formDomain";
 import { buildFormDomainEvent, type FormDomainEvent } from "./formEvents";
 
@@ -41,7 +41,19 @@ export function createFormService(tenantId: number, ports: FormServicePorts) {
   }
 
   async function submitForm(input: { formId: number; formVersionId: number; actorUserId: number; answers: FormAnswers; now: Date }) {
-    const created = await ports.repository.createSubmission({ formId: input.formId, formVersionId: input.formVersionId, createdByUserId: input.actorUserId, answers: input.answers });
+    const version = await ports.repository.getVersion(input.formVersionId);
+    if (!version) throw new Error("Versão do formulário não encontrada.");
+    if (version.tenantId !== tenantId) throw new Error("Versão pertence a outro tenant.");
+    if (version.formId !== input.formId) throw new Error("Versão não pertence ao formulário informado.");
+    if (version.status !== "published") throw new Error("Somente versões publicadas podem receber submissões.");
+
+    const validation = validateFormAnswers(version.definition, input.answers);
+    if (!validation.success) {
+      const details = validation.issues.map(issue => issue.message).join("; ");
+      throw new Error(`Respostas inválidas do formulário: ${details}`);
+    }
+
+    const created = await ports.repository.createSubmission({ formId: input.formId, formVersionId: input.formVersionId, createdByUserId: input.actorUserId, answers: validation.data });
     const submissionId = String(created?.id ?? "unknown");
     await ports.audit.append({ tenantId, resourceType: "form_submission", resourceId: submissionId, action: "submit", actorUserId: input.actorUserId, occurredAt: input.now, after: { formId: input.formId, formVersionId: input.formVersionId } });
     await ports.events.append(buildFormDomainEvent({ eventType: "submission.submitted", tenantId, aggregateType: "submission", aggregateId: submissionId, occurredAt: input.now, actorUserId: input.actorUserId, payload: { formId: input.formId, formVersionId: input.formVersionId } }));
