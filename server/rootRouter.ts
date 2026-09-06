@@ -1,6 +1,8 @@
 import { mergeRouters, router } from "./_core/trpc";
 import { createDispatchRouter } from "./dispatchRouter";
 import { dispatchRouterDependencies } from "./dispatchRuntime";
+import { createFormsTrpcRouter } from "./forms/formsTrpcRouter";
+import { formsRuntimeContextFactory } from "./forms/formsRuntimeContext";
 import { appRouter } from "./routers";
 import { createWorkShiftSchedulesRouter } from "./workShiftSchedulesRouter";
 import { workShiftSchedulesRouterDependencies } from "./workShiftSchedulesRuntime";
@@ -19,5 +21,9 @@ const workShiftOperationsRoot = router({
   workShiftOperations: createWorkShiftOperationsRouter(workShiftOperationsRouterDependencies),
 });
 
-export const rootRouter = mergeRouters(appRouter, workShiftSchedulesRoot, dispatchRoot, workShiftOperationsRoot);
+const formsRoot = router({
+  forms: createFormsTrpcRouter(formsRuntimeContextFactory),
+});
+
+export const rootRouter = mergeRouters(appRouter, workShiftSchedulesRoot, dispatchRoot, workShiftOperationsRoot, formsRoot);
 export type RootRouter = typeof rootRouter;

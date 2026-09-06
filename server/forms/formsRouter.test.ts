@@ -1,0 +1,161 @@
+import { describe, expect, it, vi } from "vitest";
+import { createFormsApi } from "./formsRouter";
+
+function context() {
+  return {
+    tenantId: 7,
+    userId: 42,
+    hasPermission: vi.fn(() => true),
+    assertIncidentScope: vi.fn(async () => undefined),
+    assertFieldActivityScope: vi.fn(async () => undefined),
+    assertSubmissionScope: vi.fn(async () => undefined),
+    service: {
+      list: vi.fn(async () => []),
+      get: vi.fn(async input => input),
+      createDraft: vi.fn(async input => input),
+      createNewVersion: vi.fn(async input => input),
+      updateDraft: vi.fn(async input => input),
+      publishFormVersion: vi.fn(async input => input),
+      disableForm: vi.fn(async input => input),
+      bindForm: vi.fn(async input => input),
+      startSubmission: vi.fn(async input => input),
+      submitForm: vi.fn(async input => input),
+      correctSubmission: vi.fn(async input => input),
+      forIncident: vi.fn(async input => input),
+      uploadAttachment: vi.fn(async input => input),
+    },
+  };
+}
+
+describe("D-008 forms API", () => {
+  it("expõe superfície segura esperada", () => {
+    const api = createFormsApi(context());
+    expect(Object.keys(api)).toEqual(expect.arrayContaining([
+      "capabilities", "list", "get", "createDraft", "createNewVersion", "updateDraft",
+      "publish", "disable", "bind", "startSubmission", "submit", "correct", "forIncident", "uploadAttachment",
+    ]));
+  });
+
+  it("remove tenant informado pelo cliente e injeta tenant/ator autenticados", async () => {
+    const ctx = context();
+    await createFormsApi(ctx).submit({ tenantId: 999, formId: 3, formVersionId: 5, answers: {} });
+    expect(ctx.service.submitForm).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 7, actorUserId: 42, formId: 3 }));
+    expect(ctx.service.submitForm).not.toHaveBeenCalledWith(expect.objectContaining({ tenantId: 999 }));
+  });
+
+  it("valida escopo da ocorrência antes de consultar ou preencher formulário", async () => {
+    const ctx = context();
+    const api = createFormsApi(ctx);
+    await api.forIncident({ incidentId: "88" });
+    await api.startSubmission({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88" });
+    await api.submit({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88", answers: {} });
+    expect(ctx.assertIncidentScope).toHaveBeenCalledTimes(3);
+    expect(ctx.assertIncidentScope).toHaveBeenNthCalledWith(1, "88");
+    expect(ctx.assertIncidentScope).toHaveBeenNthCalledWith(2, "88");
+    expect(ctx.assertIncidentScope).toHaveBeenNthCalledWith(3, "88");
+  });
+
+  it("valida escopo da atividade de campo antes de vincular, iniciar ou enviar", async () => {
+    const ctx = context();
+    const api = createFormsApi(ctx);
+    await api.bind({ formId: 3, formVersionId: 5, contextType: "field_activity", contextId: "41" });
+    await api.startSubmission({ formId: 3, formVersionId: 5, contextType: "field_activity", contextId: "41" });
+    await api.submit({ formId: 3, formVersionId: 5, contextType: "field_activity", contextId: "41", answers: {} });
+    expect(ctx.assertFieldActivityScope).toHaveBeenCalledTimes(3);
+    expect(ctx.assertFieldActivityScope).toHaveBeenNthCalledWith(1, "41");
+    expect(ctx.assertFieldActivityScope).toHaveBeenNthCalledWith(2, "41");
+    expect(ctx.assertFieldActivityScope).toHaveBeenNthCalledWith(3, "41");
+  });
+
+  it("valida escopo da submissão antes de anexar evidência", async () => {
+    const ctx = context();
+    await createFormsApi(ctx).uploadAttachment({ submissionId: 21, fieldKey: "foto", kind: "image" });
+    expect(ctx.assertSubmissionScope).toHaveBeenCalledWith(21);
+    expect(ctx.service.uploadAttachment).toHaveBeenCalled();
+  });
+
+  it("não toca no storage/service quando escopo da submissão é negado", async () => {
+    const ctx = context();
+    ctx.assertSubmissionScope = vi.fn(async () => { throw new Error("fora do escopo"); });
+    await expect(createFormsApi(ctx).uploadAttachment({ submissionId: 21 })).rejects.toThrow(/escopo/);
+    expect(ctx.service.uploadAttachment).not.toHaveBeenCalled();
+  });
+
+  it("valida escopo da submissão antes de corrigir resposta", async () => {
+    const ctx = context();
+    await createFormsApi(ctx).correct({ submissionId: 21, answers: {}, reason: "ajuste" });
+    expect(ctx.assertSubmissionScope).toHaveBeenCalledWith(21);
+    expect(ctx.service.correctSubmission).toHaveBeenCalled();
+  });
+
+  it("não corrige quando o escopo da submissão é negado", async () => {
+    const ctx = context();
+    ctx.assertSubmissionScope = vi.fn(async () => { throw new Error("fora do escopo"); });
+    await expect(createFormsApi(ctx).correct({ submissionId: 21, answers: {}, reason: "ajuste" })).rejects.toThrow(/escopo/);
+    expect(ctx.service.correctSubmission).not.toHaveBeenCalled();
+  });
+
+  it("permite ao agente com forms.fill consultar formulários da ocorrência no próprio escopo", async () => {
+    const ctx = context();
+    ctx.hasPermission = vi.fn(async permission => permission === "forms.fill") as any;
+    await createFormsApi(ctx).forIncident({ incidentId: "88" });
+    expect(ctx.assertIncidentScope).toHaveBeenCalledWith("88");
+    expect(ctx.service.forIncident).toHaveBeenCalled();
+  });
+
+  it("nega consulta quando usuário não tem forms.responses.view nem forms.fill", async () => {
+    const ctx = context();
+    ctx.hasPermission = vi.fn(async () => false) as any;
+    await expect(createFormsApi(ctx).forIncident({ incidentId: "88" })).rejects.toThrow(/forms\.responses\.view|forms\.fill/);
+    expect(ctx.assertIncidentScope).not.toHaveBeenCalled();
+    expect(ctx.service.forIncident).not.toHaveBeenCalled();
+  });
+
+  it("não consulta service quando escopo da ocorrência é negado", async () => {
+    const ctx = context();
+    ctx.assertIncidentScope = vi.fn(async () => { throw new Error("fora do escopo"); });
+    await expect(createFormsApi(ctx).forIncident({ incidentId: "88" })).rejects.toThrow(/escopo/);
+    expect(ctx.service.forIncident).not.toHaveBeenCalled();
+  });
+
+  it("mapeia versionamento, publicação e operação aos métodos reais do service", async () => {
+    const ctx = context();
+    const api = createFormsApi(ctx);
+    await api.createNewVersion({ sourceVersionId: 5 });
+    await api.publish({ versionId: 5 });
+    await api.bind({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88" });
+    await api.startSubmission({ formId: 3, formVersionId: 5 });
+    await api.submit({ formId: 3, formVersionId: 5, answers: {} });
+    await api.correct({ submissionId: 21, answers: {}, reason: "ajuste" });
+    expect(ctx.service.createNewVersion).toHaveBeenCalledWith(expect.objectContaining({ sourceVersionId: 5, tenantId: 7, actorUserId: 42 }));
+    expect(ctx.service.publishFormVersion).toHaveBeenCalled();
+    expect(ctx.service.bindForm).toHaveBeenCalledWith(expect.objectContaining({ formVersionId: 5 }));
+    expect(ctx.service.startSubmission).toHaveBeenCalled();
+    expect(ctx.service.submitForm).toHaveBeenCalled();
+    expect(ctx.service.correctSubmission).toHaveBeenCalled();
+  });
+
+  it("nega permissão assíncrona false antes de tocar no service", async () => {
+    const ctx = context();
+    ctx.hasPermission = vi.fn(async () => false) as any;
+    await expect(createFormsApi(ctx).startSubmission({ formId: 3, formVersionId: 5 })).rejects.toThrow(/forms\.fill/);
+    expect(ctx.service.startSubmission).not.toHaveBeenCalled();
+  });
+
+  it("usa permissões distintas para versão, publicação e correção", async () => {
+    const ctx = context();
+    const api = createFormsApi(ctx);
+    await api.createNewVersion({ sourceVersionId: 5 });
+    await api.publish({ versionId: 5 });
+    await api.correct({ submissionId: 9, answers: {}, reason: "ajuste" });
+    expect(ctx.hasPermission).toHaveBeenCalledWith("forms.edit");
+    expect(ctx.hasPermission).toHaveBeenCalledWith("forms.publish");
+    expect(ctx.hasPermission).toHaveBeenCalledWith("forms.responses.correct");
+  });
+
+  it("falha fechado se o método de service não existir", async () => {
+    const ctx = context();
+    delete (ctx.service as any).uploadAttachment;
+    await expect(createFormsApi(ctx).uploadAttachment({ submissionId: 21 })).rejects.toThrow(/indisponível/i);
+  });
+});
