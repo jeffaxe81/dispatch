@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `69d8fb2f6d29d08e4640e4fef8a28fe5348d6f9e`  
+**Head documentado:** `b6cad13026a2d79a42e8b070dbd3137c21ee4c35`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -36,10 +36,12 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - Migration `drizzle/0006_d008_no_code_forms.sql` criada e registrada no journal.
 - A migration **não foi aplicada em banco real**.
 - Anexos armazenam metadados/hash e referência de storage; binários não são gravados no JSON de respostas.
+- O nome do anexo só entra nas respostas após upload bem-sucedido; falha de storage não confirma referência inexistente no JSON.
 
 ### Segurança e governança
 
 - Tenant é resolvido no servidor e não pode ser aceito do cliente no tRPC D-008.
+- O repository remove `tenantId` não confiável de todas as escritas genéricas e reinjeta exclusivamente o tenant da instância tenant-bound.
 - Schemas tRPC de submissão são estritos e validam o par `contextType/contextId`.
 - Contextos operacionais aceitos nesta entrega: `incident_category`, `incident`, `field_activity`.
 - Consulta/preenchimento de ocorrência reaplica escopo operacional.
