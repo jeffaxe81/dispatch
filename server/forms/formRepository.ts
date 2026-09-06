@@ -1,6 +1,7 @@
 import type { FormAnswers, FormSchemaDefinition } from "../../shared/forms";
 import { assertFormTenantScope } from "./formAccess";
 
+export type FormBindingContextType = "occurrence" | "field_order" | "field_activity";
 export type FormTemplateSnapshot = { id: number; tenantId: number; status: "draft" | "published" | "inactive" };
 export type FormVersionSnapshot = { id: number; tenantId: number; formId: number; version: number; status: "draft" | "published" | "superseded"; definition?: FormSchemaDefinition };
 
@@ -12,9 +13,10 @@ export type FormRepositoryAdapter = {
   createDraft(input: { tenantId: number; code: string; name: string; createdByUserId: number }): Promise<unknown>;
   saveDraft(input: { tenantId: number; versionId: number; definition: FormSchemaDefinition; actorUserId: number }): Promise<unknown>;
   publishVersion(input: { tenantId: number; versionId: number; actorUserId: number; publishedAt: Date }): Promise<unknown>;
+  createBinding(input: { tenantId: number; formId: number; formVersionId: number; contextType: FormBindingContextType; contextId: string; responsibleUserId?: number; teamId?: number; createdByUserId: number }): Promise<unknown>;
   createSubmission(input: { tenantId: number; formId: number; formVersionId: number; createdByUserId: number; answers: FormAnswers }): Promise<unknown>;
   appendRevision(input: { tenantId: number; submissionId: number; revision: number; answers: FormAnswers; reason: string; actorUserId: number }): Promise<unknown>;
-  listBindings(input: { tenantId: number; contextType?: string; contextId?: string }): Promise<unknown[]>;
+  listBindings(input: { tenantId: number; contextType?: FormBindingContextType; contextId?: string }): Promise<unknown[]>;
   listSubmissionsForIncident(input: { tenantId: number; incidentId: string }): Promise<unknown[]>;
 };
 
@@ -51,13 +53,16 @@ export function createFormRepository(tenantId: number, adapter: FormRepositoryAd
     publishVersion(input: { versionId: number; actorUserId: number; publishedAt: Date }) {
       return adapter.publishVersion({ tenantId, ...input });
     },
+    createBinding(input: { formId: number; formVersionId: number; contextType: FormBindingContextType; contextId: string; responsibleUserId?: number; teamId?: number; createdByUserId: number }) {
+      return adapter.createBinding({ tenantId, ...input });
+    },
     createSubmission(input: { formId: number; formVersionId: number; createdByUserId: number; answers: FormAnswers }) {
       return adapter.createSubmission({ tenantId, ...input });
     },
     appendRevision(input: { submissionId: number; revision: number; answers: FormAnswers; reason: string; actorUserId: number }) {
       return adapter.appendRevision({ tenantId, ...input });
     },
-    listBindings(input: { contextType?: string; contextId?: string } = {}) {
+    listBindings(input: { contextType?: FormBindingContextType; contextId?: string } = {}) {
       return adapter.listBindings({ tenantId, ...input });
     },
     listSubmissionsForIncident(incidentId: string) {
