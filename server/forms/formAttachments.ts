@@ -7,7 +7,8 @@ export type FormAttachmentKind = "image" | "file" | "simple_signature";
 export type FormAttachmentInput = { tenantId: number; submissionId: number; revisionId?: number | null; fieldKey: string; kind: FormAttachmentKind; fileName: string; mimeType: string; bytes: Buffer };
 export type MalwareScanResult = { status: "clean" | "blocked" | "not_configured"; engine?: string };
 export type MalwareScanner = { scan(input: { bytes: Buffer; fileName: string; mimeType: string }): Promise<MalwareScanResult> };
-export type AttachmentStorage = { storagePut(key: string, bytes: Buffer, mimeType: string): Promise<unknown> };
+export type StoredObject = { key: string; url?: string };
+export type AttachmentStorage = { storagePut(key: string, bytes: Buffer, mimeType: string): Promise<StoredObject> };
 
 function safeFileName(name: string) { return name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-120) || "attachment"; }
 
@@ -25,6 +26,7 @@ export async function storeFormAttachment(input: FormAttachmentInput, ports: Att
   const prepared = prepareFormAttachment(input);
   const malwareScan = ports.malwareScanner ? await ports.malwareScanner.scan({ bytes: input.bytes, fileName: input.fileName, mimeType: input.mimeType }) : { status: "not_configured" as const };
   if (malwareScan.status === "blocked") throw new Error("Anexo bloqueado pela verificação antimalware.");
-  await ports.storagePut(prepared.storageKey, input.bytes, input.mimeType);
-  return { storageKey: prepared.storageKey, sha256: prepared.sha256, sizeBytes: prepared.sizeBytes, mimeType: input.mimeType, fileName: input.fileName, kind: input.kind, malwareScan };
+  const stored = await ports.storagePut(prepared.storageKey, input.bytes, input.mimeType);
+  if (!stored?.key?.trim()) throw new Error("Storage não retornou a chave persistida do anexo.");
+  return { storageKey: stored.key, sha256: prepared.sha256, sizeBytes: prepared.sizeBytes, mimeType: input.mimeType, fileName: input.fileName, kind: input.kind, malwareScan };
 }
