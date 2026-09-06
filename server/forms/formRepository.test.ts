@@ -40,4 +40,28 @@ describe("D-008 repository tenant boundary", () => {
     await repo.createSubmission({ formId: 1, formVersionId: 2, createdByUserId: 3, answers: {} });
     expect(raw.createSubmission).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77 }));
   });
+
+  it("cria binding tenant-aware preservando contexto e versão publicada", async () => {
+    const raw = adapter();
+    const createBinding = vi.fn(async (input: unknown) => ({ id: 10, ...(input as object) }));
+    (raw as FormRepositoryAdapter & { createBinding: typeof createBinding }).createBinding = createBinding;
+    const repo = createFormRepository(77, raw);
+
+    await (repo as typeof repo & { createBinding(input: { formId: number; formVersionId: number; contextType: "occurrence"; contextId: string; createdByUserId: number }): Promise<unknown> }).createBinding({
+      formId: 3,
+      formVersionId: 5,
+      contextType: "occurrence",
+      contextId: "INC-42",
+      createdByUserId: 9,
+    });
+
+    expect(createBinding).toHaveBeenCalledWith({
+      tenantId: 77,
+      formId: 3,
+      formVersionId: 5,
+      contextType: "occurrence",
+      contextId: "INC-42",
+      createdByUserId: 9,
+    });
+  });
 });
