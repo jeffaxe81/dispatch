@@ -1,16 +1,16 @@
-CREATE TABLE `forms` (
+CREATE TABLE `form_templates` (
   `id` int AUTO_INCREMENT NOT NULL,
   `tenant_id` int NOT NULL,
   `code` varchar(120) NOT NULL,
   `name` varchar(240) NOT NULL,
   `description` text,
-  `status` enum('draft','published','inactive') NOT NULL DEFAULT 'draft',
+  `status` enum('draft','active','disabled') NOT NULL DEFAULT 'draft',
   `organizational_unit_id` int,
   `created_by_user_id` int NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT (now()),
   `updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT `forms_id` PRIMARY KEY(`id`),
-  CONSTRAINT `forms_tenant_code_unique` UNIQUE(`tenant_id`,`code`)
+  CONSTRAINT `form_templates_id` PRIMARY KEY(`id`),
+  CONSTRAINT `form_templates_tenant_code_unique` UNIQUE(`tenant_id`,`code`)
 );
 --> statement-breakpoint
 CREATE TABLE `form_versions` (
@@ -20,7 +20,7 @@ CREATE TABLE `form_versions` (
   `version` int NOT NULL,
   `definition` json NOT NULL,
   `definition_hash` varchar(64) NOT NULL,
-  `status` enum('draft','published','superseded') NOT NULL DEFAULT 'draft',
+  `status` enum('draft','published','retired') NOT NULL DEFAULT 'draft',
   `published_by_user_id` int,
   `published_at` timestamp,
   `created_by_user_id` int NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE `form_bindings` (
   `tenant_id` int NOT NULL,
   `form_id` int NOT NULL,
   `form_version_id` int NOT NULL,
-  `context_type` enum('occurrence','field_order','field_activity') NOT NULL,
+  `context_type` enum('incident_category','incident','field_activity') NOT NULL,
   `context_id` varchar(180) NOT NULL,
   `responsible_user_id` int,
   `team_id` int,
@@ -48,11 +48,11 @@ CREATE TABLE `form_submissions` (
   `tenant_id` int NOT NULL,
   `form_id` int NOT NULL,
   `form_version_id` int NOT NULL,
-  `context_type` enum('occurrence','field_order','field_activity'),
+  `context_type` enum('incident_category','incident','field_activity'),
   `context_id` varchar(180),
   `responsible_user_id` int,
   `team_id` int,
-  `status` enum('not_started','filling','submitted','corrected') NOT NULL DEFAULT 'not_started',
+  `status` enum('in_progress','submitted','corrected') NOT NULL DEFAULT 'in_progress',
   `answers` json NOT NULL,
   `location` json,
   `submitted_by_user_id` int,
@@ -84,11 +84,12 @@ CREATE TABLE `form_attachments` (
   `submission_id` int NOT NULL,
   `revision_id` int,
   `field_key` varchar(120) NOT NULL,
+  `kind` enum('image','file','simple_signature') NOT NULL,
   `storage_key` varchar(512) NOT NULL,
   `file_name` varchar(255) NOT NULL,
   `mime_type` varchar(160) NOT NULL,
   `size_bytes` bigint NOT NULL,
-  `sha256` varchar(64),
+  `sha256` varchar(64) NOT NULL,
   `created_by_user_id` int NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT (now()),
   CONSTRAINT `form_attachments_id` PRIMARY KEY(`id`)
@@ -115,23 +116,23 @@ CREATE TABLE `form_domain_events` (
   CONSTRAINT `form_domain_events_event_id_unique` UNIQUE(`event_id`)
 );
 --> statement-breakpoint
-ALTER TABLE `forms` ADD CONSTRAINT `forms_tenant_id_organizations_id_fk` FOREIGN KEY (`tenant_id`) REFERENCES `organizations`(`id`) ON DELETE no action ON UPDATE no action;
+ALTER TABLE `form_templates` ADD CONSTRAINT `form_templates_tenant_id_organizations_id_fk` FOREIGN KEY (`tenant_id`) REFERENCES `organizations`(`id`) ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE `forms` ADD CONSTRAINT `forms_created_by_user_id_users_id_fk` FOREIGN KEY (`created_by_user_id`) REFERENCES `users`(`id`) ON DELETE no action ON UPDATE no action;
+ALTER TABLE `form_templates` ADD CONSTRAINT `form_templates_created_by_user_id_users_id_fk` FOREIGN KEY (`created_by_user_id`) REFERENCES `users`(`id`) ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE `form_versions` ADD CONSTRAINT `form_versions_tenant_id_organizations_id_fk` FOREIGN KEY (`tenant_id`) REFERENCES `organizations`(`id`) ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE `form_versions` ADD CONSTRAINT `form_versions_form_id_forms_id_fk` FOREIGN KEY (`form_id`) REFERENCES `forms`(`id`) ON DELETE restrict ON UPDATE no action;
+ALTER TABLE `form_versions` ADD CONSTRAINT `form_versions_form_id_form_templates_id_fk` FOREIGN KEY (`form_id`) REFERENCES `form_templates`(`id`) ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE `form_bindings` ADD CONSTRAINT `form_bindings_tenant_id_organizations_id_fk` FOREIGN KEY (`tenant_id`) REFERENCES `organizations`(`id`) ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE `form_bindings` ADD CONSTRAINT `form_bindings_form_id_forms_id_fk` FOREIGN KEY (`form_id`) REFERENCES `forms`(`id`) ON DELETE restrict ON UPDATE no action;
+ALTER TABLE `form_bindings` ADD CONSTRAINT `form_bindings_form_id_form_templates_id_fk` FOREIGN KEY (`form_id`) REFERENCES `form_templates`(`id`) ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE `form_bindings` ADD CONSTRAINT `form_bindings_form_version_id_form_versions_id_fk` FOREIGN KEY (`form_version_id`) REFERENCES `form_versions`(`id`) ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE `form_submissions` ADD CONSTRAINT `form_submissions_tenant_id_organizations_id_fk` FOREIGN KEY (`tenant_id`) REFERENCES `organizations`(`id`) ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE `form_submissions` ADD CONSTRAINT `form_submissions_form_id_forms_id_fk` FOREIGN KEY (`form_id`) REFERENCES `forms`(`id`) ON DELETE restrict ON UPDATE no action;
+ALTER TABLE `form_submissions` ADD CONSTRAINT `form_submissions_form_id_form_templates_id_fk` FOREIGN KEY (`form_id`) REFERENCES `form_templates`(`id`) ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE `form_submissions` ADD CONSTRAINT `form_submissions_form_version_id_form_versions_id_fk` FOREIGN KEY (`form_version_id`) REFERENCES `form_versions`(`id`) ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
@@ -145,7 +146,7 @@ ALTER TABLE `form_domain_events` ADD CONSTRAINT `form_domain_events_tenant_id_or
 --> statement-breakpoint
 ALTER TABLE `form_domain_events` ADD CONSTRAINT `form_domain_events_actor_user_id_users_id_fk` FOREIGN KEY (`actor_user_id`) REFERENCES `users`(`id`) ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-CREATE INDEX `forms_tenant_status_idx` ON `forms` (`tenant_id`,`status`);
+CREATE INDEX `form_templates_tenant_status_idx` ON `form_templates` (`tenant_id`,`status`);
 --> statement-breakpoint
 CREATE INDEX `form_versions_tenant_form_status_idx` ON `form_versions` (`tenant_id`,`form_id`,`status`);
 --> statement-breakpoint
