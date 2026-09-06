@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `b2610ef3ddbfdf7b71bda3d4d01e0a043f026ef0`  
+**Head documentado:** `a0473f046d2c070731580009a136f97421de591f`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -19,7 +19,7 @@ pnpm build
 
 | Gate | Estado | Evidência |
 | --- | --- | --- |
-| `pnpm security:check` | PENDENTE | sem runner/CI associado ao head atual; verificador ampliado para D-008 |
+| `pnpm security:check` | PENDENTE | sem runner/CI associado ao head atual; verificador ampliado para 17 invariantes/correções, incluindo limite Base64 e correção atômica D-008 |
 | `pnpm check` | PENDENTE | sem runner/CI associado ao head atual |
 | `pnpm test` | PENDENTE | sem runner/CI associado ao head atual |
 | `pnpm build` | PENDENTE | sem runner/CI associado ao head atual |
@@ -51,13 +51,14 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - Contextos operacionais aceitos nesta entrega: `incident_category`, `incident`, `field_activity`.
 - Consulta/preenchimento de ocorrência reaplica escopo operacional.
 - Upload de anexo exige `forms.fill`, valida tenant da submissão e reaplica escopo da ocorrência/equipe a partir da submissão resolvida no servidor.
+- O payload Base64 é limitado no schema tRPC antes da decodificação, com teto equivalente ao limite de 8 MiB do anexo.
 - Storage persiste a chave efetivamente retornada pelo backend de armazenamento e falha fechado se ela não existir.
 - Correção exige justificativa e cria revisão auditável.
 - A UI usa `forms.capabilities`, calculado pelo mesmo avaliador de autorização do backend; falha da consulta mantém ações de escrita ocultas.
 - Capabilities administrativas incluem `canCreate`, `canEdit`, `canPublish`, `canDisable` e permanecem somente informativas: não concedem privilégios.
 - Campos calculados simples são server-authoritative: valores enviados pelo cliente são descartados e rematerializados a partir da chave de origem antes de validação/persistência.
 - Referências de campos calculados são validadas no schema canônico: autorreferência e chave inexistente são rejeitadas antes de publicação/uso operacional.
-- `security-regression-check.mjs` protege invariantes D-008 de contexto tRPC, escopo de submissão, chave real do storage e registro do namespace `forms`.
+- `security-regression-check.mjs` protege 17 invariantes/correções, incluindo contexto tRPC, limite Base64 pré-decodificação, escopo de submissão, chave real do storage, atomicidade/hashes de correção e registro do namespace `forms`.
 - Nenhum grant produtivo ou alteração automática de papéis dinâmicos foi aplicado.
 
 ### Administração / Designer
