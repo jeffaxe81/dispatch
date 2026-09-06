@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { WorkspaceLayoutV2, WorkspaceScreen } from "@shared/workspaceLayout";
 import { workspaceLayoutV2Schema } from "@shared/workspaceLayout";
 import { WorkspaceCanvas } from "../WorkspaceCanvas";
@@ -22,6 +22,12 @@ function cloneLayout(layout: WorkspaceLayoutV2): WorkspaceLayoutV2 {
   };
 }
 
+function nextScreenId(layout: WorkspaceLayoutV2): string {
+  let index = layout.screens.length + 1;
+  while (layout.screens.some(screen => screen.screenId === `screen-${index}`)) index += 1;
+  return `screen-${index}`;
+}
+
 export function addScreen(
   layout: WorkspaceLayoutV2,
   input: { screenId: string; name: string },
@@ -31,13 +37,12 @@ export function addScreen(
   if (!screenId || !name) throw new Error("WORKSPACE_SCREEN_INVALID");
   if (layout.screens.some(screen => screen.screenId === screenId)) throw new Error("WORKSPACE_SCREEN_DUPLICATE");
 
-  return validate({
-    ...cloneLayout(layout),
-    screens: normalizeOrders([
-      ...cloneLayout(layout).screens,
-      { screenId, name, order: layout.screens.length, mode: "external", widgets: [] },
-    ]),
-  });
+  const next = cloneLayout(layout);
+  next.screens = normalizeOrders([
+    ...next.screens,
+    { screenId, name, order: next.screens.length, mode: "external", widgets: [] },
+  ]);
+  return validate(next);
 }
 
 export function renameScreen(layout: WorkspaceLayoutV2, screenId: string, name: string): WorkspaceLayoutV2 {
@@ -149,21 +154,84 @@ export function WorkspaceScreensEditor({ loadedLayout, onSave, onCancel }: Works
   const [draft, setDraft] = useState<WorkspaceLayoutV2>(() => cloneLayout(loadedLayout));
   const orderedScreens = useMemo(() => [...draft.screens].sort((a, b) => a.order - b.order), [draft]);
   const [activeScreenId, setActiveScreenId] = useState(() => orderedScreens[0]?.screenId ?? "");
+  const [newScreenName, setNewScreenName] = useState("");
+  const [renameValue, setRenameValue] = useState("");
+  const [relocationTarget, setRelocationTarget] = useState("");
+  const [widgetTargets, setWidgetTargets] = useState<Record<string, string>>({});
+
+  const effectiveActiveScreenId = draft.screens.some(screen => screen.screenId === activeScreenId)
+    ? activeScreenId
+    : orderedScreens[0]?.screenId ?? "";
+  const activeScreen = draft.screens.find(screen => screen.screenId === effectiveActiveScreenId);
+  const activeIndex = orderedScreens.findIndex(screen => screen.screenId === effectiveActiveScreenId);
+  const otherScreens = orderedScreens.filter(screen => screen.screenId !== effectiveActiveScreenId);
+
+  useEffect(() => {
+    setRenameValue(activeScreen?.name ?? "");
+    setRelocationTarget("");
+  }, [activeScreen?.screenId, activeScreen?.name]);
 
   const cancel = () => {
     const restored = cloneLayout(loadedLayout);
     setDraft(restored);
     setActiveScreenId([...restored.screens].sort((a, b) => a.order - b.order)[0]?.screenId ?? "");
+    setNewScreenName("");
+    setWidgetTargets({});
     onCancel?.();
   };
 
-  const effectiveActiveScreenId = draft.screens.some(screen => screen.screenId === activeScreenId)
-    ? activeScreenId
-    : orderedScreens[0]?.screenId ?? "";
+  const createSurface = () => {
+    const name = newScreenName.trim();
+    if (!name) return;
+    const screenId = nextScreenId(draft);
+    const next = addScreen(draft, { screenId, name });
+    setDraft(next);
+    setActiveScreenId(screenId);
+    setNewScreenName("");
+  };
+
+  const renameActive = () => {
+    if (!activeScreen) return;
+    setDraft(renameScreen(draft, activeScreen.screenId, renameValue));
+  };
+
+  const makePrimary = () => {
+    if (!activeScreen) return;
+    setDraft(setPrimaryScreen(draft, activeScreen.screenId));
+  };
+
+  const shiftActive = (targetIndex: number) => {
+    if (!activeScreen) return;
+    setDraft(reorderScreen(draft, activeScreen.screenId, targetIndex));
+  };
+
+  const moveWidget = (instanceId: string) => {
+    const target = widgetTargets[instanceId];
+    if (!target) return;
+    setDraft(moveWidgetToScreen(draft, instanceId, target));
+    setWidgetTargets(current => ({ ...current, [instanceId]: "" }));
+  };
+
+  const removeActive = () => {
+    if (!activeScreen || draft.screens.length <= 1) return;
+    const next = removeScreen(
+      draft,
+      activeScreen.screenId,
+      activeScreen.widgets.length > 0 ? { relocateWidgetsToScreenId: relocationTarget } : undefined,
+    );
+    setDraft(next);
+    setActiveScreenId([...next.screens].sort((a, b) => a.order - b.order)[0]?.screenId ?? "");
+  };
+
+  const canRemove = Boolean(
+    activeScreen
+    && draft.screens.length > 1
+    && (activeScreen.widgets.length === 0 || relocationTarget),
+  );
 
   return (
     <section aria-label="Editor de superfícies do workspace" className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-950">Superfícies operacionais</h2>
           <p className="text-sm text-slate-500">As alterações ficam em rascunho até salvar.</p>
@@ -174,11 +242,103 @@ export function WorkspaceScreensEditor({ loadedLayout, onSave, onCancel }: Works
         </div>
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex min-w-64 flex-1 flex-col gap-1 text-sm font-medium text-slate-700">
+            Nome da nova superfície
+            <input
+              value={newScreenName}
+              onChange={event => setNewScreenName(event.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2"
+            />
+          </label>
+          <button type="button" onClick={createSurface} disabled={!newScreenName.trim()}>
+            Adicionar superfície
+          </button>
+        </div>
+      </div>
+
       <WorkspaceCanvas
         layout={draft}
         activeScreenId={effectiveActiveScreenId}
         onSelectScreen={setActiveScreenId}
       />
+
+      {activeScreen ? (
+        <section aria-label="Controles da superfície ativa" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-64 flex-1 flex-col gap-1 text-sm font-medium text-slate-700">
+              Nome da superfície
+              <input
+                value={renameValue}
+                onChange={event => setRenameValue(event.target.value)}
+                className="rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <button type="button" onClick={renameActive} disabled={!renameValue.trim()}>
+              Renomear superfície
+            </button>
+            <button type="button" onClick={makePrimary} disabled={activeScreen.mode === "primary"}>
+              Definir como principal
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => shiftActive(activeIndex - 1)} disabled={activeIndex <= 0}>
+              Mover para esquerda
+            </button>
+            <button type="button" onClick={() => shiftActive(activeIndex + 1)} disabled={activeIndex < 0 || activeIndex >= orderedScreens.length - 1}>
+              Mover para direita
+            </button>
+          </div>
+
+          {activeScreen.widgets.length > 0 ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-slate-900">Widgets nesta superfície</h3>
+              {activeScreen.widgets.map(widget => (
+                <div key={widget.instanceId} data-testid={`workspace-widget-editor-${widget.instanceId}`} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 p-3">
+                  <div className="min-w-44 flex-1 text-sm text-slate-700">{widget.type}</div>
+                  <label className="flex min-w-52 flex-col gap-1 text-xs font-medium text-slate-600">
+                    Mover widget
+                    <select
+                      value={widgetTargets[widget.instanceId] ?? ""}
+                      onChange={event => setWidgetTargets(current => ({ ...current, [widget.instanceId]: event.target.value }))}
+                      className="rounded-lg border border-slate-300 bg-white px-2 py-2"
+                    >
+                      <option value="">Escolha uma superfície</option>
+                      {otherScreens.map(screen => <option key={screen.screenId} value={screen.screenId}>{screen.name}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => moveWidget(widget.instanceId)} disabled={!widgetTargets[widget.instanceId]}>
+                    Mover
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {draft.screens.length > 1 ? (
+            <div className="flex flex-wrap items-end gap-2 border-t border-slate-200 pt-4">
+              {activeScreen.widgets.length > 0 ? (
+                <label className="flex min-w-64 flex-1 flex-col gap-1 text-sm font-medium text-slate-700">
+                  Realocar widgets para
+                  <select
+                    value={relocationTarget}
+                    onChange={event => setRelocationTarget(event.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2"
+                  >
+                    <option value="">Escolha uma superfície</option>
+                    {otherScreens.map(screen => <option key={screen.screenId} value={screen.screenId}>{screen.name}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              <button type="button" onClick={removeActive} disabled={!canRemove}>
+                Remover superfície
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </section>
   );
 }
