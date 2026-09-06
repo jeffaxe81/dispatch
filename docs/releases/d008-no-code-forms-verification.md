@@ -1,14 +1,17 @@
 # D-008 — Formulários Dinâmicos / No-Code — Relatório de Verificação
 
-**Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
+**Estado:** CANDIDATO TÉCNICO — GATES GREEN; MERGE/DEPLOY NÃO AUTORIZADOS  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `a0473f046d2c070731580009a136f97421de591f`  
+**Head funcional GREEN registrado:** `7be14056dc7ae264a7ff7cce5c4250bbae23bb9d`  
+**PR de homologação existente:** #44  
 **Data:** 2026-09-06
 
-## 1. Regra de aprovação
+## 1. Regra de aprovação e evidência de runtime
 
-Este documento **não** declara D-008 GREEN, aprovado para merge, deploy ou aplicação de migration. A aprovação somente poderá ocorrer após execução comprovada dos gates abaixo e revisão dos resultados.
+Este documento registra evidência real de CI para a D-008, mas **não** autoriza merge em `main`, deploy, aplicação de migration real ou grants automáticos. Esses atos permanecem sujeitos à autorização explícita do responsável pelo projeto.
+
+Os quatro gates obrigatórios foram executados no workflow `Qualidade`, run `34038330667`, job `101500393731`, contra o merge sintético do branch D-008 com a `main` atual.
 
 ```sh
 pnpm security:check
@@ -19,12 +22,19 @@ pnpm build
 
 | Gate | Estado | Evidência |
 | --- | --- | --- |
-| `pnpm security:check` | PENDENTE | sem runner/CI associado ao head atual; verificador ampliado para 17 invariantes/correções, incluindo limite Base64 e correção atômica D-008 |
-| `pnpm check` | PENDENTE | sem runner/CI associado ao head atual |
-| `pnpm test` | PENDENTE | sem runner/CI associado ao head atual |
-| `pnpm build` | PENDENTE | sem runner/CI associado ao head atual |
+| `pnpm security:check` | GREEN | `Verificação de segurança aprovada: 7 migrações e 17 correções preservadas.` |
+| `pnpm check` | GREEN | `tsc --noEmit`, exit code 0 |
+| `pnpm test` | GREEN | 158/158 arquivos; 664/664 testes; 0 falhas |
+| `pnpm build` | GREEN | Vite + esbuild concluídos com exit code 0 |
 
-Não registrar contagem de testes, warnings ou resultado GREEN até existir saída real dos comandos.
+### Warnings não bloqueantes do build
+
+- `VITE_ANALYTICS_ENDPOINT` e `VITE_ANALYTICS_WEBSITE_ID` não definidos no ambiente de CI;
+- script de analytics sem `type="module"` não é incorporado pelo bundler;
+- `LeafletOperationalMap.tsx` é importado dinamicamente e estaticamente, portanto não é movido para outro chunk;
+- aviso de chunk acima de 500 kB; maior chunk registrado em aproximadamente 1,73 MB antes de gzip.
+
+Esses avisos não impediram o build. Otimização de chunking pode permanecer em backlog sem prazo se não for requisito bloqueante de release.
 
 ## 2. Evidência estática concluída
 
@@ -87,14 +97,25 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - Envio/correção de formulário não solicita transição automática de status da ocorrência nesta release.
 - `forIncident()` hidrata submissões pelo repository para devolver revisão e respostas efetivas após correções.
 
-## 3. Gates administrativos ainda bloqueados
+## 3. Homologações visuais e de compatibilidade
 
-1. **Permissões dinâmicas `forms.*`:** o módulo já respeita assignments dinâmicos como autoridade. O mapeamento/grant produtivo para perfis como `agente_campo` não será criado automaticamente e depende de autorização explícita.
+No mesmo head funcional `7be14056dc7ae264a7ff7cce5c4250bbae23bb9d`:
+
+- GIS visual homologation — run `34038330729`: **GREEN**;
+- NEO external compatibility — run `34038330690`: **GREEN**;
+- NEO workspace visual homologation — run `34038330816`: **GREEN**.
+
+No NEO workspace, etapas autenticadas condicionais foram corretamente ignoradas quando não aplicáveis ao ambiente, enquanto classificador, pré-diagnósticos e geração de evidência visual concluíram com sucesso.
+
+## 4. Gates administrativos ainda bloqueados
+
+1. **Permissões dinâmicas `forms.*`:** o módulo respeita assignments dinâmicos como autoridade. Mapeamento/grant produtivo para perfis não será criado automaticamente e depende de autorização explícita.
 2. **Migration real:** `0006_d008_no_code_forms.sql` permanece somente como artefato versionado; aplicação em banco real depende de autorização explícita.
-3. **PR/merge:** nenhum PR de integração/merge em `main` deve ocorrer antes dos quatro gates GREEN e autorização.
+3. **PR #44 / merge:** o PR existe como superfície de homologação, porém merge em `main` não está autorizado.
 4. **Deploy:** não autorizado nesta etapa.
+5. **Checkpoints:** o checkpoint `checkpoint/pre-d008-forms-20260905` permanece preservado e não deve ser removido automaticamente.
 
-## 4. Backlog sem prazo desta entrega
+## 5. Backlog sem prazo desta entrega
 
 - modo offline completo e sincronização;
 - lógica condicional complexa;
@@ -104,8 +125,23 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - automações e workflow avançado;
 - retenção/anônimização/legal hold avançados, quando não forem requisito obrigatório;
 - módulo ICP-Brasil separado consumindo representação estável/hash do formulário finalizado;
-- revisar separadamente o padrão legado de reutilização de `mysqlEnum(...)` em schemas anteriores (por exemplo Jornada/D-007), sem alterar esses módulos dentro do escopo D-008.
+- otimização de code splitting/chunking do frontend, se não se tornar requisito bloqueante;
+- revisar separadamente o padrão legado de reutilização de `mysqlEnum(...)` em schemas anteriores, sem alterar esses módulos dentro do escopo D-008.
 
-## 5. Critério para transformar este documento em evidência final
+## 6. Diagnóstico temporário removido
 
-Após disponibilidade de runner, executar exatamente os quatro gates da seção 1 no mesmo commit candidato. Registrar neste arquivo: data/hora, commit testado, comando, exit code, contagem real dos testes, warnings relevantes, resultado do build e qualquer correção necessária. Se qualquer comando exigir correção, o head muda e todos os gates devem ser executados novamente no novo head antes de preparar o draft PR D-008 para `main`.
+Durante a depuração da suíte foi utilizado um workflow temporário de diagnóstico para capturar a saída integral dos testes. Após obtenção do GREEN completo, esse workflow foi removido do branch no commit `ba9541ee70dd003503e5fd22ea5890b23adb2b99` e não integra o candidato final.
+
+## 7. Restrições de fechamento
+
+Este relatório **não autoriza**:
+
+- merge do PR #44;
+- merge em `main`;
+- deploy;
+- aplicação de migration em banco real;
+- concessão automática de permissões;
+- remoção de checkpoints;
+- limpeza destrutiva de dados ou artefatos.
+
+Como este documento altera o head após o primeiro GREEN completo, o head documental final deve repetir os gates automáticos antes de qualquer decisão de integração.
