@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `f43034316f1a0229b58f71b2cfa05f55a270746c`  
+**Head documentado:** `362ebdbe83aae59327a9b135d4f1c9f209d940a2`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -33,6 +33,7 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - Contrato canônico de formulários em `shared/forms.ts`.
 - Persistência D-008 em exatamente sete tabelas: templates, versões, vínculos, submissões, revisões, anexos e domain events.
 - Migration `drizzle/0006_d008_no_code_forms.sql` criada e registrada no journal, **não aplicada em banco real**.
+- Schema Drizzle D-008 e migration usam os mesmos nomes físicos para colunas enum (`status`, `context_type`, `kind`, `event_type`, `aggregate_type`, `delivery_status`); o schema não reutiliza builders MySQL enum com aliases que divergem do SQL.
 - Limites tRPC foram alinhados aos limites persistentes (`contextId` 180, `fieldKey` 120, `name` 240 e `mimeType` 160).
 - Criação inicial de formulário é atômica: template e versão draft v1 são criados na mesma transação.
 - Versão draft inicial recebe `definitionHash`; salvamentos de draft atualizam definição e hash conjuntamente.
@@ -94,7 +95,8 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - criação por IA e OCR;
 - automações e workflow avançado;
 - retenção/anônimização/legal hold avançados, quando não forem requisito obrigatório;
-- módulo ICP-Brasil separado consumindo representação estável/hash do formulário finalizado.
+- módulo ICP-Brasil separado consumindo representação estável/hash do formulário finalizado;
+- revisar separadamente o padrão legado de reutilização de `mysqlEnum(...)` em schemas anteriores (por exemplo Jornada/D-007), sem alterar esses módulos dentro do escopo D-008.
 
 ## 5. Critério para transformar este documento em evidência final
 
