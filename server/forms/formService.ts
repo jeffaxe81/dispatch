@@ -11,7 +11,7 @@ export type FormServiceRepository = {
   disableForm(input: { formId: number; actorUserId: number; disabledAt: Date }): Promise<unknown>;
   createSubmission(input: { formId: number; formVersionId: number; createdByUserId: number; status: "submitted"; answers: FormAnswers }): Promise<any>;
   appendRevision(input: { submissionId: number; revision: number; answers: FormAnswers; reason: string; actorUserId: number; submissionStatus: "corrected" }): Promise<any>;
-  bindForm(input: { formId: number; contextType: "incident_category" | "incident" | "field_activity"; contextId: string; actorUserId: number }): Promise<any>;
+  bindForm(input: { formId: number; formVersionId: number; contextType: "incident_category" | "incident" | "field_activity"; contextId: string; actorUserId: number }): Promise<any>;
 };
 export type FormAuditEntry = { tenantId: number; resourceType: "form_template" | "form_version" | "form_submission"; resourceId: string; action: string; actorUserId: number; occurredAt: Date; before?: Record<string, unknown> | null; after?: Record<string, unknown> | null };
 export type FormServicePorts = { repository: FormServiceRepository; audit: { append(entry: FormAuditEntry): Promise<void> }; events: { append(event: FormDomainEvent): Promise<void> } };
@@ -51,9 +51,13 @@ export function createFormService(tenantId: number, ports: FormServicePorts) {
     await ports.audit.append({ tenantId, resourceType: "form_template", resourceId: String(form.id), action: "disable", actorUserId: input.actorUserId, occurredAt: input.now, before: { status: form.status }, after: { status: "disabled" } });
     await ports.events.append(buildFormDomainEvent({ eventType: "form.disabled", tenantId, aggregateType: "form", aggregateId: String(form.id), occurredAt: input.now, actorUserId: input.actorUserId, payload: {} })); return { formId: form.id, status: "disabled" as const };
   }
-  async function bindForm(input: { formId: number; contextType: "incident_category" | "incident" | "field_activity"; contextId: string; actorUserId: number; now: Date }) {
-    const binding = await ports.repository.bindForm({ formId: input.formId, contextType: input.contextType, contextId: input.contextId, actorUserId: input.actorUserId });
-    await ports.audit.append({ tenantId, resourceType: "form_template", resourceId: String(input.formId), action: "bind", actorUserId: input.actorUserId, occurredAt: input.now, after: { contextType: input.contextType, contextId: input.contextId } }); return { binding, incidentTransitionRequested: false as const };
+  async function bindForm(input: { formId: number; formVersionId: number; contextType: "incident_category" | "incident" | "field_activity"; contextId: string; actorUserId: number; now: Date }) {
+    const version = await ports.repository.getVersion(input.formVersionId);
+    if (!version) throw new Error("Versão do formulário não encontrada.");
+    if (version.tenantId !== tenantId || version.formId !== input.formId) throw new Error("Versão não pertence ao formulário/tenant informado.");
+    if (version.status !== "published") throw new Error("Somente versão publicada pode ser vinculada ao contexto operacional.");
+    const binding = await ports.repository.bindForm({ formId: input.formId, formVersionId: input.formVersionId, contextType: input.contextType, contextId: input.contextId, actorUserId: input.actorUserId });
+    await ports.audit.append({ tenantId, resourceType: "form_template", resourceId: String(input.formId), action: "bind", actorUserId: input.actorUserId, occurredAt: input.now, after: { formVersionId: input.formVersionId, contextType: input.contextType, contextId: input.contextId } }); return { binding, incidentTransitionRequested: false as const };
   }
   return { publishFormVersion, submitForm, correctSubmission, disableForm, bindForm };
 }
