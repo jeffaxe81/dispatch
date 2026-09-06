@@ -4,7 +4,7 @@ import { FormRenderer } from "./FormRenderer";
 import type { IncidentFormState } from "./IncidentFormsPanel";
 
 type StartInput = { formId: number; formVersionId: number; contextType: "incident"; contextId: string };
-type SubmitInput = StartInput & { answers: FormAnswers };
+type SubmitInput = StartInput & { submissionId?: number; answers: FormAnswers };
 type CorrectInput = { submissionId: number; answers: FormAnswers; reason: string };
 
 export type IncidentFormWorkspaceProps = {
@@ -35,8 +35,15 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : "Não foi possível concluir a operação do formulário.";
 }
 
+function resultSubmissionId(result: unknown) {
+  if (!result || typeof result !== "object" || !("submissionId" in result)) return null;
+  const id = Number((result as { submissionId?: unknown }).submissionId);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
   const [state, setState] = useState<IncidentFormState>(props.state);
+  const [submissionId, setSubmissionId] = useState<number | null>(props.submissionId ?? null);
   const [answers, setAnswers] = useState<FormAnswers>({ ...(props.initialAnswers ?? {}) });
   const [correctionMode, setCorrectionMode] = useState(false);
   const [reason, setReason] = useState("");
@@ -62,13 +69,18 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
 
   const start = () => run(async () => {
     if (!canFill) throw new Error("Seu perfil não possui permissão para preencher formulários.");
-    await props.onStart(operationalContext);
+    const result = await props.onStart(operationalContext);
+    const startedId = resultSubmissionId(result);
+    if (!startedId) throw new Error("O início do formulário não retornou uma submissão válida.");
+    setSubmissionId(startedId);
     setState("in_progress");
   });
 
   const submit = () => run(async () => {
     if (!canFill) throw new Error("Seu perfil não possui permissão para preencher formulários.");
-    await props.onSubmit({ ...operationalContext, answers });
+    const result = await props.onSubmit({ ...operationalContext, ...(submissionId ? { submissionId } : {}), answers });
+    const submittedId = resultSubmissionId(result);
+    if (submittedId) setSubmissionId(submittedId);
     setState("submitted");
   });
 
@@ -77,7 +89,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       setError("Seu perfil não possui permissão para corrigir respostas.");
       return;
     }
-    if (!props.submissionId) {
+    if (!submissionId) {
       setError("Submissão original não encontrada para correção.");
       return;
     }
@@ -86,7 +98,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       return;
     }
     void run(async () => {
-      await props.onCorrect({ submissionId: props.submissionId!, answers, reason: reason.trim() });
+      await props.onCorrect({ submissionId, answers, reason: reason.trim() });
       setState("corrected");
       setCorrectionMode(false);
       setReason("");
@@ -120,7 +132,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       <div className="mt-4 flex flex-wrap gap-2">
         {canFill && state === "not_started" && <button type="button" disabled={busy} onClick={() => void start()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Iniciar preenchimento</button>}
         {canFill && state === "in_progress" && <button type="button" disabled={busy} onClick={() => void submit()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Enviar formulário</button>}
-        {canCorrect && (state === "submitted" || state === "corrected") && !correctionMode && <button type="button" disabled={busy || !props.submissionId} onClick={() => setCorrectionMode(true)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Corrigir resposta</button>}
+        {canCorrect && (state === "submitted" || state === "corrected") && !correctionMode && <button type="button" disabled={busy || !submissionId} onClick={() => setCorrectionMode(true)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Corrigir resposta</button>}
         {canCorrect && correctionMode && <>
           <button type="button" disabled={busy} onClick={correct} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Salvar correção</button>
           <button type="button" disabled={busy} onClick={() => { setCorrectionMode(false); setReason(""); setError(null); }} className="rounded-md border border-slate-300 px-4 py-2 text-sm">Cancelar correção</button>
