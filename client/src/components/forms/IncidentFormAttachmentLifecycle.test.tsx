@@ -30,7 +30,7 @@ describe("D-008 operational attachment lifecycle", () => {
 
     fireEvent.change(screen.getByLabelText("Foto *"), { target: { files: [file] } });
     await waitFor(() => expect(onUploadAttachment).toHaveBeenCalledWith({ submissionId: 21, fieldKey: "photo", kind: "image", file }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /enviar formulário/i })).not.toBeDisabled());
+    await waitFor(() => expect((screen.getByRole("button", { name: /enviar formulário/i }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: /enviar formulário/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ submissionId: 21, answers: { photo: "foto.png" } })));
