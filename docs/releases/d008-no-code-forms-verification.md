@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `21b0317857f6b12e58a12ae987513a866cdbb3c6`  
+**Head documentado:** `de2829f30546535751e19141b75d050b16115ff2`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -24,7 +24,7 @@ pnpm build
 | `pnpm test` | PENDENTE | sem runner/CI associado ao head atual |
 | `pnpm build` | PENDENTE | sem runner/CI associado ao head atual |
 
-Consulta de status GitHub do head `21b0317857f6b12e58a12ae987513a866cdbb3c6`: nenhum status/check registrado. Não registrar contagem de testes, warnings ou resultado GREEN até existir saída real dos comandos.
+Não registrar contagem de testes, warnings ou resultado GREEN até existir saída real dos comandos.
 
 ## 2. Evidência estática concluída
 
@@ -53,6 +53,7 @@ Consulta de status GitHub do head `21b0317857f6b12e58a12ae987513a866cdbb3c6`: ne
 - Correção exige justificativa e cria revisão auditável.
 - A UI usa `forms.capabilities`, calculado pelo mesmo avaliador de autorização do backend; falha da consulta mantém ações de escrita ocultas.
 - Capabilities administrativas incluem `canCreate`, `canEdit`, `canPublish`, `canDisable` e permanecem somente informativas: não concedem privilégios.
+- Campos calculados simples são server-authoritative: valores enviados pelo cliente são descartados e rematerializados a partir da chave de origem antes de validação/persistência.
 - `security-regression-check.mjs` protege invariantes D-008 de contexto tRPC, escopo de submissão, chave real do storage e registro do namespace `forms`.
 - Nenhum grant produtivo ou alteração automática de papéis dinâmicos foi aplicado.
 
@@ -63,6 +64,7 @@ Consulta de status GitHub do head `21b0317857f6b12e58a12ae987513a866cdbb3c6`: ne
 - Salvar rascunho usa `forms.updateDraft`; publicar usa `forms.publish`; nova versão usa `forms.createNewVersion`.
 - Após publicação ou criação de nova versão, a página refaz a consulta e o estado interno do Designer é ressincronizado com o novo `versionId`/definition.
 - Versões diferentes de `draft` ficam em modo imutável no Designer.
+- Campo calculado novo não nasce com expressão vazia inválida; o Designer permite configurar apenas referência simples de outra chave nesta release.
 - `forms` está registrado no `rootRouter` com procedures administrativas e operacionais sem remover Dispatch ou Jornada.
 
 ### Integração operacional
