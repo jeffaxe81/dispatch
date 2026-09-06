@@ -4,7 +4,7 @@
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
 **Head funcional GREEN:** `5748265d245a36d9ba7553d18f72eed29c95eefb`  
-**Head documental GREEN verificado:** `b683a1b8444e80d5cef5bc3a7c61c2787efcae57`  
+**Head documental GREEN verificado:** `522a2eb48b4f4c3becb95367122cc0723abac2b3`  
 **PR de homologação existente:** #44  
 **Data:** 2026-09-06
 
@@ -12,7 +12,7 @@
 
 Este documento registra evidência real de CI para a D-008, mas **não** autoriza merge em `main`, deploy, aplicação de migration real ou grants automáticos. Esses atos permanecem sujeitos à autorização explícita do responsável pelo projeto.
 
-No head documental GREEN `b683a1b8444e80d5cef5bc3a7c61c2787efcae57`, os quatro gates obrigatórios foram executados no workflow `Qualidade`, run `34045111860` (#592), contra o merge sintético do branch D-008 com a `main` atual.
+No head documental GREEN `522a2eb48b4f4c3becb95367122cc0723abac2b3`, os quatro gates obrigatórios foram executados no workflow `Qualidade`, run `34045248061` (#593), contra o merge sintético do branch D-008 com a `main` atual.
 
 ```sh
 pnpm security:check
@@ -104,12 +104,12 @@ Esses avisos não impediram o build. Otimização de chunking pode permanecer em
 
 ## 3. Homologações visuais e de compatibilidade
 
-No head documental final `b683a1b8444e80d5cef5bc3a7c61c2787efcae57`:
+No head documental final `522a2eb48b4f4c3becb95367122cc0723abac2b3`:
 
-- GIS visual homologation — run `34045111811` (#585): **GREEN**;
-- NEO external compatibility — run `34045111847` (#522): **GREEN**;
-- NEO workspace visual homologation — run `34045111766` (#565): **GREEN**;
-- Qualidade — run `34045111860` (#592): **GREEN**.
+- GIS visual homologation — run `34045248017` (#586): **GREEN**;
+- NEO external compatibility — run `34045248006` (#523): **GREEN**;
+- NEO workspace visual homologation — run `34045248002` (#566): **GREEN**;
+- Qualidade — run `34045248061` (#593): **GREEN**.
 
 ## 4. Gates administrativos ainda bloqueados
 
