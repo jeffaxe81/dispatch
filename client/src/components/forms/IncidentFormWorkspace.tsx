@@ -16,6 +16,7 @@ export type IncidentFormWorkspaceProps = {
   state: IncidentFormState;
   submissionId?: number;
   initialAnswers?: FormAnswers;
+  canCorrect?: boolean;
   onStart(input: StartInput): Promise<unknown>;
   onSubmit(input: SubmitInput): Promise<unknown>;
   onCorrect(input: CorrectInput): Promise<unknown>;
@@ -40,8 +41,9 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const canCorrect = props.canCorrect ?? true;
 
-  const editable = state === "in_progress" || correctionMode;
+  const editable = state === "in_progress" || (canCorrect && correctionMode);
   const operationalContext = { formId: props.formId, formVersionId: props.formVersionId, contextType: "incident" as const, contextId: props.incidentId };
 
   async function run(operation: () => Promise<void>) {
@@ -67,6 +69,10 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
   });
 
   const correct = () => {
+    if (!canCorrect) {
+      setError("Seu perfil não possui permissão para corrigir respostas.");
+      return;
+    }
     if (!props.submissionId) {
       setError("Submissão original não encontrada para correção.");
       return;
@@ -100,7 +106,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
         <FormRenderer definition={props.definition} values={answers} readOnly={!editable || busy} onChange={(key, value) => setAnswers(current => ({ ...current, [key]: value }))} />
       </div>
 
-      {correctionMode && (
+      {canCorrect && correctionMode && (
         <div className="mt-4">
           <label htmlFor="form-correction-reason" className="block text-sm font-medium text-slate-700">Motivo da correção</label>
           <textarea id="form-correction-reason" value={reason} disabled={busy} onChange={event => setReason(event.target.value)} className="mt-1 min-h-20 w-full rounded-md border border-slate-300 p-2" />
@@ -110,8 +116,8 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       <div className="mt-4 flex flex-wrap gap-2">
         {state === "not_started" && <button type="button" disabled={busy} onClick={() => void start()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Iniciar preenchimento</button>}
         {state === "in_progress" && <button type="button" disabled={busy} onClick={() => void submit()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Enviar formulário</button>}
-        {(state === "submitted" || state === "corrected") && !correctionMode && <button type="button" disabled={busy || !props.submissionId} onClick={() => setCorrectionMode(true)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Corrigir resposta</button>}
-        {correctionMode && <>
+        {canCorrect && (state === "submitted" || state === "corrected") && !correctionMode && <button type="button" disabled={busy || !props.submissionId} onClick={() => setCorrectionMode(true)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Corrigir resposta</button>}
+        {canCorrect && correctionMode && <>
           <button type="button" disabled={busy} onClick={correct} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Salvar correção</button>
           <button type="button" disabled={busy} onClick={() => { setCorrectionMode(false); setReason(""); setError(null); }} className="rounded-md border border-slate-300 px-4 py-2 text-sm">Cancelar correção</button>
         </>}
