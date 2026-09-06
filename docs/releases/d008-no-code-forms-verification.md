@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `7c41b2493dd189661c5f9d7127c96560dce14077`  
+**Head documentado:** `69d8fb2f6d29d08e4640e4fef8a28fe5348d6f9e`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -19,7 +19,7 @@ pnpm build
 
 | Gate | Estado | Evidência |
 | --- | --- | --- |
-| `pnpm security:check` | PENDENTE | runner não disponível nesta sessão |
+| `pnpm security:check` | PENDENTE | runner não disponível nesta sessão; verificador ampliado para D-008 |
 | `pnpm check` | PENDENTE | runner não disponível nesta sessão |
 | `pnpm test` | PENDENTE | runner não disponível nesta sessão |
 | `pnpm build` | PENDENTE | runner não disponível nesta sessão |
@@ -47,6 +47,7 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - Storage persiste a chave efetivamente retornada pelo backend de armazenamento e falha fechado se ela não existir.
 - Correção exige justificativa e cria revisão auditável.
 - A UI usa `forms.capabilities`, calculado pelo mesmo avaliador de autorização do backend; falha da consulta mantém ações de escrita ocultas.
+- `security-regression-check.mjs` protege quatro invariantes D-008: contexto tRPC estrito, escopo de submissão antes do upload, chave real do storage e registro do namespace `forms` no root router.
 - Nenhum grant produtivo ou alteração automática de papéis dinâmicos foi aplicado.
 
 ### Integração operacional
