@@ -8,70 +8,17 @@ function adapter(): FormRepositoryAdapter {
     getVersion: vi.fn(async input => ({ id: input.id, tenantId: input.tenantId, formId: 1, version: 1, status: "retired" as const })),
     listVersions: vi.fn(async () => []),
     getSubmission: vi.fn(async input => ({ id: input.id, tenantId: input.tenantId, formId: 1, formVersionId: 2, revision: 1, status: "submitted" as const, answers: {} })),
-    createDraft: vi.fn(async input => ({ id: 1, ...input })),
-    saveDraft: vi.fn(async input => input),
-    publishVersion: vi.fn(async input => input),
-    activateForm: vi.fn(async input => input),
-    disableForm: vi.fn(async input => input),
-    createBinding: vi.fn(async input => ({ id: 10, ...input })),
-    createSubmission: vi.fn(async input => ({ id: 1, ...input })),
-    appendRevision: vi.fn(async input => ({ id: 1, ...input })),
-    createAttachment: vi.fn(async input => ({ id: 1, ...input })),
-    appendDomainEvent: vi.fn(async input => ({ id: 1, ...input })),
-    listBindings: vi.fn(async () => []),
-    listSubmissionsForIncident: vi.fn(async () => []),
+    createDraft: vi.fn(async input => ({ id: 1, ...input })), saveDraft: vi.fn(async input => input), publishVersion: vi.fn(async input => input), activateForm: vi.fn(async input => input), disableForm: vi.fn(async input => input), createBinding: vi.fn(async input => ({ id: 10, ...input })), createSubmission: vi.fn(async input => ({ id: 1, ...input })), finalizeSubmission: vi.fn(async input => ({ id: input.submissionId, ...input })), appendRevision: vi.fn(async input => ({ id: 1, ...input })), createAttachment: vi.fn(async input => ({ id: 1, ...input })), appendDomainEvent: vi.fn(async input => ({ id: 1, ...input })), listBindings: vi.fn(async () => []), listSubmissionsForIncident: vi.fn(async () => []),
   };
 }
 
 describe("D-008 repository tenant boundary", () => {
-  it("injeta tenantId em leituras e escritas", async () => {
-    const raw = adapter(); const repo = createFormRepository(77, raw);
-    await repo.getTemplate(9); await repo.createDraft({ code: "vistoria", name: "Vistoria", createdByUserId: 3 });
-    expect(raw.getTemplate).toHaveBeenCalledWith({ tenantId: 77, id: 9 });
-    expect(raw.createDraft).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77 }));
-  });
-
-  it("rejeita resultado devolvido por outro tenant", async () => {
-    const raw = adapter(); raw.getTemplate = vi.fn(async () => ({ id: 9, tenantId: 88, status: "draft" as const }));
-    await expect(createFormRepository(77, raw).getTemplate(9)).rejects.toThrow(/tenant/i);
-  });
-
-  it("usa somente os estados aprovados do ciclo de vida", async () => {
-    const raw = adapter(); const repo = createFormRepository(77, raw);
-    expect((await repo.listTemplates())[0]?.status).toBe("active");
-    expect((await repo.getVersion(2))?.status).toBe("retired");
-    expect((await repo.getSubmission(3))?.status).toBe("submitted");
-  });
-
-  it("não permite que o chamador sobrescreva tenantId e persiste status de submissão", async () => {
-    const raw = adapter(); const repo = createFormRepository(77, raw);
-    await repo.createSubmission({ formId: 1, formVersionId: 2, createdByUserId: 3, status: "submitted", answers: {} });
-    expect(raw.createSubmission).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, status: "submitted" }));
-  });
-
-  it("expõe bindForm para o service sem duplicar createBinding na API do repository", async () => {
-    const raw = adapter(); const repo = createFormRepository(77, raw);
-    await repo.bindForm({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "42", actorUserId: 9 });
-    expect(raw.createBinding).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, contextType: "incident", createdByUserId: 9 }));
-    expect("createBinding" in repo).toBe(false);
-  });
-
-  it("cobre anexos, eventos e revisões do modelo persistente", async () => {
-    const raw = adapter(); const repo = createFormRepository(77, raw);
-    await repo.createAttachment({ submissionId: 21, fieldKey: "foto", kind: "image", storageKey: "k", fileName: "a.png", mimeType: "image/png", sizeBytes: 1, sha256: "a".repeat(64), createdByUserId: 9 });
-    await repo.appendRevision({ submissionId: 21, revision: 2, answers: {}, reason: "ajuste", actorUserId: 9, submissionStatus: "corrected" });
-    await repo.appendDomainEvent({ eventId: "evt-1", eventType: "submission.submitted", aggregateType: "submission", aggregateId: "21", actorUserId: 9, payload: {}, occurredAt: new Date() });
-    expect(raw.createAttachment).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, kind: "image" }));
-    expect(raw.appendRevision).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, submissionStatus: "corrected" }));
-    expect(raw.appendDomainEvent).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, eventId: "evt-1" }));
-  });
-
-  it("ativa e desativa sem expor exclusão física de formulário", async () => {
-    const raw = adapter(); const repo = createFormRepository(77, raw);
-    await repo.activateForm({ formId: 3, actorUserId: 9, activatedAt: new Date() });
-    await repo.disableForm({ formId: 3, actorUserId: 9, disabledAt: new Date() });
-    expect(raw.activateForm).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, formId: 3 }));
-    expect(raw.disableForm).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, formId: 3 }));
-    expect("deleteForm" in repo).toBe(false);
-  });
+  it("injeta tenantId em leituras e escritas", async () => { const raw = adapter(); const repo = createFormRepository(77, raw); await repo.getTemplate(9); await repo.createDraft({ code: "vistoria", name: "Vistoria", createdByUserId: 3 }); expect(raw.getTemplate).toHaveBeenCalledWith({ tenantId: 77, id: 9 }); expect(raw.createDraft).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77 })); });
+  it("rejeita resultado devolvido por outro tenant", async () => { const raw = adapter(); raw.getTemplate = vi.fn(async () => ({ id: 9, tenantId: 88, status: "draft" as const })); await expect(createFormRepository(77, raw).getTemplate(9)).rejects.toThrow(/tenant/i); });
+  it("usa somente os estados aprovados do ciclo de vida", async () => { const raw = adapter(); const repo = createFormRepository(77, raw); expect((await repo.listTemplates())[0]?.status).toBe("active"); expect((await repo.getVersion(2))?.status).toBe("retired"); expect((await repo.getSubmission(3))?.status).toBe("submitted"); });
+  it("não permite que o chamador sobrescreva tenantId e persiste status de submissão", async () => { const raw = adapter(); const repo = createFormRepository(77, raw); await repo.createSubmission({ formId: 1, formVersionId: 2, createdByUserId: 3, status: "submitted", answers: {} }); expect(raw.createSubmission).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, status: "submitted" })); });
+  it("injeta tenant ao finalizar a mesma submissão", async () => { const raw = adapter(); const repo = createFormRepository(77, raw); const now = new Date(); await repo.finalizeSubmission({ submissionId: 21, answers: { ok: true }, submittedByUserId: 9, submittedAt: now }); expect(raw.finalizeSubmission).toHaveBeenCalledWith({ tenantId: 77, submissionId: 21, answers: { ok: true }, submittedByUserId: 9, submittedAt: now }); });
+  it("expõe bindForm para o service sem duplicar createBinding na API do repository", async () => { const raw = adapter(); const repo = createFormRepository(77, raw); await repo.bindForm({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "42", actorUserId: 9 }); expect(raw.createBinding).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, contextType: "incident", createdByUserId: 9 })); expect("createBinding" in repo).toBe(false); });
+  it("cobre anexos, eventos e revisões do modelo persistente", async () => { const raw = adapter(); const repo = createFormRepository(77, raw); await repo.createAttachment({ submissionId: 21, fieldKey: "foto", kind: "image", storageKey: "k", fileName: "a.png", mimeType: "image/png", sizeBytes: 1, sha256: "a".repeat(64), createdByUserId: 9 }); await repo.appendRevision({ submissionId: 21, revision: 2, answers: {}, reason: "ajuste", actorUserId: 9, submissionStatus: "corrected" }); await repo.appendDomainEvent({ eventId: "evt-1", eventType: "submission.submitted", aggregateType: "submission", aggregateId: "21", actorUserId: 9, payload: {}, occurredAt: new Date() }); expect(raw.createAttachment).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, kind: "image" })); expect(raw.appendRevision).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, submissionStatus: "corrected" })); expect(raw.appendDomainEvent).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, eventId: "evt-1" })); });
+  it("ativa e desativa sem expor exclusão física de formulário", async () => { const raw = adapter(); const repo = createFormRepository(77, raw); await repo.activateForm({ formId: 3, actorUserId: 9, activatedAt: new Date() }); await repo.disableForm({ formId: 3, actorUserId: 9, disabledAt: new Date() }); expect(raw.activateForm).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, formId: 3 })); expect(raw.disableForm).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, formId: 3 })); expect("deleteForm" in repo).toBe(false); });
 });
