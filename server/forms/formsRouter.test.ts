@@ -7,6 +7,7 @@ function context() {
     userId: 42,
     hasPermission: vi.fn(() => true),
     assertIncidentScope: vi.fn(async () => undefined),
+    assertFieldActivityScope: vi.fn(async () => undefined),
     assertSubmissionScope: vi.fn(async () => undefined),
     service: {
       list: vi.fn(async () => []),
@@ -52,6 +53,18 @@ describe("D-008 forms API", () => {
     expect(ctx.assertIncidentScope).toHaveBeenNthCalledWith(1, "88");
     expect(ctx.assertIncidentScope).toHaveBeenNthCalledWith(2, "88");
     expect(ctx.assertIncidentScope).toHaveBeenNthCalledWith(3, "88");
+  });
+
+  it("valida escopo da atividade de campo antes de vincular, iniciar ou enviar", async () => {
+    const ctx = context();
+    const api = createFormsApi(ctx);
+    await api.bind({ formId: 3, formVersionId: 5, contextType: "field_activity", contextId: "41" });
+    await api.startSubmission({ formId: 3, formVersionId: 5, contextType: "field_activity", contextId: "41" });
+    await api.submit({ formId: 3, formVersionId: 5, contextType: "field_activity", contextId: "41", answers: {} });
+    expect(ctx.assertFieldActivityScope).toHaveBeenCalledTimes(3);
+    expect(ctx.assertFieldActivityScope).toHaveBeenNthCalledWith(1, "41");
+    expect(ctx.assertFieldActivityScope).toHaveBeenNthCalledWith(2, "41");
+    expect(ctx.assertFieldActivityScope).toHaveBeenNthCalledWith(3, "41");
   });
 
   it("valida escopo da submissão antes de anexar evidência", async () => {
