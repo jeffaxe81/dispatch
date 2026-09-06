@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { activeSubmissionFor } from "./IncidentFormsOperationalDock";
+import { activeSubmissionFor, fileToBase64 } from "./IncidentFormsOperationalDock";
 
 describe("D-008 operational forms dock", () => {
   it("seleciona a submissão mais recente da versão vinculada", () => {
@@ -19,5 +19,10 @@ describe("D-008 operational forms dock", () => {
       { id: 20, formId: 3, formVersionId: 5, status: "in_progress" },
       { id: 22, formId: 3, formVersionId: 5, status: "submitted" },
     ])?.id).toBe(22);
+  });
+
+  it("converte arquivo em base64 puro para o contrato tRPC", async () => {
+    const file = new File(["png"], "campo.png", { type: "image/png" });
+    await expect(fileToBase64(file)).resolves.toBe("cG5n");
   });
 });
