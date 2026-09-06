@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `362ebdbe83aae59327a9b135d4f1c9f209d940a2`  
+**Head documentado:** `3fbeb07454a09c6bc19fb3cc2792586dda157397`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -39,6 +39,7 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - Versão draft inicial recebe `definitionHash`; salvamentos de draft atualizam definição e hash conjuntamente.
 - Definições são validadas pelo schema canônico em runtime antes de salvar, publicar ou derivar nova versão.
 - Versões publicadas/retiradas permanecem imutáveis; `createNewVersion` cria novo draft com próximo número, definição copiada e novo hash.
+- Correções são persistidas de forma atômica: a submissão atual é lida no tenant, `before_hash` e `after_hash` são calculados, a revisão é inserida e o snapshot da submissão é atualizado dentro da mesma transação.
 - Anexos armazenam metadados/hash e referência de storage; binários não são gravados no JSON de respostas.
 - O nome do anexo só entra nas respostas após upload bem-sucedido; falha de storage não confirma referência inexistente no JSON.
 
@@ -74,7 +75,8 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - Ocorrência e Aplicativo Agente usam o dock operacional D-008.
 - Estados visuais: Não iniciado, Em preenchimento, Enviado e Corrigido.
 - `startSubmission` seguido de `submit` preserva o mesmo `submissionId`, evitando anexos órfãos.
-- Foto/arquivo/assinatura simples usam endpoint de anexo separado do JSON de respostas.
+- Foto/arquivo usam endpoint de anexo separado do JSON de respostas.
+- Assinatura simples é capturada na própria tela por superfície de desenho, confirmada como PNG e enviada pelo mesmo fluxo de anexos.
 - Assinatura simples permanece explicitamente **não ICP-Brasil**.
 - Envio/correção de formulário não solicita transição automática de status da ocorrência nesta release.
 - `forIncident()` hidrata submissões pelo repository para devolver revisão e respostas efetivas após correções.
