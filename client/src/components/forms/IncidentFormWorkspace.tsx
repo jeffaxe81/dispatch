@@ -55,6 +55,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
   const canCorrect = props.canCorrect ?? true;
 
   const editable = (canFill && state === "in_progress") || (canCorrect && correctionMode);
+  const attachmentsReadOnly = correctionMode || state !== "in_progress";
   const operationalContext = { formId: props.formId, formVersionId: props.formVersionId, contextType: "incident" as const, contextId: props.incidentId };
 
   async function run(operation: () => Promise<void>) {
@@ -89,6 +90,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
   const uploadAttachment = (fieldKey: string, file: File, kind: FormAttachmentSelectionKind) => {
     void run(async () => {
       if (!canFill) throw new Error("Seu perfil não possui permissão para anexar evidências.");
+      if (state !== "in_progress" || correctionMode) throw new Error("Anexos só podem ser alterados durante o preenchimento inicial.");
       if (!submissionId) throw new Error("Inicie o preenchimento antes de anexar evidências.");
       if (!props.onUploadAttachment) throw new Error("Upload de anexos não está disponível neste contexto.");
       await props.onUploadAttachment({ submissionId, fieldKey, kind, file });
@@ -131,7 +133,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       {error && <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       <div className="mt-4">
-        <FormRenderer definition={props.definition} values={answers} readOnly={!editable || busy} onChange={(key, value) => setAnswers(current => ({ ...current, [key]: value }))} onAttachmentSelected={uploadAttachment} />
+        <FormRenderer definition={props.definition} values={answers} readOnly={!editable || busy} attachmentsReadOnly={attachmentsReadOnly || busy} onChange={(key, value) => setAnswers(current => ({ ...current, [key]: value }))} onAttachmentSelected={uploadAttachment} />
       </div>
 
       {canCorrect && correctionMode && (
