@@ -64,10 +64,24 @@ describe("D-008 application service", () => {
     expect(p.events.append).toHaveBeenCalledWith(expect.objectContaining({ eventType: "form.disabled" }));
   });
 
-  it("cria binding operacional auditável sem transição automática", async () => {
+  it("cria binding somente para versão publicada do mesmo formulário e tenant", async () => {
     const p = ports();
-    const result = await createFormService(7, p).bindForm({ formId: 3, contextType: "incident", contextId: "88", actorUserId: 9, now: new Date() });
-    expect(p.repository.bindForm).toHaveBeenCalledWith(expect.objectContaining({ formId: 3, contextType: "incident", contextId: "88" }));
+    p.repository.getVersion = vi.fn(async id => ({ id, tenantId: 7, formId: 3, version: 2, status: "published" as const, definition: publishedDefinition }));
+    const result = await createFormService(7, p).bindForm({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88", actorUserId: 9, now: new Date() });
+    expect(p.repository.bindForm).toHaveBeenCalledWith(expect.objectContaining({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88" }));
     expect(result.incidentTransitionRequested).toBe(false);
+  });
+
+  it("rejeita binding quando a versão não é publicada", async () => {
+    const p = ports();
+    await expect(createFormService(7, p).bindForm({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88", actorUserId: 9, now: new Date() })).rejects.toThrow(/publicada/i);
+    expect(p.repository.bindForm).not.toHaveBeenCalled();
+  });
+
+  it("rejeita binding quando versão pertence a outro formulário ou tenant", async () => {
+    const p = ports();
+    p.repository.getVersion = vi.fn(async id => ({ id, tenantId: 8, formId: 4, version: 2, status: "published" as const, definition: publishedDefinition }));
+    await expect(createFormService(7, p).bindForm({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88", actorUserId: 9, now: new Date() })).rejects.toThrow(/formulário|tenant/i);
+    expect(p.repository.bindForm).not.toHaveBeenCalled();
   });
 });
