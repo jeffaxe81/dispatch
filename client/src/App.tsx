@@ -2,8 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AdminPage from "@/pages/AdminPage";
 import AccessScopesPage from "@/pages/AccessScopesPage";
-import AgentPage from "@/pages/AgentPage";
-import IncidentDetailPage from "@/pages/IncidentDetailPage";
+import { AgentWithFormsPage, IncidentDetailWithFormsPage } from "@/pages/OperationalFormsRoutes";
 import IncidentsPage from "@/pages/IncidentsPage";
 import KanbanPage from "@/pages/KanbanPage";
 import NotFound from "@/pages/NotFound";
@@ -54,10 +53,10 @@ function Router() {
       <Route path={"/formularios"} component={() => <FieldRestrictedRoute component={FormsPage} />} />
       <Route path={"/formularios/:id"} component={() => <FieldRestrictedRoute component={FormDesignerPage} />} />
       <Route path={"/ocorrencias"} component={IncidentsPage} />
-      <Route path={"/ocorrencias/:id"} component={IncidentDetailPage} />
+      <Route path={"/ocorrencias/:id"} component={IncidentDetailWithFormsPage} />
       <Route path={"/equipes"} component={TeamsPage} />
       <Route path={"/kanban"} component={() => <FieldRestrictedRoute component={KanbanPage} />} />
-      <Route path={"/agente"} component={AgentPage} />
+      <Route path={"/agente"} component={AgentWithFormsPage} />
       <Route path={"/viaturas"} component={VehiclesPage} />
       <Route path={"/integracoes"} component={IntegrationsPage} />
       <Route path={"/integracoes/aplicacoes-incorporadas"} component={EmbeddedApplicationsPage} />
