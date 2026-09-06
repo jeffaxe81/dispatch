@@ -43,7 +43,15 @@ requireCondition(formsTrpc.includes(".strict().superRefine("), "D-008 perdeu val
 requireCondition(formsTrpc.includes("MAX_FORM_ATTACHMENT_BASE64_CHARS") && formsTrpc.includes(".max(MAX_FORM_ATTACHMENT_BASE64_CHARS)"), "D-008 perdeu o limite Base64 antes da decodificação do anexo.");
 requireCondition(formsApi.includes('await ctx.assertSubmissionScope(submissionId);return invoke("uploadAttachment",input)'), "D-008 permite upload sem validar o escopo da submissão.");
 requireCondition(formsAttachments.includes("const stored = await ports.storagePut") && formsAttachments.includes("storageKey: stored.key"), "D-008 não persiste a chave real devolvida pelo storage.");
-requireCondition(formsRepositoryDb.includes("transaction(async(tx:any)") && formsRepositoryDb.includes("beforeHash:jsonHash(current.answers)") && formsRepositoryDb.includes("afterHash"), "D-008 perdeu atomicidade ou hashes antes/depois na correção de submissão.");
+requireCondition(
+  formsRepositoryDb.includes("transaction(async(tx:any)") &&
+    formsRepositoryDb.includes("beforeHash=jsonHash(current.answers)") &&
+    formsRepositoryDb.includes("afterHash=jsonHash(input.answers)") &&
+    formsRepositoryDb.includes("tx.insert(formSubmissionRevisions)") &&
+    formsRepositoryDb.includes("beforeHash,afterHash") &&
+    formsRepositoryDb.includes("tx.update(formSubmissions)"),
+  "D-008 perdeu atomicidade ou hashes antes/depois na correção de submissão.",
+);
 requireCondition(rootRouter.includes("forms: createFormsTrpcRouter(formsRuntimeContextFactory)"), "D-008 não está registrado no root router protegido.");
 
 console.log(`Verificação de segurança aprovada: ${trackedMigrations.length} migrações e 17 correções preservadas.`);
