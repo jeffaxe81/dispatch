@@ -20,9 +20,9 @@ const base = {
 } as const;
 
 describe("D-008 operational form workspace", () => {
-  it("inicia e envia formulário vinculado à ocorrência sem solicitar transição operacional", async () => {
+  it("preserva o ID iniciado ao enviar formulário vinculado à ocorrência", async () => {
     const onStart = vi.fn(async () => ({ submissionId: "21", status: "in_progress" as const, incidentTransitionRequested: false as const }));
-    const onSubmit = vi.fn(async () => ({ submissionId: "22", status: "submitted" as const, incidentTransitionRequested: false as const }));
+    const onSubmit = vi.fn(async () => ({ submissionId: "21", status: "submitted" as const, incidentTransitionRequested: false as const }));
     render(<IncidentFormWorkspace {...base} state="not_started" onStart={onStart} onSubmit={onSubmit} onCorrect={vi.fn()} />);
 
     expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
@@ -33,7 +33,7 @@ describe("D-008 operational form workspace", () => {
     expect(notes).not.toHaveAttribute("readonly");
     fireEvent.change(notes, { target: { value: "Condição verificada" } });
     fireEvent.click(screen.getByRole("button", { name: /enviar formulário/i }));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88", answers: { notes: "Condição verificada" } }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ submissionId: 21, formId: 3, formVersionId: 5, contextType: "incident", contextId: "88", answers: { notes: "Condição verificada" } }));
     expect(screen.getByText(/não altera automaticamente o status da ocorrência/i)).toBeTruthy();
   });
 
