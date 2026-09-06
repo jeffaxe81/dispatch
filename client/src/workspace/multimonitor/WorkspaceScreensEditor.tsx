@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import type { WorkspaceLayoutV2, WorkspaceScreen } from "@shared/workspaceLayout";
 import { workspaceLayoutV2Schema } from "@shared/workspaceLayout";
+import { WorkspaceCanvas } from "../WorkspaceCanvas";
 
 function normalizeOrders(screens: WorkspaceScreen[]): WorkspaceScreen[] {
   return screens.map((screen, index) => ({ ...screen, order: index }));
@@ -147,11 +148,18 @@ export type WorkspaceScreensEditorProps = {
 export function WorkspaceScreensEditor({ loadedLayout, onSave, onCancel }: WorkspaceScreensEditorProps) {
   const [draft, setDraft] = useState<WorkspaceLayoutV2>(() => cloneLayout(loadedLayout));
   const orderedScreens = useMemo(() => [...draft.screens].sort((a, b) => a.order - b.order), [draft]);
+  const [activeScreenId, setActiveScreenId] = useState(() => orderedScreens[0]?.screenId ?? "");
 
   const cancel = () => {
-    setDraft(cloneLayout(loadedLayout));
+    const restored = cloneLayout(loadedLayout);
+    setDraft(restored);
+    setActiveScreenId([...restored.screens].sort((a, b) => a.order - b.order)[0]?.screenId ?? "");
     onCancel?.();
   };
+
+  const effectiveActiveScreenId = draft.screens.some(screen => screen.screenId === activeScreenId)
+    ? activeScreenId
+    : orderedScreens[0]?.screenId ?? "";
 
   return (
     <section aria-label="Editor de superfícies do workspace" className="space-y-4">
@@ -165,17 +173,12 @@ export function WorkspaceScreensEditor({ loadedLayout, onSave, onCancel }: Works
           <button type="button" onClick={() => void onSave(validate(cloneLayout(draft)))}>Salvar</button>
         </div>
       </div>
-      <ol className="space-y-2">
-        {orderedScreens.map(screen => (
-          <li key={screen.screenId} className="rounded-lg border border-slate-200 bg-white p-3" data-screen-id={screen.screenId}>
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium text-slate-900">{screen.name}</span>
-              <span className="text-xs text-slate-500">{screen.mode === "primary" ? "Principal" : "Externa"}</span>
-            </div>
-            <div className="mt-1 text-xs text-slate-500">{screen.widgets.length} widget(s)</div>
-          </li>
-        ))}
-      </ol>
+
+      <WorkspaceCanvas
+        layout={draft}
+        activeScreenId={effectiveActiveScreenId}
+        onSelectScreen={setActiveScreenId}
+      />
     </section>
   );
 }
