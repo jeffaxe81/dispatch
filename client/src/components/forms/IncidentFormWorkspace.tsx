@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import type { FormAnswers, FormSchemaDefinition } from "@shared/forms";
-import { FormRenderer } from "./FormRenderer";
+import { FormRenderer, type FormAttachmentSelectionKind } from "./FormRenderer";
 import type { IncidentFormState } from "./IncidentFormsPanel";
 
 type StartInput = { formId: number; formVersionId: number; contextType: "incident"; contextId: string };
 type SubmitInput = StartInput & { submissionId?: number; answers: FormAnswers };
 type CorrectInput = { submissionId: number; answers: FormAnswers; reason: string };
+type UploadAttachmentInput = { submissionId: number; fieldKey: string; kind: FormAttachmentSelectionKind; file: File };
 
 export type IncidentFormWorkspaceProps = {
   incidentId: string;
@@ -21,6 +22,7 @@ export type IncidentFormWorkspaceProps = {
   onStart(input: StartInput): Promise<unknown>;
   onSubmit(input: SubmitInput): Promise<unknown>;
   onCorrect(input: CorrectInput): Promise<unknown>;
+  onUploadAttachment?(input: UploadAttachmentInput): Promise<unknown>;
   onClose?: () => void;
 };
 
@@ -84,6 +86,15 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
     setState("submitted");
   });
 
+  const uploadAttachment = (fieldKey: string, file: File, kind: FormAttachmentSelectionKind) => {
+    void run(async () => {
+      if (!canFill) throw new Error("Seu perfil não possui permissão para anexar evidências.");
+      if (!submissionId) throw new Error("Inicie o preenchimento antes de anexar evidências.");
+      if (!props.onUploadAttachment) throw new Error("Upload de anexos não está disponível neste contexto.");
+      await props.onUploadAttachment({ submissionId, fieldKey, kind, file });
+    });
+  };
+
   const correct = () => {
     if (!canCorrect) {
       setError("Seu perfil não possui permissão para corrigir respostas.");
@@ -119,7 +130,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       {error && <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       <div className="mt-4">
-        <FormRenderer definition={props.definition} values={answers} readOnly={!editable || busy} onChange={(key, value) => setAnswers(current => ({ ...current, [key]: value }))} />
+        <FormRenderer definition={props.definition} values={answers} readOnly={!editable || busy} onChange={(key, value) => setAnswers(current => ({ ...current, [key]: value }))} onAttachmentSelected={uploadAttachment} />
       </div>
 
       {canCorrect && correctionMode && (
