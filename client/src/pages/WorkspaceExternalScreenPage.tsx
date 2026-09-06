@@ -1,3 +1,4 @@
+import React from "react";
 import { trpc } from "@/lib/trpc";
 import { WorkspaceScreenCanvas } from "@/workspace/WorkspaceScreenCanvas";
 import type { WorkspaceScreen } from "@shared/workspaceLayout";
