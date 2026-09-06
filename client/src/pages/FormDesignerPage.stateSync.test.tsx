@@ -2,9 +2,11 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { FormDesignerPage } from "./FormDesignerPage";
 
+vi.mock("@/components/DashboardLayout", () => ({ default: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("wouter", () => ({ useLocation: () => ["/formularios/3", vi.fn()] }));
+
+import { FormDesignerPage } from "./FormDesignerPage";
 
 describe("D-008 designer version state", () => {
   it("ressincroniza a definição quando a versão carregada muda", () => {
