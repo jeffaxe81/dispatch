@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
   formAttachments,
@@ -12,6 +13,10 @@ import { getDb } from "../db";
 import type { FormRepositoryAdapter } from "./formRepository";
 
 type DbProvider = { getDb: typeof getDb };
+
+function answersHash(answers: unknown): string {
+  return createHash("sha256").update(JSON.stringify(answers)).digest("hex");
+}
 
 export function createFormRepositoryDbAdapter(provider: DbProvider = { getDb }): FormRepositoryAdapter {
   async function db() {
@@ -85,7 +90,8 @@ export function createFormRepositoryDbAdapter(provider: DbProvider = { getDb }):
     },
     async appendRevision(input) {
       const database = await db();
-      const result = await database.insert(formSubmissionRevisions).values({ tenantId: input.tenantId, submissionId: input.submissionId, revision: input.revision, answers: input.answers, reason: input.reason, actorUserId: input.actorUserId, afterHash: "pending-service-hash" }).$returningId();
+      const afterHash = answersHash(input.answers);
+      const result = await database.insert(formSubmissionRevisions).values({ tenantId: input.tenantId, submissionId: input.submissionId, revision: input.revision, answers: input.answers, reason: input.reason, actorUserId: input.actorUserId, afterHash }).$returningId();
       await database.update(formSubmissions).set({ status: input.submissionStatus, answers: input.answers }).where(and(eq(formSubmissions.tenantId, input.tenantId), eq(formSubmissions.id, input.submissionId)));
       return result[0] ?? result;
     },
