@@ -1,16 +1,23 @@
 import type { FormPermission } from "./formAccess";
 
-type ApiContext = { tenantId: number; userId: number; hasPermission(permission: FormPermission): boolean; service: Record<string, (...args: any[]) => any> };
+type ApiContext = {
+  tenantId: number;
+  userId: number;
+  hasPermission(permission: FormPermission): boolean | Promise<boolean>;
+  service: Record<string, (...args: any[]) => any>;
+};
 
 function denied(permission: string): never { throw new Error(`Permissão necessária: ${permission}`); }
 
 export function createFormsApi(ctx: ApiContext) {
   const call = async (permission: FormPermission, method: string, input: Record<string, unknown> = {}) => {
-    if (!ctx.hasPermission(permission)) denied(permission);
-    const fn = ctx.service[method]; if (typeof fn !== "function") throw new Error(`Serviço de formulários indisponível: ${method}`);
+    if (!(await ctx.hasPermission(permission))) denied(permission);
+    const fn = ctx.service[method];
+    if (typeof fn !== "function") throw new Error(`Serviço de formulários indisponível: ${method}`);
     const { tenantId: _untrustedTenant, ...safeInput } = input as any;
     return fn({ ...safeInput, tenantId: ctx.tenantId, actorUserId: ctx.userId });
   };
+
   return {
     list: (input: Record<string, unknown> = {}) => call("forms.view", "list", input),
     get: (input: Record<string, unknown>) => call("forms.view", "get", input),
