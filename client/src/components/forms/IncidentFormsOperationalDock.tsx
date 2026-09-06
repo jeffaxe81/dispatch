@@ -39,7 +39,9 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
   const correct = trpc.forms.correct.useMutation();
 
   const permissions = access.data?.permissions ?? [];
-  const canCorrect = Boolean(access.data?.isSuperAdministrator || permissions.includes("*") || permissions.includes("forms.responses.correct"));
+  const privileged = Boolean(access.data?.isSuperAdministrator || permissions.includes("*"));
+  const canFill = privileged || permissions.includes("forms.fill");
+  const canCorrect = privileged || permissions.includes("forms.responses.correct");
   const bindings = (query.data?.bindings ?? []) as HydratedBinding[];
   const submissions = ((query.data?.submissions ?? []) as OperationalSubmission[]).map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }));
   const items = useMemo(() => deriveIncidentFormItems(bindings, submissions.map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }))), [bindings, submissions]);
@@ -79,6 +81,7 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
               state={currentItem.state}
               submissionId={currentSubmission?.id}
               initialAnswers={currentSubmission?.answers ?? {}}
+              canFill={canFill}
               canCorrect={canCorrect}
               onClose={() => setSelected(null)}
               onStart={async input => { const result = await start.mutateAsync(input); await refresh(); return result; }}
