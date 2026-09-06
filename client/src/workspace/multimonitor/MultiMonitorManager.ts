@@ -1,4 +1,5 @@
 import type { WorkspaceScreen } from "@shared/workspaceLayout";
+import { resolveDisplayPlacement, type DisplayDescriptor } from "./displayPlacement";
 
 export type MultiMonitorOpenStatus = "opened" | "focused" | "blocked";
 
@@ -11,12 +12,15 @@ type ManagedWindow = {
   closed: boolean;
   focus(): void;
   close(): void;
+  moveTo?(left: number, top: number): void;
+  resizeTo?(width: number, height: number): void;
 };
 
 type MultiMonitorManagerOptions = {
   open: (url: string, target?: string, features?: string) => ManagedWindow | null;
   origin: string;
   workspaceName?: string;
+  getDisplays?: () => Promise<readonly DisplayDescriptor[]>;
 };
 
 export class MultiMonitorManager {
@@ -24,11 +28,13 @@ export class MultiMonitorManager {
   private readonly openWindow: MultiMonitorManagerOptions["open"];
   private readonly origin: string;
   private readonly workspaceName: string;
+  private readonly getDisplays?: MultiMonitorManagerOptions["getDisplays"];
 
   constructor(options: MultiMonitorManagerOptions) {
     this.openWindow = options.open;
     this.origin = options.origin.replace(/\/$/, "");
     this.workspaceName = options.workspaceName ?? "default";
+    this.getDisplays = options.getDisplays;
   }
 
   openScreen(screen: WorkspaceScreen): MultiMonitorOpenStatus {
@@ -48,6 +54,7 @@ export class MultiMonitorManager {
     if (!opened) return "blocked";
 
     this.windows.set(screen.screenId, opened);
+    void this.applyPreferredPlacement(screen, opened);
     return "opened";
   }
 
@@ -89,6 +96,22 @@ export class MultiMonitorManager {
   syncClosedWindows(): void {
     for (const [screenId, managedWindow] of this.windows) {
       if (managedWindow.closed) this.windows.delete(screenId);
+    }
+  }
+
+  private async applyPreferredPlacement(screen: WorkspaceScreen, opened: ManagedWindow): Promise<void> {
+    if (!screen.preferredDisplay || !this.getDisplays) return;
+
+    try {
+      const displays = await this.getDisplays();
+      if (opened.closed) return;
+      const placement = resolveDisplayPlacement(screen.preferredDisplay, displays);
+      if (!placement) return;
+
+      opened.moveTo?.(placement.left, placement.top);
+      opened.resizeTo?.(placement.width, placement.height);
+    } catch {
+      // Progressive enhancement only: permission/API/placement failures never invalidate the opened surface.
     }
   }
 
