@@ -24,9 +24,10 @@ describe("D-008 attachment security", () => {
   });
 
   it("expõe estado real do antimalware e não afirma proteção quando hook é no-op", async () => {
-    const storagePut = vi.fn(async () => undefined);
+    const storagePut = vi.fn(async (key: string) => ({ key, url: `/manus-storage/${key}` }));
     const result = await storeFormAttachment({ tenantId: 7, submissionId: 21, fieldKey: "foto", kind: "image", fileName: "foto.png", mimeType: "image/png", bytes: png }, { storagePut });
     expect(result.malwareScan.status).toBe("not_configured");
+    expect(result.storageKey).toContain("tenants/7/forms/submissions/21/");
     expect(storagePut).toHaveBeenCalledOnce();
   });
 });
