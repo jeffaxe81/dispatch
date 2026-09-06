@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `b6cad13026a2d79a42e8b070dbd3137c21ee4c35`  
+**Head documentado:** `7ec9ab92beff46ab8b73a457642f473d7758a5e7`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -30,13 +30,27 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 
 ### Contrato e persistência
 
-- Contrato canônico de formulários em `shared/forms.ts`.
-- Versões publicadas imutáveis e respostas ligadas à versão exata.
-- Persistência D-008 em sete tabelas: templates, versões, vínculos, submissões, revisões, anexos e domain events.
+- Contrato canônico de formulários em `shared/forms.ts`, com 19 tipos aprovados.
+- Versões publicadas/retiradas são imutáveis; alterações posteriores usam uma nova versão draft.
+- Persistência D-008 permanece em exatamente sete tabelas: templates, versões, vínculos, submissões, revisões, anexos e domain events.
 - Migration `drizzle/0006_d008_no_code_forms.sql` criada e registrada no journal.
 - A migration **não foi aplicada em banco real**.
+- Limites tRPC foram alinhados aos limites persistidos (`contextId` 180, `fieldKey` 120, `mimeType` 160, nome 240).
+- Criação de formulário persiste template + versão draft v1, com `definitionHash` SHA-256.
+- Criação inicial de template + versão v1 ocorre dentro de uma única transação; falha da versão não deve deixar template parcial.
+- Salvamento de draft atualiza definição e `definitionHash` conjuntamente.
+- Definições são validadas pelo schema canônico em runtime antes de salvar, copiar para nova versão ou publicar.
 - Anexos armazenam metadados/hash e referência de storage; binários não são gravados no JSON de respostas.
 - O nome do anexo só entra nas respostas após upload bem-sucedido; falha de storage não confirma referência inexistente no JSON.
+
+### Administração e versionamento
+
+- `forms.list` e `forms.get` hidratam o template com a versão corrente, definição e status de versão.
+- `FormsPage` está conectada a `forms.list`, `forms.capabilities` e `forms.createDraft`.
+- `FormDesignerPage` está conectada a `forms.get`, `forms.updateDraft`, `forms.publish` e `forms.createNewVersion`.
+- `createNewVersion` exige `forms.edit`, parte apenas de versão publicada/retirada, copia a definição validada e usa o próximo número de versão.
+- A UI usa as capabilities do próprio módulo para criação, edição e publicação; não replica política de autorização.
+- Versões não draft são exibidas como imutáveis e só oferecem nova versão quando o usuário possui permissão de edição.
 
 ### Segurança e governança
 
@@ -54,7 +68,7 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 
 ### Integração operacional
 
-- `forms` está registrado no `rootRouter` sem remover `dispatch` ou jornada.
+- `forms` está registrado no `rootRouter` sem remover `dispatch` ou jornada; o contrato raiz também cobre procedures administrativas e operacionais D-008.
 - Ocorrência e Aplicativo Agente usam o dock operacional D-008.
 - Estados visuais: Não iniciado, Em preenchimento, Enviado e Corrigido.
 - `startSubmission` seguido de `submit` preserva o mesmo `submissionId`, evitando anexos órfãos.
