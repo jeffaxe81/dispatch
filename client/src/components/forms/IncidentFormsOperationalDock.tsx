@@ -31,16 +31,14 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
   const [selected, setSelected] = useState<IncidentFormItem | null>(null);
   const validIncident = Number.isInteger(incidentId) && incidentId > 0;
   const query = trpc.forms.forIncident.useQuery({ incidentId: String(incidentId) }, { enabled: validIncident && open, retry: false });
-  const access = trpc.access.me.useQuery(undefined, { enabled: open, retry: false });
+  const capabilities = trpc.forms.capabilities.useQuery(undefined, { enabled: open, retry: false });
   const start = trpc.forms.startSubmission.useMutation();
   const submit = trpc.forms.submit.useMutation();
   const correct = trpc.forms.correct.useMutation();
   const uploadAttachment = trpc.forms.uploadAttachment.useMutation();
 
-  const permissions = access.data?.permissions ?? [];
-  const privileged = Boolean(access.data?.isSuperAdministrator || permissions.includes("*"));
-  const canFill = privileged || permissions.includes("forms.fill");
-  const canCorrect = privileged || permissions.includes("forms.responses.correct");
+  const canFill = Boolean(capabilities.data?.canFill);
+  const canCorrect = Boolean(capabilities.data?.canCorrectResponses);
   const bindings = (query.data?.bindings ?? []) as HydratedBinding[];
   const submissions = ((query.data?.submissions ?? []) as OperationalSubmission[]).map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }));
   const items = useMemo(() => deriveIncidentFormItems(bindings, submissions.map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }))), [bindings, submissions]);
@@ -61,6 +59,7 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
           </div>
           {query.isLoading && <p className="rounded-lg bg-white p-4 text-sm text-slate-500">Carregando formulários...</p>}
           {query.error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{query.error.message}</p>}
+          {capabilities.error && <p role="alert" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Não foi possível confirmar as ações permitidas. O formulário permanece em modo seguro de consulta.</p>}
           {!query.isLoading && !query.error && !currentItem && <IncidentFormsPanel bindings={bindings} submissions={submissions.map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }))} onOpen={setSelected} />}
           {currentItem && currentBinding && (
             <IncidentFormWorkspace
