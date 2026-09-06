@@ -3,7 +3,7 @@
 **Estado:** PRÉ-CANDIDATO — GATES DE RUNTIME PENDENTES  
 **Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
 **Branch:** `feature/d008-no-code-forms`  
-**Head documentado:** `de2829f30546535751e19141b75d050b16115ff2`  
+**Head documentado:** `f43034316f1a0229b58f71b2cfa05f55a270746c`  
 **Data:** 2026-09-06
 
 ## 1. Regra de aprovação
@@ -54,6 +54,7 @@ Não registrar contagem de testes, warnings ou resultado GREEN até existir saí
 - A UI usa `forms.capabilities`, calculado pelo mesmo avaliador de autorização do backend; falha da consulta mantém ações de escrita ocultas.
 - Capabilities administrativas incluem `canCreate`, `canEdit`, `canPublish`, `canDisable` e permanecem somente informativas: não concedem privilégios.
 - Campos calculados simples são server-authoritative: valores enviados pelo cliente são descartados e rematerializados a partir da chave de origem antes de validação/persistência.
+- Referências de campos calculados são validadas no schema canônico: autorreferência e chave inexistente são rejeitadas antes de publicação/uso operacional.
 - `security-regression-check.mjs` protege invariantes D-008 de contexto tRPC, escopo de submissão, chave real do storage e registro do namespace `forms`.
 - Nenhum grant produtivo ou alteração automática de papéis dinâmicos foi aplicado.
 
