@@ -12,11 +12,11 @@ export class FormDomainError extends Error {
   }
 }
 
-export type FormVersionStatus = "draft" | "published" | "superseded";
+export type FormVersionStatus = "draft" | "published" | "retired";
 
 export function assertDraftVersionEditable(status: FormVersionStatus): void {
   if (status !== "draft") {
-    throw new FormDomainError("FORM_VERSION_IMMUTABLE", "Versões publicadas ou substituídas são imutáveis.");
+    throw new FormDomainError("FORM_VERSION_IMMUTABLE", "Versões publicadas ou retiradas são imutáveis.");
   }
 }
 
