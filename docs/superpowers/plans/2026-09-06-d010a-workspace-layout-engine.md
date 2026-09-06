@@ -27,13 +27,13 @@
 
 **Files:**
 - Create: `shared/workspaceLayout.ts`
-- Create: `shared/workspaceLayout.test.ts`
+- Create: `server/workspace/workspaceLayoutDomain.test.ts`
 
 **Interfaces:**
 - Produces: `WorkspaceWidgetType`, `WorkspaceWidgetInstance`, `WorkspaceLayout`, `workspaceWidgetInstanceSchema`, `workspaceLayoutSchema`, `normalizeWorkspaceLayout(input, allowedTypes)`.
 
 - [ ] **Step 1: Escrever testes RED** cobrindo layout válido, `type` desconhecido, dimensões inválidas, versão inválida e remoção segura de widgets não permitidos.
-- [ ] **Step 2: Executar** `pnpm vitest run shared/workspaceLayout.test.ts` e confirmar falha.
+- [ ] **Step 2: Executar** `pnpm vitest run server/workspace/workspaceLayoutDomain.test.ts` e confirmar falha.
 - [ ] **Step 3: Implementar** schemas Zod com `version: 1`, `instanceId`, `type`, `x`, `y`, `w`, `h`, `settings` e função de normalização que nunca aceita tipos fora de `allowedTypes`.
 - [ ] **Step 4: Executar novamente** e confirmar GREEN.
 - [ ] **Step 5: Commit** `feat(d010a): add workspace layout domain`.
@@ -191,3 +191,4 @@
 - Sem placeholders/TBDs no plano.
 - Tipos e nomes de interfaces são consistentes entre tasks.
 - D-010B/C/D/E permanecem explicitamente fora desta implementação.
+- Ajuste de execução: testes do domínio `shared/` ficam em `server/workspace/workspaceLayoutDomain.test.ts` porque o `vitest.config.ts` atual não coleta arquivos de teste em `shared/`.
