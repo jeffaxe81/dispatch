@@ -4,13 +4,14 @@ import { createFormRepository, type FormRepositoryAdapter } from "./formReposito
 function adapter(): FormRepositoryAdapter {
   return {
     getTemplate: vi.fn(async input => ({ id: input.id, tenantId: input.tenantId, status: "draft" as const })),
-    listTemplates: vi.fn(async input => [{ id: 1, tenantId: input.tenantId, status: "draft" as const }]),
-    getVersion: vi.fn(async input => ({ id: input.id, tenantId: input.tenantId, formId: 1, version: 1, status: "draft" as const })),
+    listTemplates: vi.fn(async input => [{ id: 1, tenantId: input.tenantId, status: "active" as const }]),
+    getVersion: vi.fn(async input => ({ id: input.id, tenantId: input.tenantId, formId: 1, version: 1, status: "retired" as const })),
     listVersions: vi.fn(async () => []),
     getSubmission: vi.fn(async input => ({ id: input.id, tenantId: input.tenantId, formId: 1, formVersionId: 2, revision: 1, status: "submitted" as const, answers: {} })),
     createDraft: vi.fn(async input => ({ id: 1, ...input })),
     saveDraft: vi.fn(async input => input),
     publishVersion: vi.fn(async input => input),
+    activateForm: vi.fn(async input => input),
     disableForm: vi.fn(async input => input),
     createBinding: vi.fn(async input => ({ id: 10, ...input })),
     createSubmission: vi.fn(async input => ({ id: 1, ...input })),
@@ -35,27 +36,41 @@ describe("D-008 repository tenant boundary", () => {
     await expect(createFormRepository(77, raw).getTemplate(9)).rejects.toThrow(/tenant/i);
   });
 
-  it("não permite que o chamador sobrescreva tenantId", async () => {
+  it("usa somente os estados aprovados do ciclo de vida", async () => {
     const raw = adapter(); const repo = createFormRepository(77, raw);
-    await repo.createSubmission({ formId: 1, formVersionId: 2, createdByUserId: 3, answers: {} });
-    expect(raw.createSubmission).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77 }));
+    expect((await repo.listTemplates())[0]?.status).toBe("active");
+    expect((await repo.getVersion(2))?.status).toBe("retired");
+    expect((await repo.getSubmission(3))?.status).toBe("submitted");
   });
 
-  it("cobre as sete estruturas persistentes do D-008", async () => {
+  it("não permite que o chamador sobrescreva tenantId e persiste status de submissão", async () => {
     const raw = adapter(); const repo = createFormRepository(77, raw);
-    await repo.createBinding({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "42", createdByUserId: 9 });
-    await repo.getSubmission(21);
+    await repo.createSubmission({ formId: 1, formVersionId: 2, createdByUserId: 3, status: "submitted", answers: {} });
+    expect(raw.createSubmission).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, status: "submitted" }));
+  });
+
+  it("expõe bindForm para o service sem duplicar createBinding na API do repository", async () => {
+    const raw = adapter(); const repo = createFormRepository(77, raw);
+    await repo.bindForm({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "42", actorUserId: 9 });
+    expect(raw.createBinding).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, contextType: "incident", createdByUserId: 9 }));
+    expect("createBinding" in repo).toBe(false);
+  });
+
+  it("cobre anexos, eventos e revisões do modelo persistente", async () => {
+    const raw = adapter(); const repo = createFormRepository(77, raw);
     await repo.createAttachment({ submissionId: 21, fieldKey: "foto", kind: "image", storageKey: "k", fileName: "a.png", mimeType: "image/png", sizeBytes: 1, sha256: "a".repeat(64), createdByUserId: 9 });
+    await repo.appendRevision({ submissionId: 21, revision: 2, answers: {}, reason: "ajuste", actorUserId: 9, submissionStatus: "corrected" });
     await repo.appendDomainEvent({ eventId: "evt-1", eventType: "submission.submitted", aggregateType: "submission", aggregateId: "21", actorUserId: 9, payload: {}, occurredAt: new Date() });
-    expect(raw.createBinding).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, contextType: "incident" }));
-    expect(raw.getSubmission).toHaveBeenCalledWith({ tenantId: 77, id: 21 });
     expect(raw.createAttachment).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, kind: "image" }));
+    expect(raw.appendRevision).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, submissionStatus: "corrected" }));
     expect(raw.appendDomainEvent).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, eventId: "evt-1" }));
   });
 
-  it("desativa sem expor exclusão física de formulário", async () => {
+  it("ativa e desativa sem expor exclusão física de formulário", async () => {
     const raw = adapter(); const repo = createFormRepository(77, raw);
+    await repo.activateForm({ formId: 3, actorUserId: 9, activatedAt: new Date() });
     await repo.disableForm({ formId: 3, actorUserId: 9, disabledAt: new Date() });
+    expect(raw.activateForm).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, formId: 3 }));
     expect(raw.disableForm).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 77, formId: 3 }));
     expect("deleteForm" in repo).toBe(false);
   });
