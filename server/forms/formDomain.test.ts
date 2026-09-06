@@ -17,7 +17,7 @@ describe("D-008 publication invariants", () => {
   it("permite editar somente versão draft", () => {
     expect(() => assertDraftVersionEditable("draft")).not.toThrow();
     expect(() => assertDraftVersionEditable("published")).toThrowError(FormDomainError);
-    expect(() => assertDraftVersionEditable("superseded")).toThrowError(FormDomainError);
+    expect(() => assertDraftVersionEditable("retired")).toThrowError(FormDomainError);
   });
 
   it("incrementa a versão monotonicamente", () => {
