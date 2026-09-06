@@ -92,6 +92,7 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       if (!submissionId) throw new Error("Inicie o preenchimento antes de anexar evidências.");
       if (!props.onUploadAttachment) throw new Error("Upload de anexos não está disponível neste contexto.");
       await props.onUploadAttachment({ submissionId, fieldKey, kind, file });
+      setAnswers(current => ({ ...current, [fieldKey]: file.name }));
     });
   };
 
