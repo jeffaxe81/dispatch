@@ -22,11 +22,11 @@ describe("D-008 operational form workspace", () => {
     const onStart = vi.fn(async () => ({ submissionId: "21", status: "in_progress" as const, incidentTransitionRequested: false as const }));
     const onSubmit = vi.fn(async () => ({ submissionId: "21", status: "submitted" as const, incidentTransitionRequested: false as const }));
     render(<IncidentFormWorkspace {...base} state="not_started" onStart={onStart} onSubmit={onSubmit} onCorrect={vi.fn()} />);
-    expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Observações *").hasAttribute("readonly")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /iniciar preenchimento/i }));
     await waitFor(() => expect(onStart).toHaveBeenCalledWith({ formId: 3, formVersionId: 5, contextType: "incident", contextId: "88" }));
     const notes = screen.getByLabelText("Observações *");
-    expect(notes).not.toHaveAttribute("readonly");
+    expect(notes.hasAttribute("readonly")).toBe(false);
     fireEvent.change(notes, { target: { value: "Condição verificada" } });
     fireEvent.click(screen.getByRole("button", { name: /enviar formulário/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ submissionId: 21, formId: 3, formVersionId: 5, contextType: "incident", contextId: "88", answers: { notes: "Condição verificada" } }));
@@ -44,9 +44,9 @@ describe("D-008 operational form workspace", () => {
   it("mantém enviado somente leitura até correção explícita com motivo", async () => {
     const onCorrect = vi.fn(async () => ({ status: "corrected" as const, revision: 2 }));
     render(<IncidentFormWorkspace {...base} state="submitted" submissionId={21} initialAnswers={{ notes: "Antes" }} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={onCorrect} />);
-    expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Observações *").hasAttribute("readonly")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /corrigir resposta/i }));
-    expect(screen.getByLabelText("Observações *")).not.toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Observações *").hasAttribute("readonly")).toBe(false);
     fireEvent.change(screen.getByLabelText("Observações *"), { target: { value: "Depois" } });
     fireEvent.change(screen.getByLabelText(/motivo da correção/i), { target: { value: "Ajuste após conferência de campo" } });
     fireEvent.click(screen.getByRole("button", { name: /salvar correção/i }));
@@ -56,7 +56,7 @@ describe("D-008 operational form workspace", () => {
   it("não oferece correção quando o perfil não possui permissão", () => {
     render(<IncidentFormWorkspace {...base} state="submitted" submissionId={21} initialAnswers={{ notes: "Antes" }} canCorrect={false} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /corrigir resposta/i })).toBeNull();
-    expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Observações *").hasAttribute("readonly")).toBe(true);
   });
 
   it("não oferece início ou envio quando o perfil é somente consulta", () => {
@@ -65,7 +65,7 @@ describe("D-008 operational form workspace", () => {
     expect(screen.queryByRole("button", { name: /iniciar preenchimento/i })).toBeNull();
     rerender(<IncidentFormWorkspace {...base} state="in_progress" initialAnswers={{ notes: "Parcial" }} canFill={false} onStart={onStart} onSubmit={onSubmit} onCorrect={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /enviar formulário/i })).toBeNull();
-    expect(screen.getByLabelText("Observações *")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Observações *").hasAttribute("readonly")).toBe(true);
   });
 
   it("não permite correção sem motivo", async () => {
