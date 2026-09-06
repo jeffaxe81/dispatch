@@ -54,6 +54,15 @@ describe("D-008 form schema contract", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("aceita referência calculada existente e rejeita referência ausente ou autorreferência", () => {
+    const base = { schemaVersion: 1 as const, title: "Cálculo", fields: [
+      { id: "q", key: "quantidade", type: "number" as const, label: "Quantidade", required: true },
+    ] };
+    expect(formSchemaDefinitionSchema.safeParse({ ...base, fields: [...base.fields, { id: "c", key: "copia", type: "calculated", label: "Cópia", required: true, expression: "quantidade" }] }).success).toBe(true);
+    expect(formSchemaDefinitionSchema.safeParse({ ...base, fields: [...base.fields, { id: "c", key: "copia", type: "calculated", label: "Cópia", required: true, expression: "inexistente" }] }).success).toBe(false);
+    expect(formSchemaDefinitionSchema.safeParse({ ...base, fields: [...base.fields, { id: "c", key: "copia", type: "calculated", label: "Cópia", required: true, expression: "copia" }] }).success).toBe(false);
+  });
+
   it("exige resposta não vazia para campo obrigatório", () => {
     expect(validateFormAnswers(representativeSchema, { risco: "baixo" }).success).toBe(false);
     expect(validateFormAnswers(representativeSchema, { protocolo: "   ", risco: "baixo" }).success).toBe(false);
