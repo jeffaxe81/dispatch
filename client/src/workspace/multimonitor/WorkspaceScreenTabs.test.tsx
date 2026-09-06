@@ -15,7 +15,7 @@ describe("WorkspaceScreenTabs", () => {
     render(<WorkspaceScreenTabs screens={[screens[2], screens[0], screens[1]]} activeScreenId="primary" onSelect={vi.fn()} />);
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map(tab => tab.textContent)).toEqual(["CentralPrincipal", "MapaExterna", "ComunicaçãoExterna"]);
-    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
   });
 
   it("seleciona uma superfície sem alterar o layout", () => {
@@ -28,6 +28,6 @@ describe("WorkspaceScreenTabs", () => {
 
   it("usa a primeira superfície válida quando a ativa não existe", () => {
     render(<WorkspaceScreenTabs screens={screens} activeScreenId="missing" onSelect={vi.fn()} />);
-    expect(screen.getByRole("tab", { name: /Central/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /Central/ }).getAttribute("aria-selected")).toBe("true");
   });
 });
