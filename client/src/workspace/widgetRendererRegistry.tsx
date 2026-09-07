@@ -9,6 +9,8 @@ import { SlaAlertsWidget } from "./widgets/SlaAlertsWidget";
 import { OperationalTimelineWidget } from "./widgets/OperationalTimelineWidget";
 import { NeoCommunicationWidget } from "./widgets/NeoCommunicationWidget";
 import { AuthorizedIframeWidget } from "./widgets/AuthorizedIframeWidget";
+import { DynamicFormWidget } from "./widgets/DynamicFormWidget";
+import { ConfigurableDashboardWidget } from "./widgets/ConfigurableDashboardWidget";
 
 export type WorkspaceWidgetRendererProps = { widget: WorkspaceWidgetInstance };
 
@@ -26,8 +28,8 @@ const rendererRegistry: Partial<Record<WorkspaceWidgetType, React.ComponentType<
   "sla-alerts": SlaAlertsWidget,
   "neo-communication": NeoCommunicationWidget,
   "operational-timeline": OperationalTimelineWidget,
-  "dynamic-form": PlaceholderWorkspaceWidget,
-  "configurable-dashboard": PlaceholderWorkspaceWidget,
+  "dynamic-form": DynamicFormWidget,
+  "configurable-dashboard": ConfigurableDashboardWidget,
   "authorized-iframe": AuthorizedIframeWidget,
 };
 
