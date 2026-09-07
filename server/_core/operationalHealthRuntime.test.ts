@@ -31,6 +31,29 @@ describe("D-011A operational health runtime", () => {
     expect(runtime.watchdog).toBeDefined();
   });
 
+  it("é idempotente por app e não cria agenda duplicada", () => {
+    const registry = createHealthRegistry([]);
+    const registerRoutes = vi.fn();
+    const start = vi.fn();
+    const createWatchdog = vi.fn(() => ({ runOnce: vi.fn(), start, stop: vi.fn() }));
+    const app = {} as any;
+    const options = {
+      registry,
+      registerRoutes,
+      createWatchdog,
+      watchdogIntervalMs: 5_000,
+      watchdogPolicy: { failuresToUnhealthy: 2, successesToRecover: 2, cooldownMs: 10_000 },
+    };
+
+    const first = installOperationalHealthRuntime(app, options);
+    const second = installOperationalHealthRuntime(app, options);
+
+    expect(second).toBe(first);
+    expect(registerRoutes).toHaveBeenCalledTimes(1);
+    expect(createWatchdog).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   it("registra somente os campos sanitizados da transição", async () => {
     const logTransition = vi.fn();
     let transitionHandler: ((transition: any) => void | Promise<void>) | undefined;
