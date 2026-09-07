@@ -6,6 +6,33 @@ import {
 } from "./recoveryPolicy";
 import { createInMemoryRecoveryPolicyStore } from "./recoveryPolicyStore";
 
+const defaultConfig: RecoveryPolicyConfig = {
+  enabled: true,
+  recoverableComponents: new Set(["database"]),
+  cooldownMs: 30_000,
+  attemptWindowMs: 15 * 60_000,
+  maxAttempts: 3,
+  healthyCyclesToCloseCircuit: 2,
+};
+
+const baseTransition: RecoveryTransitionInput = {
+  transitionId: "tr-1",
+  componentId: "database",
+  from: "healthy",
+  to: "unhealthy",
+  criticality: "critical",
+  occurredAt: "2026-09-07T12:00:00.000Z",
+};
+
+function createEngine(overrides: Partial<RecoveryPolicyConfig> = {}) {
+  let id = 0;
+  return createRecoveryPolicyEngine({
+    store: createInMemoryRecoveryPolicyStore(),
+    config: { ...defaultConfig, ...overrides },
+    createId: () => `decision-${++id}`,
+  });
+}
+
 describe("RecoveryPolicyStore", () => {
   it("isolates state per component and returns fail-closed defaults", () => {
     const store = createInMemoryRecoveryPolicyStore();
@@ -30,35 +57,9 @@ describe("RecoveryPolicyStore", () => {
 
 describe("RecoveryPolicyEngine eligibility", () => {
   const now = new Date("2026-09-07T12:00:00.000Z");
-  const config: RecoveryPolicyConfig = {
-    enabled: true,
-    recoverableComponents: new Set(["database"]),
-    cooldownMs: 30_000,
-    attemptWindowMs: 15 * 60_000,
-    maxAttempts: 3,
-    healthyCyclesToCloseCircuit: 2,
-  };
-
-  const unhealthyDb: RecoveryTransitionInput = {
-    transitionId: "tr-1",
-    componentId: "database",
-    from: "healthy",
-    to: "unhealthy",
-    criticality: "critical",
-    occurredAt: now.toISOString(),
-  };
-
-  function createEngine(overrides: Partial<RecoveryPolicyConfig> = {}) {
-    let id = 0;
-    return createRecoveryPolicyEngine({
-      store: createInMemoryRecoveryPolicyStore(),
-      config: { ...config, ...overrides },
-      createId: () => `decision-${++id}`,
-    });
-  }
 
   it("allows an unhealthy allowlisted component in dry-run mode", () => {
-    expect(createEngine().evaluate(unhealthyDb, now)).toMatchObject({
+    expect(createEngine().evaluate(baseTransition, now)).toMatchObject({
       decision: "allow_dry_run",
       reasonCode: "UNHEALTHY_ELIGIBLE",
       componentId: "database",
@@ -70,7 +71,7 @@ describe("RecoveryPolicyEngine eligibility", () => {
   it("suppresses components outside the recovery allowlist", () => {
     expect(
       createEngine().evaluate(
-        { ...unhealthyDb, transitionId: "tr-2", componentId: "storage" },
+        { ...baseTransition, transitionId: "tr-2", componentId: "storage" },
         now,
       ),
     ).toMatchObject({
@@ -85,7 +86,7 @@ describe("RecoveryPolicyEngine eligibility", () => {
       const from = to === "healthy" ? "unhealthy" : "healthy";
       expect(
         createEngine().evaluate(
-          { ...unhealthyDb, transitionId: `tr-${to}`, from, to },
+          { ...baseTransition, transitionId: `tr-${to}`, from, to },
           now,
         ),
       ).toMatchObject({
@@ -96,7 +97,7 @@ describe("RecoveryPolicyEngine eligibility", () => {
   );
 
   it("fails closed when policy is disabled", () => {
-    expect(createEngine({ enabled: false }).evaluate(unhealthyDb, now)).toMatchObject({
+    expect(createEngine({ enabled: false }).evaluate(baseTransition, now)).toMatchObject({
       decision: "suppress",
       reasonCode: "POLICY_DISABLED",
     });
@@ -104,10 +105,85 @@ describe("RecoveryPolicyEngine eligibility", () => {
 
   it("rejects invalid transitions where from equals to", () => {
     expect(
-      createEngine().evaluate({ ...unhealthyDb, from: "unhealthy", to: "unhealthy" }, now),
+      createEngine().evaluate(
+        { ...baseTransition, from: "unhealthy", to: "unhealthy" },
+        now,
+      ),
     ).toMatchObject({
       decision: "suppress",
       reasonCode: "INVALID_TRANSITION",
     });
+  });
+});
+
+describe("RecoveryPolicyEngine limits", () => {
+  const t0 = new Date("2026-09-07T12:00:00.000Z");
+  const t10 = new Date("2026-09-07T12:00:10.000Z");
+  const t31 = new Date("2026-09-07T12:00:31.000Z");
+  const t62 = new Date("2026-09-07T12:01:02.000Z");
+  const t93 = new Date("2026-09-07T12:01:33.000Z");
+  const t124 = new Date("2026-09-07T12:02:04.000Z");
+
+  function input(transitionId: string): RecoveryTransitionInput {
+    return { ...baseTransition, transitionId };
+  }
+
+  it("enforces cooldown, three allowed attempts, then opens recovery circuit", () => {
+    const store = createInMemoryRecoveryPolicyStore();
+    let id = 0;
+    const engine = createRecoveryPolicyEngine({
+      store,
+      config: defaultConfig,
+      createId: () => `limit-${++id}`,
+    });
+
+    expect(engine.evaluate(input("tr-1"), t0)).toMatchObject({
+      decision: "allow_dry_run",
+      attemptNumber: 1,
+    });
+    expect(engine.evaluate(input("tr-2"), t10)).toMatchObject({
+      decision: "suppress",
+      reasonCode: "COOLDOWN_ACTIVE",
+      attemptNumber: 1,
+    });
+    expect(engine.evaluate(input("tr-2"), t31)).toMatchObject({
+      decision: "allow_dry_run",
+      attemptNumber: 2,
+    });
+    expect(engine.evaluate(input("tr-3"), t62)).toMatchObject({
+      decision: "allow_dry_run",
+      attemptNumber: 3,
+    });
+    expect(engine.evaluate(input("tr-4"), t93)).toMatchObject({
+      decision: "escalate",
+      reasonCode: "ATTEMPT_LIMIT_REACHED",
+      attemptNumber: 3,
+    });
+    expect(store.get("database").circuitOpen).toBe(true);
+
+    expect(engine.evaluate(input("tr-5"), t124)).toMatchObject({
+      decision: "suppress",
+      reasonCode: "RECOVERY_CIRCUIT_OPEN",
+      attemptNumber: 3,
+    });
+    expect(store.get("database").attemptTimestamps).toHaveLength(3);
+  });
+
+  it("prunes attempts outside the rolling window", () => {
+    const store = createInMemoryRecoveryPolicyStore();
+    let id = 0;
+    const engine = createRecoveryPolicyEngine({
+      store,
+      config: defaultConfig,
+      createId: () => `window-${++id}`,
+    });
+
+    expect(engine.evaluate(input("old-1"), t0).decision).toBe("allow_dry_run");
+    const afterWindow = new Date(t0.getTime() + defaultConfig.attemptWindowMs + 31_000);
+    expect(engine.evaluate(input("new-1"), afterWindow)).toMatchObject({
+      decision: "allow_dry_run",
+      attemptNumber: 1,
+    });
+    expect(store.get("database").attemptTimestamps).toHaveLength(1);
   });
 });
