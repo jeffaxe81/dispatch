@@ -133,3 +133,14 @@
 - [x] Criar teste visual automatizado com Chrome DevTools para o workspace responsivo e evidências PNG/DOM/relatório.
 - [ ] Homologar NEO Interact em ambiente autorizado.
 - [x] Implementar primeira composição operacional lado a lado Ocorrência + NEO em desktop e empilhada em mobile; dock/janela desacoplada permanecem evolução posterior.
+
+
+## D-007 — Controle de Jornada de Trabalho
+
+- [x] D-007A — domínio histórico de sessão/eventos de jornada individual.
+- [x] D-007A — compatibilidade `teams.*shift*` sem alterar status operacional automaticamente.
+- [x] D-007A — `workShifts.current`, `workShifts.history` e `workShifts.control` com RBAC específico.
+- [x] D-007A — catálogo `work_shifts.view` e `work_shifts.control` sem grants automáticos.
+- [ ] D-007B — escalas fixas/cíclicas, 12x36, associações e exceções.
+- [ ] D-007C — elegibilidade por jornada antes do ranking GIS/despacho.
+- [ ] D-007D — ajustes, administração, relatórios e alertas.
