@@ -63,13 +63,13 @@ Nenhuma decisão deve carregar mensagem de exceção crua, URL com credenciais, 
 
 ### 4.2 RecoveryPolicyStore
 
-Abstração responsável pelo estado operacional necessário para avaliar limites. A primeira implementação poderá ser in-memory, desde que a interface não impeça persistência futura.
+Abstração responsável pelo estado operacional necessário para avaliar limites. A primeira implementação será in-memory, com interface preparada para persistência futura sem alterar o contrato do Policy Engine.
 
 Deve rastrear por componente:
 
 - última decisão;
 - número de tentativas em janela;
-- último sucesso conhecido;
+- contador de ciclos `healthy` estáveis após abertura do circuit;
 - cooldown vigente;
 - bloqueio/circuit breaker de recuperação;
 - última escalada.
@@ -97,7 +97,7 @@ Camada fina de coordenação que recebe a transição do watchdog, solicita a de
 
 Responsabilidades:
 
-- garantir idempotência por `decisionId`/transição;
+- garantir idempotência por identidade determinística da transição, não por timestamp isolado;
 - impedir duas recuperações simultâneas do mesmo componente;
 - registrar decisão e resultado;
 - não bloquear o ciclo principal do watchdog por trabalho externo longo.
@@ -110,9 +110,11 @@ A primeira política deve ser conservadora e explícita.
 
 Somente uma transição estabilizada para `unhealthy` pode gerar `allow_dry_run`.
 
-`unknown` deve resultar em `suppress` ou `escalate`, nunca em tentativa automática de restart.
+`unknown` sempre resulta em `suppress` nesta fase e nunca em tentativa automática de restart.
 
-`degraded` não gera recuperação automática nesta fase.
+`degraded` sempre resulta em `suppress` nesta fase.
+
+Uma transição estabilizada para `healthy` nunca gera recovery; ela serve apenas como evidência para eventual fechamento do circuit breaker de recovery.
 
 ### 5.2 Allowlist
 
@@ -128,13 +130,16 @@ Readiness crítico não equivale a permissão para restart.
 
 ### 5.3 Limites
 
-Valores iniciais propostos, parametrizáveis e testados:
+Valores iniciais, parametrizáveis e testados:
 
 - no máximo 1 decisão dry-run ativa por componente;
 - cooldown mínimo de 30 segundos após uma decisão permitida;
-- máximo de 3 tentativas em uma janela de 15 minutos;
-- ao exceder o limite, abrir circuit breaker de recuperação e emitir `escalate`;
-- recuperação do breaker somente após evidência estável de saúde por pelo menos 2 ciclos bem-sucedidos ou reset administrativo futuro explícito;
+- máximo de 3 tentativas permitidas em uma janela móvel de 15 minutos;
+- a quarta tentativa elegível dentro da janela abre o circuit breaker de recovery e retorna `escalate` com `ATTEMPT_LIMIT_REACHED`;
+- enquanto o circuit estiver aberto, novas transições `unhealthy` retornam `suppress` com `RECOVERY_CIRCUIT_OPEN` e não incrementam tentativas;
+- o circuit só fecha nesta microentrega após 2 ciclos consecutivos estabilizados em `healthy` observados pelo watchdog depois da abertura;
+- qualquer estado não-healthy durante essa recuperação de circuit zera o contador de ciclos healthy;
+- não existe reset administrativo do circuit no D-011B.1;
 - nenhuma política pode entrar em loop dentro do mesmo ciclo do watchdog.
 
 Esses valores são defaults de software, não SLA operacional definitivo.
@@ -229,12 +234,14 @@ Requisitos obrigatórios:
 
 - unhealthy allowlisted -> `allow_dry_run`;
 - degraded -> `suppress`;
-- unknown -> não permite restart;
+- unknown -> `suppress`;
+- healthy -> nenhuma recuperação e conta evidência apenas quando circuit estiver aberto;
 - componente fora da allowlist -> `suppress`;
 - cooldown ativo -> `suppress`;
-- limite de tentativas -> `escalate` e circuit open;
-- circuit open -> `suppress`/`escalate` conforme política;
-- recuperação estável fecha circuit quando critérios forem atendidos;
+- três tentativas na janela podem ser permitidas; a quarta elegível -> `escalate` e abre circuit;
+- circuit open + unhealthy -> `suppress` sem incrementar tentativa;
+- dois ciclos healthy consecutivos após abertura -> fecha circuit;
+- healthy seguido de não-healthy antes do segundo ciclo -> zera contador de recuperação do circuit;
 - transição duplicada não cria nova tentativa;
 - policy disabled nunca permite ação.
 
