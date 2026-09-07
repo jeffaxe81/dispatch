@@ -12,7 +12,22 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: dispatch_cp016
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/dispatch_cp016
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,3 +50,35 @@ jobs:
 
       - name: Typecheck
         run: pnpm check
+
+      - name: Generate CP-016 migration
+        run: pnpm drizzle-kit generate
+
+      - name: Reject destructive migration statements
+        shell: bash
+        run: |
+          new_sql=$(git ls-files --others --exclude-standard 'drizzle/*.sql')
+          if [ -z "$new_sql" ]; then
+            echo "No generated SQL migration found"
+            exit 1
+          fi
+          echo "Generated migration: $new_sql"
+          if grep -Ein 'DROP[[:space:]]+(TABLE|COLUMN)|RENAME[[:space:]]+(TABLE|COLUMN)' $new_sql; then
+            echo "Destructive SQL detected"
+            exit 1
+          fi
+
+      - name: Apply migrations to ephemeral MySQL
+        run: pnpm drizzle-kit migrate
+
+      - name: Re-run focused tests after migration
+        run: pnpm vitest run shared/operations.cp016.test.ts server/schema.cp016.test.ts
+
+      - name: Upload generated migration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cp016-generated-migration
+          path: |
+            drizzle/*.sql
+            drizzle/meta/*.json
+          if-no-files-found: error
