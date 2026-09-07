@@ -2,6 +2,31 @@
 
 ## [Unreleased] — D-010 Workspace Operacional
 
+### D-010C — Catálogo ampliado de widgets operacionais
+
+Ampliação do Workspace para um catálogo fechado de 15 tipos, com nove widgets D-010C funcionais e reutilizáveis em superfície principal ou externa, preservando RBAC, tenant e integrações homologadas.
+
+### Incluído
+- settings tipados e estritos por tipo de widget;
+- registry fechado de renderers locais, sem componente remoto arbitrário;
+- contexto operacional efêmero e isolado por superfície;
+- widgets read-only de Kanban, detalhe de ocorrência, recursos, alertas SLA e timeline operacional;
+- widget NEO resolvido exclusivamente pelo catálogo autorizado de aplicações incorporadas;
+- widget iframe autorizado baseado somente em `applicationId`, sem URL livre em settings;
+- widget de formulário dinâmico reutilizando D-008, somente para versão publicada e em modo read-only;
+- dashboard configurável com allowlist fechada de métricas;
+- montagem funcional no `WorkspaceScreenCanvas` para superfície principal e N superfícies externas;
+- isolamento local de falha por widget, sem exposição de mensagem ou stack para a operação;
+- regressões específicas contra URL arbitrária, métricas desconhecidas, formulários não publicados e falha de renderer.
+
+### Controles
+- nenhuma migration nova foi necessária para D-010C;
+- nenhuma nova autenticação/SSO do NEO foi introduzida;
+- nenhum grant produtivo executado;
+- nenhum deploy produtivo executado;
+- nenhum merge em `main` autorizado por este registro;
+- relatório de verificação: `docs/releases/d010c-verification.md`.
+
 ### D-010A / D-010B — Workspace configurável e Multi-Monitor
 
 Evolução do workspace operacional para layout persistido e superfícies lógicas múltiplas, mantendo autorização e persistência no backend.
