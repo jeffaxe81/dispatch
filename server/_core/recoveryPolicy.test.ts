@@ -45,6 +45,7 @@ describe("RecoveryPolicyStore", () => {
       circuitOpen: false,
       healthyStreak: 0,
       lastDecisionId: null,
+      lastTransitionId: null,
       inProgress: false,
     });
     expect(storage).toEqual(db);
@@ -185,5 +186,95 @@ describe("RecoveryPolicyEngine limits", () => {
       attemptNumber: 1,
     });
     expect(store.get("database").attemptTimestamps).toHaveLength(1);
+  });
+});
+
+describe("RecoveryPolicyEngine idempotency and circuit recovery", () => {
+  const t0 = new Date("2026-09-07T12:00:00.000Z");
+  const t31 = new Date("2026-09-07T12:00:31.000Z");
+  const t62 = new Date("2026-09-07T12:01:02.000Z");
+  const t93 = new Date("2026-09-07T12:01:33.000Z");
+  const h1 = new Date("2026-09-07T12:02:04.000Z");
+  const h2 = new Date("2026-09-07T12:02:05.000Z");
+
+  it("suppresses a duplicate transition without adding an attempt", () => {
+    const store = createInMemoryRecoveryPolicyStore();
+    let id = 0;
+    const engine = createRecoveryPolicyEngine({
+      store,
+      config: defaultConfig,
+      createId: () => `duplicate-${++id}`,
+    });
+
+    expect(engine.evaluate({ ...baseTransition, transitionId: "dup-1" }, t0)).toMatchObject({
+      decision: "allow_dry_run",
+      attemptNumber: 1,
+    });
+    expect(engine.evaluate({ ...baseTransition, transitionId: "dup-1" }, t31)).toMatchObject({
+      decision: "suppress",
+      reasonCode: "DUPLICATE_TRANSITION",
+      attemptNumber: 1,
+    });
+    expect(store.get("database").attemptTimestamps).toHaveLength(1);
+  });
+
+  it("closes an open circuit only after two consecutive healthy observations", () => {
+    const store = createInMemoryRecoveryPolicyStore();
+    let id = 0;
+    const engine = createRecoveryPolicyEngine({
+      store,
+      config: defaultConfig,
+      createId: () => `healthy-${++id}`,
+    });
+    const unhealthy = (transitionId: string): RecoveryTransitionInput => ({
+      ...baseTransition,
+      transitionId,
+    });
+    const healthy = (transitionId: string): RecoveryTransitionInput => ({
+      ...baseTransition,
+      transitionId,
+      from: "unhealthy",
+      to: "healthy",
+    });
+
+    engine.evaluate(unhealthy("open-1"), t0);
+    engine.evaluate(unhealthy("open-2"), t31);
+    engine.evaluate(unhealthy("open-3"), t62);
+    engine.evaluate(unhealthy("open-4"), t93);
+    expect(store.get("database").circuitOpen).toBe(true);
+
+    expect(engine.evaluate(healthy("h-1"), h1)).toMatchObject({
+      decision: "suppress",
+      reasonCode: "STATE_NOT_RECOVERABLE",
+    });
+    expect(store.get("database").circuitOpen).toBe(true);
+    expect(store.get("database").healthyStreak).toBe(1);
+
+    expect(engine.evaluate(healthy("h-2"), h2)).toMatchObject({
+      decision: "suppress",
+      reasonCode: "STATE_NOT_RECOVERABLE",
+    });
+    expect(store.get("database").circuitOpen).toBe(false);
+    expect(store.get("database").healthyStreak).toBe(0);
+    expect(store.get("database").attemptTimestamps).toHaveLength(0);
+    expect(store.get("database").cooldownUntilMs).toBeNull();
+  });
+
+  it("resets healthy streak when a non-healthy observation interrupts recovery", () => {
+    const store = createInMemoryRecoveryPolicyStore();
+    let id = 0;
+    const engine = createRecoveryPolicyEngine({
+      store,
+      config: defaultConfig,
+      createId: () => `reset-${++id}`,
+    });
+    const state = store.get("database");
+    store.set("database", { ...state, circuitOpen: true, healthyStreak: 1 });
+
+    engine.evaluate(
+      { ...baseTransition, transitionId: "interrupt", from: "healthy", to: "unknown" },
+      h1,
+    );
+    expect(store.get("database").healthyStreak).toBe(0);
   });
 });
