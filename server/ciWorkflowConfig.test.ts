@@ -49,6 +49,11 @@ describe("workflow de qualidade do GitHub", () => {
       expect(step.uses).toMatch(/^actions\/[a-z-]+@[0-9a-f]{40}$/);
     }
 
+    const checkout = actionSteps[0];
+    expect(checkout.with).toEqual({
+      ref: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+    });
+
     const setupNode = actionSteps[1];
     expect(setupNode.with).toEqual({
       "node-version": 24,
