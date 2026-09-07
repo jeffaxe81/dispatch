@@ -2,6 +2,11 @@ import React from "react";
 import type { WorkspaceWidgetInstance, WorkspaceWidgetType } from "@shared/workspaceLayout";
 import { WorkspaceWidgetFrame } from "./WorkspaceWidgetFrame";
 import { getWorkspaceWidgetDefinition } from "./widgetRegistry";
+import { KanbanWidget } from "./widgets/KanbanWidget";
+import { IncidentDetailWidget } from "./widgets/IncidentDetailWidget";
+import { ResourcesWidget } from "./widgets/ResourcesWidget";
+import { SlaAlertsWidget } from "./widgets/SlaAlertsWidget";
+import { OperationalTimelineWidget } from "./widgets/OperationalTimelineWidget";
 
 export type WorkspaceWidgetRendererProps = { widget: WorkspaceWidgetInstance };
 
@@ -13,12 +18,12 @@ function PlaceholderWorkspaceWidget({ widget }: WorkspaceWidgetRendererProps) {
 }
 
 const rendererRegistry: Partial<Record<WorkspaceWidgetType, React.ComponentType<WorkspaceWidgetRendererProps>>> = {
-  kanban: PlaceholderWorkspaceWidget,
-  "incident-detail": PlaceholderWorkspaceWidget,
-  resources: PlaceholderWorkspaceWidget,
-  "sla-alerts": PlaceholderWorkspaceWidget,
+  kanban: KanbanWidget,
+  "incident-detail": IncidentDetailWidget,
+  resources: ResourcesWidget,
+  "sla-alerts": SlaAlertsWidget,
   "neo-communication": PlaceholderWorkspaceWidget,
-  "operational-timeline": PlaceholderWorkspaceWidget,
+  "operational-timeline": OperationalTimelineWidget,
   "dynamic-form": PlaceholderWorkspaceWidget,
   "configurable-dashboard": PlaceholderWorkspaceWidget,
   "authorized-iframe": PlaceholderWorkspaceWidget,
