@@ -1,5 +1,6 @@
 import {
   boolean,
+  foreignKey,
   index,
   int,
   json,
@@ -168,7 +169,7 @@ export const embeddedIntegrations = mysqlTable(
   "embedded_integrations",
   {
     id: int("id").autoincrement().primaryKey(),
-    integrationConnectionId: int("integration_connection_id").references(() => integrationConnections.id, { onDelete: "set null" }),
+    integrationConnectionId: int("integration_connection_id"),
     code: varchar("code", { length: 100 }).notNull(),
     name: varchar("name", { length: 180 }).notNull(),
     url: varchar("url", { length: 2048 }).notNull(),
@@ -180,6 +181,11 @@ export const embeddedIntegrations = mysqlTable(
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   },
   table => [
+    foreignKey({
+      columns: [table.integrationConnectionId],
+      foreignColumns: [integrationConnections.id],
+      name: "embedded_integrations_conn_fk",
+    }).onDelete("set null"),
     uniqueIndex("embedded_integrations_code_unique").on(table.code),
     index("embedded_integrations_enabled_idx").on(table.enabled),
   ],
