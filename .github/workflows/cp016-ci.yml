@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,32 +53,44 @@ jobs:
       - name: Typecheck
         run: pnpm check
 
+      - name: Detect versioned CP-016 migration
+        id: migration
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(drizzle/0003_*.sql)
+          if [ ${#files[@]} -gt 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "file=${files[0]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Generate CP-016 migration
+        if: steps.migration.outputs.exists != 'true'
         run: pnpm drizzle-kit generate
+
+      - name: Resolve CP-016 migration path
+        id: resolved
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(drizzle/0003_*.sql)
+          if [ ${#files[@]} -ne 1 ]; then
+            echo "Expected exactly one 0003 migration, found ${#files[@]}"
+            exit 1
+          fi
+          echo "file=${files[0]}" >> "$GITHUB_OUTPUT"
+          echo "CP-016 migration: ${files[0]}"
 
       - name: Reject destructive migration statements
         shell: bash
         run: |
-          new_sql=$(git ls-files --others --exclude-standard 'drizzle/*.sql')
-          if [ -z "$new_sql" ]; then
-            echo "No generated SQL migration found"
-            exit 1
-          fi
-          echo "Generated migration: $new_sql"
-          if grep -Ein 'DROP[[:space:]]+(TABLE|COLUMN)|RENAME[[:space:]]+(TABLE|COLUMN)' $new_sql; then
+          migration='${{ steps.resolved.outputs.file }}'
+          if grep -Ein 'DROP[[:space:]]+(TABLE|COLUMN)|RENAME[[:space:]]+(TABLE|COLUMN)' "$migration"; then
             echo "Destructive SQL detected"
             exit 1
           fi
-
-      - name: Upload generated migration evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cp016-generated-migration
-          path: |
-            drizzle/*.sql
-            drizzle/meta/*.json
-          if-no-files-found: error
 
       - name: Diagnose SQL chain manually
         run: |
@@ -115,34 +129,29 @@ jobs:
           await conn.end();
           NODE
 
-      - name: Diagnose drizzle-orm migrator
-        continue-on-error: true
-        run: |
-          node --input-type=module <<'NODE'
-          import mysql from 'mysql2/promise';
-          import { drizzle } from 'drizzle-orm/mysql2';
-          import { migrate } from 'drizzle-orm/mysql2/migrator';
-
-          const admin = await mysql.createConnection({ host: '127.0.0.1', port: 3306, user: 'root', password: 'root' });
-          await admin.query('DROP DATABASE IF EXISTS dispatch_cp016_orm_debug');
-          await admin.query('CREATE DATABASE dispatch_cp016_orm_debug');
-          await admin.end();
-
-          const pool = mysql.createPool('mysql://root:root@127.0.0.1:3306/dispatch_cp016_orm_debug');
-          const db = drizzle(pool);
-          try {
-            await migrate(db, { migrationsFolder: './drizzle' });
-            console.log('drizzle-orm migrator succeeded');
-          } catch (error) {
-            console.error(error?.stack ?? error);
-            process.exitCode = 1;
-          } finally {
-            await pool.end();
-          }
-          NODE
-
       - name: Apply migrations to ephemeral MySQL
         run: pnpm drizzle-kit migrate
 
       - name: Re-run focused tests after migration
         run: pnpm vitest run shared/operations.cp016.test.ts server/schema.cp016.test.ts
+
+      - name: Persist verified generated migration
+        if: steps.migration.outputs.exists != 'true' && success()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add drizzle/0003_*.sql drizzle/meta/_journal.json drizzle/meta/*_snapshot.json
+          git commit -m "db: add CP-016 operational migration"
+          git push origin HEAD:feature/cp-016-implementation
+
+      - name: Upload migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cp016-migration-evidence
+          path: |
+            drizzle/0003_*.sql
+            drizzle/meta/_journal.json
+            drizzle/meta/*_snapshot.json
+          if-no-files-found: error
