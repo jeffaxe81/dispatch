@@ -1,5 +1,5 @@
 import type { HealthCriticality, HealthState } from "./healthRegistry";
-import type { RecoveryPolicyStore } from "./recoveryPolicyStore";
+import type { RecoveryComponentState, RecoveryPolicyStore } from "./recoveryPolicyStore";
 
 export type RecoveryReasonCode =
   | "UNHEALTHY_ELIGIBLE"
@@ -92,18 +92,41 @@ export function createRecoveryPolicyEngine(options: {
     createdAt: now.toISOString(),
   });
 
+  const rememberTransition = (
+    componentId: string,
+    state: RecoveryComponentState,
+    transitionId: string,
+    healthyStreak = state.healthyStreak,
+  ): RecoveryComponentState => {
+    const next = { ...state, lastTransitionId: transitionId, healthyStreak };
+    store.set(componentId, next);
+    return next;
+  };
+
   return {
     evaluate(input, now = new Date()) {
-      const state = store.get(input.componentId);
+      let state = store.get(input.componentId);
       const initialAttemptNumber = state.attemptTimestamps.length;
 
       if (!config.enabled) {
         return decide(input, now, "suppress", "POLICY_DISABLED", initialAttemptNumber);
       }
+      if (state.lastTransitionId === input.transitionId) {
+        return decide(
+          input,
+          now,
+          "suppress",
+          "DUPLICATE_TRANSITION",
+          initialAttemptNumber,
+          state.cooldownUntilMs,
+        );
+      }
       if (input.from === input.to) {
+        rememberTransition(input.componentId, state, input.transitionId, 0);
         return decide(input, now, "suppress", "INVALID_TRANSITION", initialAttemptNumber);
       }
       if (!config.recoverableComponents.has(input.componentId)) {
+        rememberTransition(input.componentId, state, input.transitionId, 0);
         return decide(
           input,
           now,
@@ -112,21 +135,65 @@ export function createRecoveryPolicyEngine(options: {
           initialAttemptNumber,
         );
       }
-      if (input.to !== "unhealthy") {
+
+      if (input.to === "healthy") {
+        if (state.circuitOpen) {
+          const healthyStreak = state.healthyStreak + 1;
+          if (healthyStreak >= config.healthyCyclesToCloseCircuit) {
+            state = {
+              ...state,
+              attemptTimestamps: [],
+              cooldownUntilMs: null,
+              circuitOpen: false,
+              healthyStreak: 0,
+              lastTransitionId: input.transitionId,
+            };
+            store.set(input.componentId, state);
+            return decide(input, now, "suppress", "STATE_NOT_RECOVERABLE", 0);
+          }
+          state = rememberTransition(
+            input.componentId,
+            state,
+            input.transitionId,
+            healthyStreak,
+          );
+        } else {
+          state = rememberTransition(input.componentId, state, input.transitionId, 0);
+        }
         return decide(
           input,
           now,
           "suppress",
           "STATE_NOT_RECOVERABLE",
-          initialAttemptNumber,
+          state.attemptTimestamps.length,
+          state.cooldownUntilMs,
         );
       }
+
+      if (input.to !== "unhealthy") {
+        state = rememberTransition(input.componentId, state, input.transitionId, 0);
+        return decide(
+          input,
+          now,
+          "suppress",
+          "STATE_NOT_RECOVERABLE",
+          state.attemptTimestamps.length,
+          state.cooldownUntilMs,
+        );
+      }
+
+      state = {
+        ...state,
+        lastTransitionId: input.transitionId,
+        healthyStreak: 0,
+      };
 
       const nowMs = now.getTime();
       const windowStart = nowMs - config.attemptWindowMs;
       const attempts = state.attemptTimestamps.filter(timestamp => timestamp >= windowStart);
 
       if (state.circuitOpen) {
+        store.set(input.componentId, state);
         return decide(
           input,
           now,
@@ -137,6 +204,7 @@ export function createRecoveryPolicyEngine(options: {
         );
       }
       if (state.inProgress) {
+        store.set(input.componentId, state);
         return decide(
           input,
           now,
@@ -147,6 +215,7 @@ export function createRecoveryPolicyEngine(options: {
         );
       }
       if (state.cooldownUntilMs !== null && nowMs < state.cooldownUntilMs) {
+        store.set(input.componentId, state);
         return decide(
           input,
           now,
