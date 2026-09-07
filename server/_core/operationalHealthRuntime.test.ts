@@ -31,6 +31,42 @@ describe("D-011A operational health runtime", () => {
     expect(runtime.watchdog).toBeDefined();
   });
 
+  it("registra somente os campos sanitizados da transição", async () => {
+    const logTransition = vi.fn();
+    let transitionHandler: ((transition: any) => void | Promise<void>) | undefined;
+    const createWatchdog = vi.fn(options => {
+      transitionHandler = options.onTransition;
+      return { runOnce: vi.fn(), start: vi.fn(), stop: vi.fn() };
+    });
+
+    installOperationalHealthRuntime({} as any, {
+      registry: createHealthRegistry([]),
+      registerRoutes: vi.fn(),
+      createWatchdog,
+      watchdogIntervalMs: 5_000,
+      watchdogPolicy: { failuresToUnhealthy: 2, successesToRecover: 2, cooldownMs: 10_000 },
+      logTransition,
+    });
+
+    await transitionHandler?.({
+      componentId: "database",
+      from: "healthy",
+      to: "unhealthy",
+      occurredAt: "2026-09-07T17:00:00.000Z",
+      exception: "mysql://user:pass@secret-host/db",
+      stack: "Bearer secret-token",
+    });
+
+    expect(logTransition).toHaveBeenCalledWith({
+      componentId: "database",
+      from: "healthy",
+      to: "unhealthy",
+      occurredAt: "2026-09-07T17:00:00.000Z",
+    });
+    expect(JSON.stringify(logTransition.mock.calls)).not.toContain("secret-host");
+    expect(JSON.stringify(logTransition.mock.calls)).not.toContain("secret-token");
+  });
+
   it("não expõe nenhuma ação de restart/recover no runtime instalado", () => {
     const runtime = installOperationalHealthRuntime({} as any, {
       registry: createHealthRegistry([]),
