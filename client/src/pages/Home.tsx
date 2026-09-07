@@ -9,6 +9,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useRefreshSettings } from "@/hooks/useRefreshSettings";
 import { formatDateTime, formatDuration, priorityClasses, priorityLabels, statusClasses, statusLabels } from "@/lib/operational";
 import { trpc } from "@/lib/trpc";
+import { WorkspaceOperationLauncher } from "@/workspace/multimonitor/WorkspaceOperationLauncher";
 import { Activity, ArrowRight, Clock3, MapPinned, Plus, Radio, ShieldCheck, UsersRound } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -35,6 +36,7 @@ function HomeContent() {
   const incidents = trpc.incidents.list.useQuery({ page: 1, pageSize: 100 }, { refetchInterval: refresh.interval || false });
   const teams = trpc.teams.list.useQuery(undefined, { refetchInterval: refresh.interval || false });
   const mapSettings = trpc.settings.operationalMap.useQuery();
+  const workspaceLayout = trpc.workspace.getOwn.useQuery({ name: "default" });
   const canCreate = ["operador", "despachador", "supervisor", "administrador"].includes(user?.operationalRole ?? "");
   const canDispatch = ["despachador", "supervisor", "administrador"].includes(user?.operationalRole ?? "");
 
@@ -59,6 +61,7 @@ function HomeContent() {
           <p className="mt-1 max-w-2xl text-sm text-cyan-50/90">Acompanhe ocorrências, recursos em campo e decisões de atendimento sem perder o contexto operacional.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {workspaceLayout.data && <WorkspaceOperationLauncher screens={workspaceLayout.data.screens} />}
           {canCreate && <Button onClick={() => navigate("/ocorrencias")} className="bg-white text-slate-900 hover:bg-cyan-50"><Plus className="mr-2 h-4 w-4" />Nova ocorrência</Button>}
           {canDispatch && <Button variant="outline" onClick={() => navigate("/kanban")} className="border-white/35 bg-white/10 text-white hover:bg-white/20 hover:text-white"><ShieldCheck className="mr-2 h-4 w-4" />Priorizar fila</Button>}
         </div>

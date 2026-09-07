@@ -27,6 +27,7 @@ import ManualsHelpPage from "@/pages/ManualsHelpPage";
 import FormsPage from "@/pages/FormsPage";
 import FormDesignerPage from "@/pages/FormDesignerPage";
 import LoginPage from "@/pages/LoginPage";
+import WorkspaceExternalScreenPage from "@/pages/WorkspaceExternalScreenPage";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { isFieldAgent } from "@/lib/operationalAccess";
 import { trpc } from "@/lib/trpc";
@@ -47,6 +48,7 @@ function Router() {
   return (
     <Switch>
       <Route path={"/login"} component={LoginPage} />
+      <Route path={"/workspace/external"} component={WorkspaceExternalScreenPage} />
       <Route path={"/"} component={() => <FieldRestrictedRoute component={Home} />} />
       <Route path={"/dashboards-relatorios"} component={() => <FieldRestrictedRoute component={DashboardsReportsPage} />} />
       <Route path={"/operacao-jornada"} component={() => <FieldRestrictedRoute component={WorkShiftOperations} />} />

@@ -54,4 +54,18 @@ requireCondition(
 );
 requireCondition(rootRouter.includes("forms: createFormsTrpcRouter(formsRuntimeContextFactory)"), "D-008 não está registrado no root router protegido.");
 
-console.log(`Verificação de segurança aprovada: ${trackedMigrations.length} migrações e 17 correções preservadas.`);
+// D-010B — Multi-monitor must remain an authorized same-origin projection of one workspace.
+const multiMonitorManager = read("client/src/workspace/multimonitor/MultiMonitorManager.ts");
+const workspaceChannel = read("client/src/workspace/multimonitor/workspaceChannel.ts");
+const workspaceExternalPage = read("client/src/pages/WorkspaceExternalScreenPage.tsx");
+const workspaceWidgetRegistry = read("client/src/workspace/widgetRegistry.ts");
+requireCondition(multiMonitorManager.includes("/workspace/external?") && multiMonitorManager.includes("workspace: this.workspaceName") && multiMonitorManager.includes("screen: screenId"), "D-010B perdeu a rota same-origin controlada do multi-monitor.");
+requireCondition(!multiMonitorManager.includes("tenantId") && !multiMonitorManager.includes("userId") && !multiMonitorManager.includes("http://") && !multiMonitorManager.includes("https://"), "D-010B reintroduziu autoridade de tenant/usuário ou URL remota no launcher.");
+requireCondition(workspaceExternalPage.includes('const allowed = new Set(["workspace", "screen"])') && workspaceExternalPage.includes("trpc.workspace.getOwnScreen"), "D-010B perdeu validação estrita da rota externa ou autorização pelo backend.");
+requireCondition(workspaceWidgetRegistry.includes("workspaceWidgetRegistry") && workspaceWidgetRegistry.includes("Object.prototype.hasOwnProperty.call(workspaceWidgetRegistry, type)"), "D-010B perdeu o catálogo fechado de widgets.");
+for (const eventName of ["workspace-screen-opened", "workspace-screen-closed", "workspace-layout-updated", "workspace-refresh-requested", "workspace-focus-screen"]) {
+  requireCondition(workspaceChannel.includes(eventName), `D-010B perdeu evento permitido do canal: ${eventName}`);
+}
+requireCondition(!workspaceChannel.includes("execute-script"), "D-010B permite evento de execução arbitrária no BroadcastChannel.");
+
+console.log(`Verificação de segurança aprovada: ${trackedMigrations.length} migrações, 17 correções preservadas e D-010B protegido.`);
