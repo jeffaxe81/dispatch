@@ -12,6 +12,10 @@ import { createContext } from "./context";
 import { ENV, validateRuntimeEnv } from "./env";
 import { createOperationalHealthRegistry } from "./operationalHealth";
 import { installOperationalHealthRuntime } from "./operationalHealthRuntime";
+import {
+  createD011b1RecoveryRuntime,
+  mapHealthTransitionToRecoveryInput,
+} from "./recoveryBootstrap";
 import { parseServerPort, selectServerPort } from "./serverPort";
 import { serveStatic, setupVite } from "./vite";
 
@@ -27,12 +31,21 @@ async function startServer() {
   await ensureLocalAdministrator();
   const app = express();
   const healthRegistry = createOperationalHealthRegistry();
+  const recoveryRuntime = createD011b1RecoveryRuntime({
+    audit: event => {
+      console.warn("Recovery dry-run audit", event);
+    },
+  });
   installOperationalHealthRuntime(app, {
     registry: healthRegistry,
     watchdogIntervalMs: HEALTH_WATCHDOG_INTERVAL_MS,
     watchdogPolicy: HEALTH_WATCHDOG_POLICY,
     logTransition: transition => {
       console.warn("Operational health transition", transition);
+    },
+    recoveryTransitionHandler: async transition => {
+      const input = mapHealthTransitionToRecoveryInput(transition);
+      await recoveryRuntime.orchestrator.handle(input, new Date(transition.occurredAt));
     },
   });
   // Trust exactly one forwarding hop only when deployment explicitly opts in.
