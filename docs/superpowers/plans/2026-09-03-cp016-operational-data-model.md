@@ -32,7 +32,7 @@
 **Interfaces:**
 - Produces: `SHIFT_TEMPLATE_KINDS`, `WORK_SESSION_STATUSES`, `OPERATIONAL_PRESENCE_STATUSES` e tipos correspondentes.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -63,21 +63,21 @@ describe("CP-016 operational contracts", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Run: `pnpm vitest run shared/operations.cp016.test.ts`
 Expected: FAIL because the exported constants do not exist.
 
-- [ ] **Step 3: Implement minimal shared contracts**
+- [x] **Step 3: Implement minimal shared contracts**
 
 Add exact readonly arrays and inferred union types to `shared/operations.ts`.
 
-- [ ] **Step 4: Run test to verify GREEN**
+- [x] **Step 4: Run test to verify GREEN**
 
 Run: `pnpm vitest run shared/operations.cp016.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add shared/operations.ts shared/operations.cp016.test.ts
@@ -466,25 +466,3 @@ Expected: all commands succeed without regressions.
 - [ ] **Step 2: Verify migration is additive**
 
 Inspect the generated CP-016 migration and document absence of destructive statements.
-
-- [ ] **Step 3: Record rollback procedure**
-
-Rollback application behavior by disabling consumption of CP-016 tables; retain new historical tables/data. Do not drop tables as part of emergency rollback.
-
-- [ ] **Step 4: Update project tracking/versioning**
-
-Mark only actually verified tasks complete in `todo.md`, update semantic version if this becomes a release, and record the checkpoint identifier.
-
-- [ ] **Step 5: Commit checkpoint**
-
-```bash
-git add .
-git commit -m "checkpoint: CP-016 operational data model"
-```
-
-## Self-review
-
-- Spec coverage: jornada, 12x36, auditoria, presença, elegibilidade, localização, trilhas, iframe NEO, reset, segurança e rollback are covered.
-- No destructive migration is permitted.
-- Existing `teams` shift snapshot and `team_locations` remain authoritative compatibility surfaces during transition.
-- Type names in later tasks match the schema/interface names defined earlier.
