@@ -54,3 +54,17 @@ export const STATUS_LABELS: Record<IncidentStatus, string> = {
   cancelada: "Cancelada",
 };
 
+export const SHIFT_TEMPLATE_KINDS = ["fixed", "12x36", "custom"] as const;
+export type ShiftTemplateKind = (typeof SHIFT_TEMPLATE_KINDS)[number];
+
+export const WORK_SESSION_STATUSES = ["open", "paused", "closed", "adjusted"] as const;
+export type WorkSessionStatus = (typeof WORK_SESSION_STATUSES)[number];
+
+export const OPERATIONAL_PRESENCE_STATUSES = [
+  "available",
+  "busy",
+  "paused",
+  "offline",
+  "out_of_shift",
+] as const;
+export type OperationalPresenceStatus = (typeof OPERATIONAL_PRESENCE_STATUSES)[number];
