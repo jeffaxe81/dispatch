@@ -21,6 +21,10 @@ export type OperationalHealthOptions = {
   timeoutMs?: number;
 };
 
+export type OperationalHealthRouteOptions = Partial<OperationalHealthOptions> & {
+  registry?: HealthRegistry;
+};
+
 const DEFAULT_TIMEOUT_MS = 2_000;
 const DEFAULT_EVIDENCE_TTL_MS = 10_000;
 
@@ -111,8 +115,9 @@ export async function evaluateReadiness(
 
 export function registerOperationalHealthRoutes(
   app: Express,
-  options: Partial<OperationalHealthOptions> = {},
+  options: OperationalHealthRouteOptions = {},
 ): void {
+  const injectedRegistry = options.registry;
   const resolvedOptions: OperationalHealthOptions = {
     checkDatabase: options.checkDatabase ?? checkDatabaseReady,
     checkStorage: options.checkStorage ?? checkStorageReady,
@@ -125,8 +130,20 @@ export function registerOperationalHealthRoutes(
   });
 
   app.get("/health/ready", async (_request, response) => {
-    const result = await evaluateReadiness(resolvedOptions);
     response.set("Cache-Control", "no-store");
+
+    if (injectedRegistry) {
+      const snapshot = await injectedRegistry.probeAll();
+      const components = Object.fromEntries(
+        snapshot.components.map(component => [component.id, component.state]),
+      );
+      response
+        .status(snapshot.status === "not_ready" ? 503 : 200)
+        .json({ status: snapshot.status, components });
+      return;
+    }
+
+    const result = await evaluateReadiness(resolvedOptions);
     response.status(result.status === "ready" ? 200 : 503).json(result);
   });
 }
