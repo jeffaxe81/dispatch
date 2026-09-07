@@ -68,4 +68,18 @@ for (const eventName of ["workspace-screen-opened", "workspace-screen-closed", "
 }
 requireCondition(!workspaceChannel.includes("execute-script"), "D-010B permite evento de execução arbitrária no BroadcastChannel.");
 
-console.log(`Verificação de segurança aprovada: ${trackedMigrations.length} migrações, 17 correções preservadas e D-010B protegido.`);
+// D-010C — Functional widgets stay local, allowlisted and isolated per surface.
+const workspaceLayout = read("shared/workspaceLayout.ts");
+const authorizedIframeWidget = read("client/src/workspace/widgets/AuthorizedIframeWidget.tsx");
+const neoCommunicationWidget = read("client/src/workspace/widgets/NeoCommunicationWidget.tsx");
+const configurableDashboardWidget = read("client/src/workspace/widgets/ConfigurableDashboardWidget.tsx");
+const dynamicFormWidget = read("client/src/workspace/widgets/DynamicFormWidget.tsx");
+const workspaceScreenCanvas = read("client/src/workspace/WorkspaceScreenCanvas.tsx");
+requireCondition(workspaceLayout.includes('"authorized-iframe"') && workspaceLayout.includes('"neo-communication"') && workspaceLayout.includes("parseWorkspaceWidgetSettings"), "D-010C perdeu o catálogo fechado ou settings tipados dos widgets.");
+requireCondition(authorizedIframeWidget.includes("trpc.integrations.embeddedApplications.list") && authorizedIframeWidget.includes("resolveAuthorizedIframeApplication") && !authorizedIframeWidget.includes("settings.src"), "D-010C permite iframe fora do catálogo autorizado ou voltou a aceitar URL livre.");
+requireCondition(neoCommunicationWidget.includes('application.id === "neo-interact"') && neoCommunicationWidget.includes("trpc.integrations.embeddedApplications.list"), "D-010C perdeu a resolução autorizada e fechada do NEO.");
+requireCondition(configurableDashboardWidget.includes('configurableDashboardMetricKeys = ["activeIncidents", "availableTeams", "averageResponseSeconds"]') && configurableDashboardWidget.includes("normalizeDashboardMetricKeys"), "D-010C perdeu a allowlist fechada de métricas do dashboard.");
+requireCondition(dynamicFormWidget.includes('record.versionStatus !== "published"') && dynamicFormWidget.includes("trpc.forms.get") && dynamicFormWidget.includes("readOnly attachmentsReadOnly"), "D-010C permite formulário não publicado ou mutável no workspace.");
+requireCondition(workspaceScreenCanvas.includes("WorkspaceWidgetErrorBoundary") && workspaceScreenCanvas.includes("getWorkspaceWidgetRenderer") && workspaceScreenCanvas.includes('state="error"'), "D-010C perdeu montagem funcional ou isolamento local de falha dos widgets.");
+
+console.log(`Verificação de segurança aprovada: ${trackedMigrations.length} migrações, 22 correções/invariantes preservadas e D-010B/D-010C protegidos.`);

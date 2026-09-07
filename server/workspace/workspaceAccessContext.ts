@@ -30,6 +30,15 @@ const requiredPermissionByWidget: Record<WorkspaceWidgetType, string> = {
   incidents: "occurrences.view",
   teams: "teams.view",
   "work-shift": "work_shifts.view",
+  kanban: "occurrences.view",
+  "incident-detail": "occurrences.view",
+  resources: "teams.view",
+  "sla-alerts": "occurrences.view",
+  "neo-communication": "embedded_apps.view",
+  "operational-timeline": "occurrences.view",
+  "dynamic-form": "forms.view",
+  "configurable-dashboard": "occurrences.view",
+  "authorized-iframe": "embedded_apps.view",
 };
 
 async function findTeamOrganizationId(teamId: number) {

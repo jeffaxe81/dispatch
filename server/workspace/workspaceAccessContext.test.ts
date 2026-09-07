@@ -30,6 +30,29 @@ describe("workspace access context", () => {
       "priority-queue",
       "incidents",
       "teams",
+      "kanban",
+      "incident-detail",
+      "resources",
+      "sla-alerts",
+      "operational-timeline",
+      "configurable-dashboard",
+    ]));
+  });
+
+  it("maps embedded app and forms permissions only to their D-010C widgets", async () => {
+    const resolve = createWorkspaceAccessContextResolver({
+      findTeamOrganizationId: vi.fn(async () => 42),
+      getEffectiveAccess: vi.fn(async () => ({
+        permissions: ["embedded_apps.view", "forms.view"],
+        assignments: [],
+      })),
+    });
+
+    const result = await resolve({ user: baseUser } as never);
+    expect(result.allowedWidgetTypes).toEqual(new Set([
+      "neo-communication",
+      "dynamic-form",
+      "authorized-iframe",
     ]));
   });
 
