@@ -7,9 +7,58 @@ export const workspaceWidgetTypes = [
   "incidents",
   "teams",
   "work-shift",
+  "kanban",
+  "incident-detail",
+  "resources",
+  "sla-alerts",
+  "neo-communication",
+  "operational-timeline",
+  "dynamic-form",
+  "configurable-dashboard",
+  "authorized-iframe",
 ] as const;
 
 export type WorkspaceWidgetType = (typeof workspaceWidgetTypes)[number];
+
+const legacySettingsSchema = z.record(z.string(), z.unknown());
+const kanbanSettingsSchema = z.object({
+  statuses: z.array(z.string().trim().min(1).max(80)).max(32).default([]),
+  priorities: z.array(z.string().trim().min(1).max(80)).max(16).default([]),
+}).strict();
+const incidentDetailSettingsSchema = z.object({ compact: z.boolean().default(false) }).strict();
+const resourcesSettingsSchema = z.object({ includeVehicles: z.boolean().default(true) }).strict();
+const slaAlertsSettingsSchema = z.object({ riskMinutes: z.number().int().min(0).max(1440).default(15) }).strict();
+const neoCommunicationSettingsSchema = z.object({ applicationId: z.literal("neo-interact").default("neo-interact") }).strict();
+const operationalTimelineSettingsSchema = z.object({ mode: z.enum(["summary", "full"]).default("summary") }).strict();
+const dynamicFormSettingsSchema = z.object({ formId: z.number().int().positive().optional() }).strict();
+const configurableDashboardSettingsSchema = z.object({
+  metricKeys: z.array(z.string().trim().regex(/^[a-z0-9._-]{1,80}$/)).max(32).default([]),
+}).strict();
+const authorizedIframeSettingsSchema = z.object({
+  applicationId: z.string().trim().regex(/^[a-z0-9-]{2,80}$/),
+}).strict();
+
+const workspaceWidgetSettingsSchemas: Record<WorkspaceWidgetType, z.ZodType<Record<string, unknown>>> = {
+  "operational-map": legacySettingsSchema,
+  metrics: legacySettingsSchema,
+  "priority-queue": legacySettingsSchema,
+  incidents: legacySettingsSchema,
+  teams: legacySettingsSchema,
+  "work-shift": legacySettingsSchema,
+  kanban: kanbanSettingsSchema,
+  "incident-detail": incidentDetailSettingsSchema,
+  resources: resourcesSettingsSchema,
+  "sla-alerts": slaAlertsSettingsSchema,
+  "neo-communication": neoCommunicationSettingsSchema,
+  "operational-timeline": operationalTimelineSettingsSchema,
+  "dynamic-form": dynamicFormSettingsSchema,
+  "configurable-dashboard": configurableDashboardSettingsSchema,
+  "authorized-iframe": authorizedIframeSettingsSchema,
+};
+
+export function parseWorkspaceWidgetSettings(type: WorkspaceWidgetType, settings: unknown): Record<string, unknown> {
+  return workspaceWidgetSettingsSchemas[type].parse(settings ?? {});
+}
 
 const workspaceWidgetPositionSchema = z.object({
   instanceId: z.string().min(1).max(120),
@@ -22,7 +71,18 @@ const workspaceWidgetPositionSchema = z.object({
 
 export const workspaceWidgetInstanceSchema = workspaceWidgetPositionSchema.extend({
   type: z.enum(workspaceWidgetTypes),
-}).strict();
+}).strict().superRefine((widget, ctx) => {
+  const parsed = workspaceWidgetSettingsSchemas[widget.type].safeParse(widget.settings);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["settings", ...issue.path],
+        message: issue.message,
+      });
+    }
+  }
+});
 
 export type WorkspaceWidgetInstance = z.infer<typeof workspaceWidgetInstanceSchema>;
 
@@ -119,7 +179,10 @@ function normalizeWidgets(
       workspaceWidgetTypes.includes(widget.type as WorkspaceWidgetType) &&
       allowedTypes.has(widget.type as WorkspaceWidgetType),
     )
-    .map(widget => workspaceWidgetInstanceSchema.parse(widget));
+    .map(widget => workspaceWidgetInstanceSchema.parse({
+      ...widget,
+      settings: parseWorkspaceWidgetSettings(widget.type, widget.settings),
+    }));
 }
 
 export function normalizeWorkspaceLayout(
