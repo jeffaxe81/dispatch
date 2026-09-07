@@ -4,6 +4,7 @@ export type RecoveryComponentState = {
   circuitOpen: boolean;
   healthyStreak: number;
   lastDecisionId: string | null;
+  lastTransitionId: string | null;
   inProgress: boolean;
 };
 
@@ -18,6 +19,7 @@ const emptyState = (): RecoveryComponentState => ({
   circuitOpen: false,
   healthyStreak: 0,
   lastDecisionId: null,
+  lastTransitionId: null,
   inProgress: false,
 });
 
