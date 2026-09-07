@@ -32,6 +32,19 @@ describe("D-010C workspace widget contract", () => {
     })).toThrow();
   });
 
+  it("preserves settings for the six pre-D-010C widget types", () => {
+    expect(parseWorkspaceWidgetSettings("operational-map", { zoom: 14, layer: "teams" })).toEqual({ zoom: 14, layer: "teams" });
+    expect(workspaceWidgetInstanceSchema.parse({
+      instanceId: "map-legacy",
+      type: "operational-map",
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 6,
+      settings: { zoom: 14, layer: "teams" },
+    }).settings).toEqual({ zoom: 14, layer: "teams" });
+  });
+
   it("normalizes safe defaults and rejects unknown keys", () => {
     expect(parseWorkspaceWidgetSettings("kanban", {})).toEqual({ statuses: [], priorities: [] });
     expect(parseWorkspaceWidgetSettings("incident-detail", {})).toEqual({ compact: false });
