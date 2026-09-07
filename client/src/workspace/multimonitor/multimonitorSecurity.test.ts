@@ -23,9 +23,8 @@ describe("D-010B multi-monitor security regression", () => {
     const router = read("server/routers/workspace.ts");
 
     expect(page).toContain('trpc.workspace.getOwnScreen');
-    expect(page).toContain('allowedKeys');
-    expect(page).toContain('workspace');
-    expect(page).toContain('screen');
+    expect(page).toContain('const allowed = new Set(["workspace", "screen"])');
+    expect(page).toContain('for (const key of params.keys()) if (!allowed.has(key)) return null');
     expect(page).not.toContain('tenantId:');
     expect(page).not.toContain('userId:');
     expect(router).toContain('getOwnScreen');
@@ -37,7 +36,8 @@ describe("D-010B multi-monitor security regression", () => {
     const registry = read("client/src/workspace/widgetRegistry.ts");
     const channel = read("client/src/workspace/multimonitor/workspaceChannel.ts");
 
-    expect(registry).toContain("widgetRegistry");
+    expect(registry).toContain("workspaceWidgetRegistry");
+    expect(registry).toContain("Object.prototype.hasOwnProperty.call(workspaceWidgetRegistry, type)");
     expect(registry).not.toContain("eval(");
     expect(registry).not.toContain("new Function");
     expect(channel).toContain("workspace-screen-opened");
