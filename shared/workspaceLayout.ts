@@ -20,7 +20,7 @@ export const workspaceWidgetTypes = [
 
 export type WorkspaceWidgetType = (typeof workspaceWidgetTypes)[number];
 
-const emptySettingsSchema = z.object({}).strict();
+const legacySettingsSchema = z.record(z.string(), z.unknown());
 const kanbanSettingsSchema = z.object({
   statuses: z.array(z.string().trim().min(1).max(80)).max(32).default([]),
   priorities: z.array(z.string().trim().min(1).max(80)).max(16).default([]),
@@ -39,12 +39,12 @@ const authorizedIframeSettingsSchema = z.object({
 }).strict();
 
 const workspaceWidgetSettingsSchemas: Record<WorkspaceWidgetType, z.ZodType<Record<string, unknown>>> = {
-  "operational-map": emptySettingsSchema,
-  metrics: emptySettingsSchema,
-  "priority-queue": emptySettingsSchema,
-  incidents: emptySettingsSchema,
-  teams: emptySettingsSchema,
-  "work-shift": emptySettingsSchema,
+  "operational-map": legacySettingsSchema,
+  metrics: legacySettingsSchema,
+  "priority-queue": legacySettingsSchema,
+  incidents: legacySettingsSchema,
+  teams: legacySettingsSchema,
+  "work-shift": legacySettingsSchema,
   kanban: kanbanSettingsSchema,
   "incident-detail": incidentDetailSettingsSchema,
   resources: resourcesSettingsSchema,
