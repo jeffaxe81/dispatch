@@ -68,13 +68,8 @@ jobs:
             exit 1
           fi
 
-      - name: Apply migrations to ephemeral MySQL
-        run: pnpm drizzle-kit migrate
-
-      - name: Re-run focused tests after migration
-        run: pnpm vitest run shared/operations.cp016.test.ts server/schema.cp016.test.ts
-
       - name: Upload generated migration evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cp016-generated-migration
@@ -82,3 +77,41 @@ jobs:
             drizzle/*.sql
             drizzle/meta/*.json
           if-no-files-found: error
+
+      - name: Diagnose baseline migrations
+        continue-on-error: true
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import mysql from 'mysql2/promise';
+
+          const conn = await mysql.createConnection({ host: '127.0.0.1', port: 3306, user: 'root', password: 'root', multipleStatements: false });
+          await conn.query('DROP DATABASE IF EXISTS dispatch_cp016_baseline_debug');
+          await conn.query('CREATE DATABASE dispatch_cp016_baseline_debug');
+          await conn.query('USE dispatch_cp016_baseline_debug');
+
+          for (const file of ['drizzle/0000_useful_giant_man.sql', 'drizzle/0001_abandoned_kinsey_walden.sql', 'drizzle/0002_aromatic_warhawk.sql']) {
+            const sql = fs.readFileSync(file, 'utf8');
+            const statements = sql.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean);
+            console.log(`Applying ${file} (${statements.length} statements)`);
+            for (let i = 0; i < statements.length; i++) {
+              try {
+                await conn.query(statements[i]);
+              } catch (error) {
+                console.error(`FAILED ${file} statement ${i + 1}/${statements.length}`);
+                console.error(error.code, error.errno, error.sqlMessage);
+                console.error(statements[i].slice(0, 1200));
+                await conn.end();
+                process.exit(1);
+              }
+            }
+          }
+          console.log('Baseline migrations applied successfully');
+          await conn.end();
+          NODE
+
+      - name: Apply migrations to ephemeral MySQL
+        run: pnpm drizzle-kit migrate
+
+      - name: Re-run focused tests after migration
+        run: pnpm vitest run shared/operations.cp016.test.ts server/schema.cp016.test.ts
