@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { storageGetSignedUrl } from "../storage";
 import { ENV } from "./env";
+import { createHealthRegistry, type HealthRegistry } from "./healthRegistry";
 
 export type HealthCheckState = "ok" | "failed";
 
@@ -21,6 +22,7 @@ export type OperationalHealthOptions = {
 };
 
 const DEFAULT_TIMEOUT_MS = 2_000;
+const DEFAULT_EVIDENCE_TTL_MS = 10_000;
 
 export async function checkDatabaseReady(): Promise<void> {
   const db = await getDb();
@@ -56,44 +58,53 @@ export async function checkStorageReady(
   }
 }
 
-async function withTimeout(
-  check: () => Promise<void>,
-  timeoutMs: number,
-): Promise<void> {
-  let timeout: NodeJS.Timeout | undefined;
-  try {
-    await Promise.race([
-      check(),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error("healthcheck_timeout")),
-          timeoutMs,
-        );
-      }),
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
+export function createOperationalHealthRegistry(
+  options: Partial<OperationalHealthOptions> = {},
+): HealthRegistry {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const checkDatabase = options.checkDatabase ?? checkDatabaseReady;
+  const checkStorage = options.checkStorage ?? checkStorageReady;
+
+  return createHealthRegistry([
+    {
+      id: "database",
+      name: "Banco de dados",
+      criticality: "critical",
+      blocksReadiness: true,
+      timeoutMs,
+      evidenceTtlMs: DEFAULT_EVIDENCE_TTL_MS,
+      probe: async () => {
+        await checkDatabase();
+        return "healthy";
+      },
+    },
+    {
+      id: "storage",
+      name: "Armazenamento",
+      criticality: "critical",
+      blocksReadiness: true,
+      timeoutMs,
+      evidenceTtlMs: DEFAULT_EVIDENCE_TTL_MS,
+      probe: async () => {
+        await checkStorage();
+        return "healthy";
+      },
+    },
+  ]);
 }
 
 export async function evaluateReadiness(
   options: OperationalHealthOptions,
 ): Promise<ReadinessResult> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const [database, storage] = await Promise.allSettled([
-    withTimeout(options.checkDatabase, timeoutMs),
-    withTimeout(options.checkStorage, timeoutMs),
-  ]);
+  const snapshot = await createOperationalHealthRegistry(options).probeAll();
+  const stateById = new Map(snapshot.components.map(component => [component.id, component.state]));
   const checks: ReadinessResult["checks"] = {
-    database: database.status === "fulfilled" ? "ok" : "failed",
-    storage: storage.status === "fulfilled" ? "ok" : "failed",
+    database: stateById.get("database") === "healthy" ? "ok" : "failed",
+    storage: stateById.get("storage") === "healthy" ? "ok" : "failed",
   };
 
   return {
-    status:
-      checks.database === "ok" && checks.storage === "ok"
-        ? "ready"
-        : "not_ready",
+    status: snapshot.status === "not_ready" ? "not_ready" : "ready",
     checks,
   };
 }
