@@ -50,14 +50,16 @@ describe("D-010B multi-monitor security regression", () => {
 
   it("registers D-010B security invariants in the repository safety gate and documentation", () => {
     const security = read("scripts/security-regression-check.mjs");
-    const trpcCoverage = read("docs/TRPC_CONTRACT_COVERAGE.md");
+    const securityContract = read("docs/D010B_MULTIMONITOR_SECURITY_CONTRACT.md");
     const routeMatrix = read("docs/UI_ROUTE_STATE_MATRIX.md");
 
     expect(security).toContain("D-010B");
     expect(security).toContain("MultiMonitorManager.ts");
     expect(security).toContain("workspaceChannel.ts");
     expect(security).toContain("WorkspaceExternalScreenPage.tsx");
-    expect(trpcCoverage).toContain("workspace.getOwnScreen");
+    expect(securityContract).toContain("workspace.getOwnScreen");
+    expect(securityContract).toContain("tenantId");
+    expect(securityContract).toContain("userId");
     expect(routeMatrix).toContain("/workspace/external");
   });
 });
