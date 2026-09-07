@@ -82,8 +82,12 @@ describe("RecoveryPolicyEngine eligibility", () => {
   it.each(["degraded", "unknown", "healthy"] as const)(
     "suppresses non-recoverable target state %s",
     to => {
+      const from = to === "healthy" ? "unhealthy" : "healthy";
       expect(
-        createEngine().evaluate({ ...unhealthyDb, transitionId: `tr-${to}`, to }, now),
+        createEngine().evaluate(
+          { ...unhealthyDb, transitionId: `tr-${to}`, from, to },
+          now,
+        ),
       ).toMatchObject({
         decision: "suppress",
         reasonCode: "STATE_NOT_RECOVERABLE",
