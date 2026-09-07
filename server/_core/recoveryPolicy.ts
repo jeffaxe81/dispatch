@@ -79,6 +79,7 @@ export function createRecoveryPolicyEngine(options: {
     decision: RecoveryDecisionKind,
     reasonCode: RecoveryReasonCode,
     attemptNumber: number,
+    cooldownUntilMs: number | null = null,
   ): RecoveryDecision => ({
     decisionId: createId(),
     componentId: input.componentId,
@@ -86,20 +87,21 @@ export function createRecoveryPolicyEngine(options: {
     reasonCode,
     policyVersion: "d011b1-v1",
     attemptNumber,
-    cooldownUntil: null,
+    cooldownUntil:
+      cooldownUntilMs === null ? null : new Date(cooldownUntilMs).toISOString(),
     createdAt: now.toISOString(),
   });
 
   return {
     evaluate(input, now = new Date()) {
       const state = store.get(input.componentId);
-      const attemptNumber = state.attemptTimestamps.length;
+      const initialAttemptNumber = state.attemptTimestamps.length;
 
       if (!config.enabled) {
-        return decide(input, now, "suppress", "POLICY_DISABLED", attemptNumber);
+        return decide(input, now, "suppress", "POLICY_DISABLED", initialAttemptNumber);
       }
       if (input.from === input.to) {
-        return decide(input, now, "suppress", "INVALID_TRANSITION", attemptNumber);
+        return decide(input, now, "suppress", "INVALID_TRANSITION", initialAttemptNumber);
       }
       if (!config.recoverableComponents.has(input.componentId)) {
         return decide(
@@ -107,14 +109,84 @@ export function createRecoveryPolicyEngine(options: {
           now,
           "suppress",
           "COMPONENT_NOT_ALLOWLISTED",
-          attemptNumber,
+          initialAttemptNumber,
         );
       }
       if (input.to !== "unhealthy") {
-        return decide(input, now, "suppress", "STATE_NOT_RECOVERABLE", attemptNumber);
+        return decide(
+          input,
+          now,
+          "suppress",
+          "STATE_NOT_RECOVERABLE",
+          initialAttemptNumber,
+        );
       }
 
-      return decide(input, now, "allow_dry_run", "UNHEALTHY_ELIGIBLE", attemptNumber + 1);
+      const nowMs = now.getTime();
+      const windowStart = nowMs - config.attemptWindowMs;
+      const attempts = state.attemptTimestamps.filter(timestamp => timestamp >= windowStart);
+
+      if (state.circuitOpen) {
+        return decide(
+          input,
+          now,
+          "suppress",
+          "RECOVERY_CIRCUIT_OPEN",
+          attempts.length,
+          state.cooldownUntilMs,
+        );
+      }
+      if (state.inProgress) {
+        return decide(
+          input,
+          now,
+          "suppress",
+          "RECOVERY_ALREADY_IN_PROGRESS",
+          attempts.length,
+          state.cooldownUntilMs,
+        );
+      }
+      if (state.cooldownUntilMs !== null && nowMs < state.cooldownUntilMs) {
+        return decide(
+          input,
+          now,
+          "suppress",
+          "COOLDOWN_ACTIVE",
+          attempts.length,
+          state.cooldownUntilMs,
+        );
+      }
+      if (attempts.length >= config.maxAttempts) {
+        store.set(input.componentId, {
+          ...state,
+          attemptTimestamps: attempts,
+          circuitOpen: true,
+        });
+        return decide(
+          input,
+          now,
+          "escalate",
+          "ATTEMPT_LIMIT_REACHED",
+          attempts.length,
+          state.cooldownUntilMs,
+        );
+      }
+
+      const nextAttempts = [...attempts, nowMs];
+      const cooldownUntilMs = nowMs + config.cooldownMs;
+      store.set(input.componentId, {
+        ...state,
+        attemptTimestamps: nextAttempts,
+        cooldownUntilMs,
+      });
+      return decide(
+        input,
+        now,
+        "allow_dry_run",
+        "UNHEALTHY_ELIGIBLE",
+        nextAttempts.length,
+        cooldownUntilMs,
+      );
     },
   };
 }
