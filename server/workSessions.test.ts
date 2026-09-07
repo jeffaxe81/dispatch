@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveWorkSessionAction, validateWorkSessionAdjustmentReason } from "./db";
+import { resolveWorkSessionAction, validateWorkSessionAdjustmentReason } from "./workSessions";
 
 const startedAt = new Date("2026-09-07T08:00:00.000Z");
 const pausedAt = new Date("2026-09-07T10:00:00.000Z");
