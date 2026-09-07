@@ -142,7 +142,7 @@ describe("RecoveryPolicyEngine limits", () => {
       decision: "allow_dry_run",
       attemptNumber: 1,
     });
-    expect(engine.evaluate(input("tr-2"), t10)).toMatchObject({
+    expect(engine.evaluate(input("cooldown-1"), t10)).toMatchObject({
       decision: "suppress",
       reasonCode: "COOLDOWN_ACTIVE",
       attemptNumber: 1,
