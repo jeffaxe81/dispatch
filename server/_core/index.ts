@@ -10,15 +10,31 @@ import { rootRouter } from "../rootRouter";
 import { alrtIngressJsonErrorHandler, registerAlrtIngressRoutes } from "../alrtIngress";
 import { createContext } from "./context";
 import { ENV, validateRuntimeEnv } from "./env";
-import { registerOperationalHealthRoutes } from "./operationalHealth";
+import { createOperationalHealthRegistry } from "./operationalHealth";
+import { installOperationalHealthRuntime } from "./operationalHealthRuntime";
 import { parseServerPort, selectServerPort } from "./serverPort";
 import { serveStatic, setupVite } from "./vite";
+
+const HEALTH_WATCHDOG_INTERVAL_MS = 5_000;
+const HEALTH_WATCHDOG_POLICY = {
+  failuresToUnhealthy: 3,
+  successesToRecover: 2,
+  cooldownMs: 30_000,
+} as const;
 
 async function startServer() {
   if (ENV.isProduction) validateRuntimeEnv();
   await ensureLocalAdministrator();
   const app = express();
-  registerOperationalHealthRoutes(app);
+  const healthRegistry = createOperationalHealthRegistry();
+  installOperationalHealthRuntime(app, {
+    registry: healthRegistry,
+    watchdogIntervalMs: HEALTH_WATCHDOG_INTERVAL_MS,
+    watchdogPolicy: HEALTH_WATCHDOG_POLICY,
+    logTransition: transition => {
+      console.warn("Operational health transition", transition);
+    },
+  });
   // Trust exactly one forwarding hop only when deployment explicitly opts in.
   // This makes req.secure/request.ip reliable without trusting spoofed headers.
   app.set("trust proxy", ENV.trustProxy ? 1 : false);
