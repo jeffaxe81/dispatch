@@ -7,6 +7,8 @@ import { IncidentDetailWidget } from "./widgets/IncidentDetailWidget";
 import { ResourcesWidget } from "./widgets/ResourcesWidget";
 import { SlaAlertsWidget } from "./widgets/SlaAlertsWidget";
 import { OperationalTimelineWidget } from "./widgets/OperationalTimelineWidget";
+import { NeoCommunicationWidget } from "./widgets/NeoCommunicationWidget";
+import { AuthorizedIframeWidget } from "./widgets/AuthorizedIframeWidget";
 
 export type WorkspaceWidgetRendererProps = { widget: WorkspaceWidgetInstance };
 
@@ -22,11 +24,11 @@ const rendererRegistry: Partial<Record<WorkspaceWidgetType, React.ComponentType<
   "incident-detail": IncidentDetailWidget,
   resources: ResourcesWidget,
   "sla-alerts": SlaAlertsWidget,
-  "neo-communication": PlaceholderWorkspaceWidget,
+  "neo-communication": NeoCommunicationWidget,
   "operational-timeline": OperationalTimelineWidget,
   "dynamic-form": PlaceholderWorkspaceWidget,
   "configurable-dashboard": PlaceholderWorkspaceWidget,
-  "authorized-iframe": PlaceholderWorkspaceWidget,
+  "authorized-iframe": AuthorizedIframeWidget,
 };
 
 export function getWorkspaceWidgetRenderer(type: WorkspaceWidgetType): React.ComponentType<WorkspaceWidgetRendererProps> | null {
