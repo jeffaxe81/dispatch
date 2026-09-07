@@ -1,5 +1,44 @@
 # Changelog
 
+## [Unreleased] — D-010 Workspace Operacional
+
+### D-010A / D-010B — Workspace configurável e Multi-Monitor
+
+Evolução do workspace operacional para layout persistido e superfícies lógicas múltiplas, mantendo autorização e persistência no backend.
+
+### Incluído
+- WorkspaceLayout v2 com migração determinística v1 → v2;
+- uma superfície principal e N superfícies externas configuráveis;
+- criação, renomeação, reordenação, definição da principal, movimentação de widgets e remoção com realocação;
+- rota externa interna `/workspace/external`, sem tenant/user como autoridade na URL;
+- abertura/foco/reabertura coordenados de superfícies em janelas do navegador;
+- detecção explícita de bloqueio de pop-up;
+- sincronização entre janelas por BroadcastChannel apenas para coordenação;
+- hints progressivos de posicionamento por display, sem dependência obrigatória da Window Management API;
+- catálogo fechado de widgets;
+- navegação acessível das tabs por teclado com setas, Home e End;
+- inventário tRPC incluindo `workspace.getOwn`, `workspace.getOwnScreen`, `workspace.saveOwn` e `workspace.resetOwn`;
+- regressões específicas de segurança e integração do multi-monitor.
+
+### Qualidade registrada no candidato funcional
+- candidato: `7dcbb8939d647a39ceb848493ef141c2480d3c44`;
+- 181/181 arquivos de teste aprovados;
+- 762/762 testes aprovados;
+- security check aprovado;
+- TypeScript aprovado;
+- build de produção aprovado;
+- GIS visual homologation #680 aprovado;
+- NEO external compatibility #617 aprovado;
+- NEO workspace visual homologation #660 aprovado.
+
+### Controles de release
+- migration `0007_d010a_workspace_layouts.sql` versionada, sem aplicação produtiva neste fechamento;
+- nenhum grant produtivo executado;
+- nenhum deploy produtivo executado;
+- nenhum merge em `main` autorizado por este registro;
+- relatório de verificação: `docs/releases/d010b-verification.md`;
+- checkpoint somente após novo GREEN do SHA documental final.
+
 ## [2.17.0] — 2026-09-06
 
 ### D-008 — Formulários Dinâmicos / No-Code
