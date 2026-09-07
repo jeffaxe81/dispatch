@@ -7,7 +7,7 @@ import { SlaAlertsWidgetView } from "./SlaAlertsWidget";
 describe("D-010C SlaAlertsWidget", () => {
   it("renders incidents at or above configured risk threshold", () => {
     render(<SlaAlertsWidgetView rows={[{ id: 42, code: "OC-42", category: "Alagamento", priority: "critica", ageMinutes: 35 }]} riskMinutes={15} />);
-    expect(screen.getByText("OC-42")).toBeTruthy();
+    expect(screen.getByText(/OC-42 · critica/i)).toBeTruthy();
     expect(screen.getByText(/35 min/i)).toBeTruthy();
   });
 
