@@ -5,6 +5,7 @@ import {
 } from "./recoveryExecution";
 
 const validRequest = () => ({
+  tenantId: "tenant-7",
   actionId: "action:decision-1",
   transitionId: "transition-1",
   componentId: "database",
@@ -25,7 +26,7 @@ describe("D-011B.4 recovery execution contract", () => {
     expect(validateRecoveryExecutionRequest(validRequest())).toEqual({ valid: true });
   });
 
-  it.each(["actionId", "componentId", "correlationId", "reservationId", "leaseId", "ownerId", "authorizationRef"] as const)(
+  it.each(["tenantId", "actionId", "componentId", "correlationId", "reservationId", "leaseId", "ownerId", "authorizationRef"] as const)(
     "fails closed when %s is empty",
     (field) => {
       expect(validateRecoveryExecutionRequest({ ...validRequest(), [field]: "" })).toEqual({
