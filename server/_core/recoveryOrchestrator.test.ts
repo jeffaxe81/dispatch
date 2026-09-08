@@ -98,6 +98,45 @@ describe("RecoveryOrchestrator action port", () => {
     );
   });
 
+  it.each([
+    ["simulated_failure", "SIMULATED_FAILURE"],
+    ["simulated_timeout", "SIMULATED_TIMEOUT"],
+    ["simulated_cancelled", "SIMULATED_CANCELLED"],
+  ] as const)(
+    "releases inProgress after terminal %s result",
+    async (status, reasonCode) => {
+      const store = createInMemoryRecoveryPolicyStore();
+      const audit = vi.fn();
+      const actionPort: RecoveryActionPort = {
+        async execute(request) {
+          return {
+            ...simulated(request),
+            status,
+            reasonCode,
+          };
+        },
+      };
+      const orchestrator = createRecoveryOrchestrator({
+        engine: { evaluate: () => allowedDecision },
+        actionPort,
+        store,
+        audit,
+      });
+
+      await expect(orchestrator.handle(transition(`tr-${status}`), now)).resolves.toEqual(
+        allowedDecision,
+      );
+      expect(store.get("database").inProgress).toBe(false);
+      expect(audit).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          event: "recovery_action_completed",
+          actionStatus: status,
+          actionReasonCode: reasonCode,
+        }),
+      );
+    },
+  );
+
   it.each(["suppress", "escalate"] as const)(
     "does not call the action port for a %s decision",
     async decisionKind => {
