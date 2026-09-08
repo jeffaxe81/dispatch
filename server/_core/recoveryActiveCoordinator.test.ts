@@ -5,6 +5,8 @@ import type { RecoveryActionRecord, RecoveryActionRecordPort, RecoveryActionRese
 import type { RecoveryLease, RecoveryLeaseAcquireResult, RecoveryLeasePort } from "./recoveryLease";
 import { createRecoveryActiveCoordinator } from "./recoveryActiveCoordinator";
 
+const tenantId = "tenant-7";
+
 const request: RecoveryActionRequest = {
   actionId: "action:decision-1",
   transitionId: "transition-1",
@@ -26,6 +28,7 @@ const config: ActiveRecoveryConfig = {
 const lease: RecoveryLease = {
   leaseId: "lease-1",
   namespace: "d011b3-v1",
+  tenantId,
   componentId: "database",
   actionId: request.actionId,
   ownerId: "replica-a",
@@ -36,6 +39,7 @@ const lease: RecoveryLease = {
 
 const reservedRecord: RecoveryActionRecord = {
   actionId: request.actionId,
+  tenantId,
   componentId: request.componentId,
   correlationId: request.correlationId,
   action: request.action,
@@ -76,6 +80,7 @@ function createPorts(options: {
 
 function coordinator(ports: ReturnType<typeof createPorts>, overrideConfig = config) {
   return createRecoveryActiveCoordinator({
+    tenantId,
     config: overrideConfig,
     leasePort: ports.leasePort,
     recordPort: ports.recordPort,
@@ -181,6 +186,7 @@ describe("RecoveryActiveCoordinator", () => {
         currentLease = {
           leaseId: `lease-${nextFence}`,
           namespace: input.namespace,
+          tenantId: input.tenantId,
           componentId: input.componentId,
           actionId: input.actionId,
           ownerId: input.ownerId,
@@ -217,6 +223,7 @@ describe("RecoveryActiveCoordinator", () => {
     };
 
     const first = createRecoveryActiveCoordinator({
+      tenantId,
       config,
       leasePort: sharedLeasePort,
       recordPort: sharedRecordPort,
@@ -224,6 +231,7 @@ describe("RecoveryActiveCoordinator", () => {
       leaseTtlMs: 30_000,
     });
     const second = createRecoveryActiveCoordinator({
+      tenantId,
       config,
       leasePort: sharedLeasePort,
       recordPort: sharedRecordPort,
