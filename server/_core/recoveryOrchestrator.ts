@@ -6,6 +6,7 @@ import {
   type RecoveryActionRequest,
   type RecoveryActionResult,
 } from "./recoveryAction";
+import type { DryRunRecoveryExecutor } from "./recoveryDryRunExecutor";
 import type {
   RecoveryDecision,
   RecoveryReasonCode,
@@ -16,6 +17,8 @@ import type { RecoveryPolicyStore } from "./recoveryPolicyStore";
 export type RecoveryAuditEvent = {
   event:
     | "recovery_policy_evaluated"
+    | "recovery_dry_run_started"
+    | "recovery_dry_run_completed"
     | "recovery_suppressed"
     | "recovery_escalated"
     | "recovery_circuit_opened"
@@ -37,15 +40,19 @@ export type RecoveryAuditEvent = {
   durationMs?: number;
 };
 
-export function createRecoveryOrchestrator(options: {
+type RecoveryOrchestratorOptions = {
   engine: { evaluate(input: RecoveryTransitionInput, now?: Date): RecoveryDecision };
-  actionPort: RecoveryActionPort;
   store: RecoveryPolicyStore;
   audit?: (event: RecoveryAuditEvent) => void;
-}): {
+} & (
+  | { actionPort: RecoveryActionPort; executor?: never }
+  | { actionPort?: never; executor: DryRunRecoveryExecutor }
+);
+
+export function createRecoveryOrchestrator(options: RecoveryOrchestratorOptions): {
   handle(input: RecoveryTransitionInput, now?: Date): Promise<RecoveryDecision>;
 } {
-  const { engine, actionPort, store } = options;
+  const { engine, store } = options;
   const audit = options.audit ?? (() => undefined);
 
   const emit = (
@@ -127,8 +134,19 @@ export function createRecoveryOrchestrator(options: {
       }
 
       store.set(input.componentId, { ...current, inProgress: true });
-      let actionRequest: RecoveryActionRequest | null = null;
       try {
+        if ("executor" in options && options.executor) {
+          emit("recovery_dry_run_started", decision, now);
+          try {
+            await options.executor.execute(decision, now);
+            emit("recovery_dry_run_completed", decision, now);
+          } catch {
+            emit("recovery_suppressed", decision, now);
+          }
+          return decision;
+        }
+
+        let actionRequest: RecoveryActionRequest;
         try {
           actionRequest = mapDecisionToRecoveryAction({
             decision,
@@ -149,7 +167,7 @@ export function createRecoveryOrchestrator(options: {
         });
 
         try {
-          const result = await actionPort.execute(actionRequest);
+          const result = await options.actionPort.execute(actionRequest);
           emit("recovery_action_completed", decision, now, {
             actionId: actionRequest.actionId,
             action: actionRequest.action,
