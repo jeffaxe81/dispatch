@@ -80,4 +80,35 @@ describe("SimulatedRecoveryAdapter", () => {
     expect(result.status).toBe("simulated_cancelled");
     expect(result.reasonCode).toBe("SIMULATED_CANCELLED");
   });
+
+  it("reuses the first result for an identical duplicate actionId", async () => {
+    let calls = 0;
+    const clock = {
+      now: () => new Date("2026-09-08T00:00:00.000Z"),
+      sleep: async () => {
+        calls += 1;
+      },
+    };
+    const adapter = createSimulatedRecoveryAdapter({
+      scenario: "success",
+      clock,
+      timeoutMs: 250,
+    });
+    const first = await adapter.execute(request);
+    const second = await adapter.execute({ ...request });
+    expect(second).toEqual(first);
+    expect(calls).toBe(1);
+  });
+
+  it("fails closed for a conflicting duplicate actionId", async () => {
+    const adapter = createSimulatedRecoveryAdapter({
+      scenario: "success",
+      clock: createClock(),
+      timeoutMs: 250,
+    });
+    await adapter.execute(request);
+    await expect(
+      adapter.execute({ ...request, componentId: "storage" }),
+    ).rejects.toThrow("DUPLICATE_ACTION_CONFLICT");
+  });
 });
