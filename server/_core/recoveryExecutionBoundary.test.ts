@@ -68,7 +68,7 @@ function harness(overrides: {
   guardReason?: string;
   finalFenceValid?: boolean;
   firstTransitionStatus?: "transitioned" | "state_conflict" | "existing_terminal" | "store_unavailable";
-  terminalTransitionStatus?: "state_conflict" | "store_unavailable";
+  terminalTransitionStatus?: "state_conflict" | "existing_terminal" | "store_unavailable";
   executor?: RecoveryExecutorPort;
   now?: () => Date;
 } = {}) {
@@ -94,6 +94,10 @@ function harness(overrides: {
       }
       if (input.expectedState === "executing" && overrides.terminalTransitionStatus) {
         if (overrides.terminalTransitionStatus === "store_unavailable") return { status: "store_unavailable" as const };
+        if (overrides.terminalTransitionStatus === "existing_terminal") {
+          current = { ...current, state: "completed_failure", updatedAt: input.at };
+          return { status: "existing_terminal" as const, record: current };
+        }
         return { status: "state_conflict" as const, record: current };
       }
       if (current.state !== input.expectedState) return { status: "state_conflict" as const, record: current };
@@ -199,6 +203,17 @@ describe("D-011B.4 RecoveryExecutionBoundary", () => {
       "ledger:executing->verification_failed",
     ]);
     expect(h.executor.execute).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when success finalization observes an incompatible existing terminal", async () => {
+    const h = harness({ terminalTransitionStatus: "existing_terminal" });
+    const result = await h.boundary.execute({ request, lease });
+
+    expect(result).toEqual({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
+    expect(h.audit.append).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      reasonCode: "LEDGER_FINALIZATION_FAILED",
+    }));
   });
 
   it("reports ledger finalization failure when verification_failed cannot be persisted", async () => {
