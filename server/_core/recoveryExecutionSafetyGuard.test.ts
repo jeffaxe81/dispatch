@@ -103,6 +103,29 @@ describe("D-011B.4 execution safety guard", () => {
       .resolves.toEqual({ allowed: false, reasonCode: "RESERVATION_MISMATCH" });
   });
 
+  it("rejects a lease from another tenant", async () => {
+    const foreignLease = { ...lease(), tenantId: "tenant-8" } as RecoveryLease;
+    await expect(guard().evaluate({ request: request(), lease: foreignLease, executorCapability: "simulation" }))
+      .resolves.toEqual({ allowed: false, reasonCode: "TENANT_MISMATCH" });
+  });
+
+  it("rejects a persistent reservation from another tenant", async () => {
+    const p = ports();
+    p.recordPort.get = vi.fn(async () => ({
+      actionId: "action:decision-1",
+      tenantId: "tenant-8",
+      componentId: "database",
+      correlationId: "decision-1",
+      action: "restart_component" as const,
+      state: "reserved" as const,
+      fencingToken: 7,
+      createdAt: "2026-09-08T12:00:01.000Z",
+      updatedAt: "2026-09-08T12:00:01.000Z",
+    } as any));
+    await expect(guard({ leasePort: p.leasePort, recordPort: p.recordPort }).evaluate({ request: request(), lease: lease(), executorCapability: "simulation" }))
+      .resolves.toEqual({ allowed: false, reasonCode: "TENANT_MISMATCH" });
+  });
+
   it("rejects an expired lease before consulting the fence backend", async () => {
     const p = ports();
     const staleLease = { ...lease(), expiresAt: "2026-09-08T12:00:05.000Z" };
