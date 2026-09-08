@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DryRunRecoveryExecutor, DryRunRecoveryResult } from "./recoveryDryRunExecutor";
+import type {
+  RecoveryActionPort,
+  RecoveryActionRequest,
+  RecoveryActionResult,
+} from "./recoveryAction";
 import { createRecoveryOrchestrator } from "./recoveryOrchestrator";
 import {
   createRecoveryPolicyEngine,
@@ -34,14 +38,15 @@ const transition = (
   occurredAt: now.toISOString(),
 });
 
-const simulated = (decision: RecoveryDecision): DryRunRecoveryResult => ({
-  decisionId: decision.decisionId,
-  componentId: decision.componentId,
-  mode: "dry_run",
-  outcome: "simulated",
-  actionType: "restart_component",
+const simulated = (request: RecoveryActionRequest): RecoveryActionResult => ({
+  actionId: request.actionId,
+  componentId: request.componentId,
+  status: "simulated_success",
+  reasonCode: "SIMULATED_SUCCESS",
   startedAt: now.toISOString(),
-  completedAt: now.toISOString(),
+  finishedAt: now.toISOString(),
+  durationMs: 0,
+  correlationId: request.correlationId,
 });
 
 const config: RecoveryPolicyConfig = {
@@ -53,29 +58,87 @@ const config: RecoveryPolicyConfig = {
   healthyCyclesToCloseCircuit: 2,
 };
 
-describe("RecoveryOrchestrator", () => {
-  it("executes an allow_dry_run decision exactly once and emits sanitized lifecycle audit", async () => {
+describe("RecoveryOrchestrator action port", () => {
+  it("maps an allow_dry_run decision to exactly one action port call", async () => {
     const store = createInMemoryRecoveryPolicyStore();
-    const execute = vi.fn(async (decision: RecoveryDecision) => simulated(decision));
+    const execute = vi.fn(async (request: RecoveryActionRequest) => simulated(request));
     const audit = vi.fn();
     const orchestrator = createRecoveryOrchestrator({
       engine: { evaluate: () => allowedDecision },
-      executor: { execute },
+      actionPort: { execute },
       store,
       audit,
     });
 
     await expect(orchestrator.handle(transition("tr-1"), now)).resolves.toEqual(allowedDecision);
     expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith({
+      actionId: "action:decision-1",
+      transitionId: "tr-1",
+      componentId: "database",
+      action: "restart_component",
+      requestedAt: now.toISOString(),
+      correlationId: "decision-1",
+    });
     expect(audit.mock.calls.map(call => call[0].event)).toEqual([
       "recovery_policy_evaluated",
-      "recovery_dry_run_started",
-      "recovery_dry_run_completed",
+      "recovery_action_started",
+      "recovery_action_completed",
     ]);
+    expect(audit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        event: "recovery_action_completed",
+        actionId: "action:decision-1",
+        action: "restart_component",
+        actionStatus: "simulated_success",
+        actionReasonCode: "SIMULATED_SUCCESS",
+        correlationId: "decision-1",
+        durationMs: 0,
+      }),
+    );
   });
 
+  it.each([
+    ["simulated_failure", "SIMULATED_FAILURE"],
+    ["simulated_timeout", "SIMULATED_TIMEOUT"],
+    ["simulated_cancelled", "SIMULATED_CANCELLED"],
+  ] as const)(
+    "releases inProgress after terminal %s result",
+    async (status, reasonCode) => {
+      const store = createInMemoryRecoveryPolicyStore();
+      const audit = vi.fn();
+      const actionPort: RecoveryActionPort = {
+        async execute(request) {
+          return {
+            ...simulated(request),
+            status,
+            reasonCode,
+          };
+        },
+      };
+      const orchestrator = createRecoveryOrchestrator({
+        engine: { evaluate: () => allowedDecision },
+        actionPort,
+        store,
+        audit,
+      });
+
+      await expect(orchestrator.handle(transition(`tr-${status}`), now)).resolves.toEqual(
+        allowedDecision,
+      );
+      expect(store.get("database").inProgress).toBe(false);
+      expect(audit).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          event: "recovery_action_completed",
+          actionStatus: status,
+          actionReasonCode: reasonCode,
+        }),
+      );
+    },
+  );
+
   it.each(["suppress", "escalate"] as const)(
-    "does not execute a %s decision",
+    "does not call the action port for a %s decision",
     async decisionKind => {
       const store = createInMemoryRecoveryPolicyStore();
       const execute = vi.fn();
@@ -87,7 +150,7 @@ describe("RecoveryOrchestrator", () => {
       const audit = vi.fn();
       const orchestrator = createRecoveryOrchestrator({
         engine: { evaluate: () => decision },
-        executor: { execute } as unknown as DryRunRecoveryExecutor,
+        actionPort: { execute } as RecoveryActionPort,
         store,
         audit,
       });
@@ -103,7 +166,26 @@ describe("RecoveryOrchestrator", () => {
     },
   );
 
-  it("prevents two concurrent executions for the same component", async () => {
+  it("rejects an unknown component before calling the action port", async () => {
+    const store = createInMemoryRecoveryPolicyStore();
+    const execute = vi.fn();
+    const decision = { ...allowedDecision, componentId: "unknown-service" };
+    const audit = vi.fn();
+    const orchestrator = createRecoveryOrchestrator({
+      engine: { evaluate: () => decision },
+      actionPort: { execute } as RecoveryActionPort,
+      store,
+      audit,
+    });
+
+    await expect(orchestrator.handle(transition("tr-unknown", "unknown-service"), now)).resolves.toEqual(decision);
+    expect(execute).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "recovery_action_rejected", decisionId: decision.decisionId }),
+    );
+  });
+
+  it("prevents two concurrent executions for the same component and releases inProgress", async () => {
     const store = createInMemoryRecoveryPolicyStore();
     let decisionId = 0;
     const engine = createRecoveryPolicyEngine({
@@ -115,11 +197,11 @@ describe("RecoveryOrchestrator", () => {
     const pending = new Promise<void>(resolve => {
       release = resolve;
     });
-    const execute = vi.fn(async (decision: RecoveryDecision) => {
+    const execute = vi.fn(async (request: RecoveryActionRequest) => {
       await pending;
-      return simulated(decision);
+      return simulated(request);
     });
-    const orchestrator = createRecoveryOrchestrator({ engine, executor: { execute }, store });
+    const orchestrator = createRecoveryOrchestrator({ engine, actionPort: { execute }, store });
 
     const first = orchestrator.handle(transition("tr-first"), now);
     await Promise.resolve();
@@ -135,12 +217,12 @@ describe("RecoveryOrchestrator", () => {
     expect(store.get("database").inProgress).toBe(false);
   });
 
-  it("swallows executor errors and never emits raw error text", async () => {
+  it("isolates adapter errors, releases inProgress and never emits raw error text", async () => {
     const store = createInMemoryRecoveryPolicyStore();
     const auditEvents: unknown[] = [];
     const orchestrator = createRecoveryOrchestrator({
       engine: { evaluate: () => allowedDecision },
-      executor: {
+      actionPort: {
         execute: vi.fn(async () => {
           throw new Error("secret-token-123");
         }),
@@ -150,9 +232,10 @@ describe("RecoveryOrchestrator", () => {
     });
 
     await expect(orchestrator.handle(transition("tr-error"), now)).resolves.toEqual(allowedDecision);
+    expect(store.get("database").inProgress).toBe(false);
     expect(JSON.stringify(auditEvents)).not.toContain("secret-token-123");
     expect(auditEvents).toContainEqual(
-      expect.objectContaining({ event: "recovery_suppressed", decisionId: allowedDecision.decisionId }),
+      expect.objectContaining({ event: "recovery_action_rejected", decisionId: allowedDecision.decisionId }),
     );
   });
 
@@ -166,12 +249,12 @@ describe("RecoveryOrchestrator", () => {
     });
     const releases = new Map<string, () => void>();
     const execute = vi.fn(
-      (decision: RecoveryDecision) =>
-        new Promise<DryRunRecoveryResult>(resolve => {
-          releases.set(decision.componentId, () => resolve(simulated(decision)));
+      (request: RecoveryActionRequest) =>
+        new Promise<RecoveryActionResult>(resolve => {
+          releases.set(request.componentId, () => resolve(simulated(request)));
         }),
     );
-    const orchestrator = createRecoveryOrchestrator({ engine, executor: { execute }, store });
+    const orchestrator = createRecoveryOrchestrator({ engine, actionPort: { execute }, store });
 
     const db = orchestrator.handle(transition("db-1", "database"), now);
     const storage = orchestrator.handle(transition("storage-1", "storage"), now);
@@ -181,5 +264,7 @@ describe("RecoveryOrchestrator", () => {
     releases.get("database")?.();
     releases.get("storage")?.();
     await Promise.all([db, storage]);
+    expect(store.get("database").inProgress).toBe(false);
+    expect(store.get("storage").inProgress).toBe(false);
   });
 });
