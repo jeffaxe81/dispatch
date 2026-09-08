@@ -10,6 +10,7 @@ import {
 const lease: RecoveryLease = {
   leaseId: "lease-1",
   namespace: "d011b3-v1",
+  tenantId: "tenant-7",
   componentId: "database",
   actionId: "action:decision-1",
   ownerId: "replica-a",
