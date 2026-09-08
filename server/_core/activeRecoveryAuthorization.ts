@@ -29,6 +29,7 @@ export type ActiveRecoveryAuthorizationDecision = Readonly<{
   actionId: string;
   environment: ActiveRecoveryEnvironment;
   leaseNamespace: "d011b3-v1";
+  authorizationRef?: string;
 }>;
 
 const SAFE_ENVIRONMENT: ActiveRecoveryEnvironment = "homologation-controlled";
@@ -50,6 +51,23 @@ function isValidConfig(value: unknown): value is ActiveRecoveryConfig {
     && config.authorizedComponent === "database"
     && config.authorizedAction === "restart_component"
     && config.leaseNamespace === SAFE_LEASE_NAMESPACE;
+}
+
+export function buildActiveRecoveryAuthorizationRef(
+  request: RecoveryActionRequest,
+  decision: Pick<ActiveRecoveryAuthorizationDecision, "environment" | "leaseNamespace">,
+): string {
+  return [
+    "authz-v1",
+    decision.environment,
+    decision.leaseNamespace,
+    request.componentId,
+    request.action,
+    request.actionId,
+    request.transitionId,
+    request.correlationId,
+    request.requestedAt,
+  ].map(part => encodeURIComponent(part)).join(":");
 }
 
 function deny(
@@ -94,12 +112,17 @@ export function authorizeRecoveryAction(input: {
     return deny(request, "ACTION_NOT_AUTHORIZED", config);
   }
 
-  return {
+  const decision = {
     authorized: true,
-    reasonCode: "AUTHORIZED",
+    reasonCode: "AUTHORIZED" as const,
     componentId: request.componentId,
     actionId: request.actionId,
     environment: config.environment,
     leaseNamespace: config.leaseNamespace,
+  };
+
+  return {
+    ...decision,
+    authorizationRef: buildActiveRecoveryAuthorizationRef(request, decision),
   };
 }
