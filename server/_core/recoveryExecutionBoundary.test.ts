@@ -273,6 +273,47 @@ describe("D-011B.4 RecoveryExecutionBoundary", () => {
     expect(h.executor.execute).not.toHaveBeenCalled();
   });
 
+  it("does not invoke when the deadline expires after claim and final fence validation", async () => {
+    const instants = [
+      "2026-09-08T12:00:02.000Z",
+      "2026-09-08T12:00:02.000Z",
+      "2026-09-08T12:00:02.000Z",
+      "2026-09-08T12:01:01.000Z",
+      "2026-09-08T12:01:01.000Z",
+      "2026-09-08T12:01:01.000Z",
+    ];
+    let index = 0;
+    const h = harness({
+      now: () => new Date(instants[Math.min(index++, instants.length - 1)]),
+    });
+    const result = await h.boundary.execute({ request, lease });
+
+    expect(result).toEqual({ status: "failed", reasonCode: "EXECUTION_TIMEOUT" });
+    expect(h.executor.execute).not.toHaveBeenCalled();
+    expect(h.ledger.compareAndSetState).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedState: "executing",
+      nextState: "completed_failure",
+    }));
+  });
+
+  it("does not invoke when cancellation is already requested before the final invocation gate", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const h = harness();
+    const result = await h.boundary.execute({
+      request,
+      lease,
+      signal: controller.signal,
+    });
+
+    expect(result).toEqual({ status: "failed", reasonCode: "EXECUTION_CANCELLED" });
+    expect(h.executor.execute).not.toHaveBeenCalled();
+    expect(h.ledger.compareAndSetState).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedState: "executing",
+      nextState: "completed_failure",
+    }));
+  });
+
   it("times out cooperatively, aborts the simulator and ignores late completion", async () => {
     vi.useFakeTimers();
     let resolveExecutor!: (value: RecoveryActionResult) => void;
