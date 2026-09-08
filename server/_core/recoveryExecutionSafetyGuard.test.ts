@@ -36,6 +36,7 @@ const request = (): RecoveryExecutionRequest => ({
 const lease = (): RecoveryLease => ({
   leaseId: "lease-1",
   namespace: "d011b3-v1",
+  tenantId: "tenant-7",
   componentId: "database",
   actionId: "action:decision-1",
   ownerId: "instance-a",
@@ -55,6 +56,7 @@ function ports() {
     updateState: vi.fn(),
     get: vi.fn(async () => ({
       actionId: "action:decision-1",
+      tenantId: "tenant-7",
       componentId: "database",
       correlationId: "decision-1",
       action: "restart_component",
