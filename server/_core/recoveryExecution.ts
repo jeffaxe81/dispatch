@@ -3,6 +3,7 @@ import type { RecoveryActionKind, RecoveryActionResult } from "./recoveryAction"
 export type RecoveryExecutorCapability = "simulation" | "noop";
 
 export type RecoveryExecutionRequest = Readonly<{
+  tenantId: string;
   actionId: string;
   transitionId: string;
   componentId: string;
@@ -37,6 +38,7 @@ export type RecoveryExecutionValidationResult =
   | Readonly<{ valid: false; reasonCode: RecoveryExecutionValidationReason }>;
 
 const REQUIRED_STRING_FIELDS = [
+  "tenantId",
   "actionId",
   "transitionId",
   "componentId",
