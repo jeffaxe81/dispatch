@@ -1,3 +1,4 @@
+import type { RecoveryActionReasonCode } from "./recoveryAction";
 import {
   commitRecoveryActionStateTransition,
   type RecoveryActionRecord,
@@ -17,16 +18,13 @@ import type { RecoveryLease, RecoveryLeasePort } from "./recoveryLease";
 
 export type RecoveryExecutionBoundaryReasonCode =
   | RecoveryExecutionSafetyReasonCode
+  | RecoveryActionReasonCode
   | "REAL_EXECUTOR_FORBIDDEN"
   | "EXECUTION_ALREADY_CLAIMED"
   | "ACTION_STORE_UNAVAILABLE"
   | "FENCE_REVALIDATION_FAILED"
   | "LEDGER_FINALIZATION_FAILED"
-  | "EXECUTOR_FAILURE_SANITIZED"
-  | "SIMULATED_SUCCESS"
-  | "SIMULATED_FAILURE"
-  | "SIMULATED_TIMEOUT"
-  | "SIMULATED_CANCELLED";
+  | "EXECUTOR_FAILURE_SANITIZED";
 
 export type RecoveryExecutionBoundaryResult =
   | Readonly<{
