@@ -90,6 +90,117 @@ describe("D-011A operational health runtime", () => {
     expect(JSON.stringify(logTransition.mock.calls)).not.toContain("secret-token");
   });
 
+  it("encaminha a mesma transição sanitizada ao recovery handler", async () => {
+    const recoveryTransitionHandler = vi.fn();
+    const logTransition = vi.fn();
+    let transitionHandler: ((transition: any) => void | Promise<void>) | undefined;
+    const createWatchdog = vi.fn(options => {
+      transitionHandler = options.onTransition;
+      return { runOnce: vi.fn(), start: vi.fn(), stop: vi.fn() };
+    });
+
+    installOperationalHealthRuntime({} as any, {
+      registry: createHealthRegistry([]),
+      registerRoutes: vi.fn(),
+      createWatchdog,
+      watchdogIntervalMs: 5_000,
+      watchdogPolicy: { failuresToUnhealthy: 2, successesToRecover: 2, cooldownMs: 10_000 },
+      logTransition,
+      recoveryTransitionHandler,
+    });
+
+    await transitionHandler?.({
+      componentId: "database",
+      from: "healthy",
+      to: "unhealthy",
+      occurredAt: "2026-09-07T12:00:00.000Z",
+      secret: "must-not-leak",
+    });
+
+    const sanitized = {
+      componentId: "database",
+      from: "healthy",
+      to: "unhealthy",
+      occurredAt: "2026-09-07T12:00:00.000Z",
+    };
+    expect(logTransition).toHaveBeenCalledWith(sanitized);
+    expect(recoveryTransitionHandler).toHaveBeenCalledWith(sanitized);
+    expect(JSON.stringify(recoveryTransitionHandler.mock.calls)).not.toContain("must-not-leak");
+  });
+
+  it("isola rejeição do recovery handler e permite transições futuras", async () => {
+    const recoveryTransitionHandler = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("secret-recovery-error"))
+      .mockResolvedValueOnce(undefined);
+    let transitionHandler: ((transition: any) => void | Promise<void>) | undefined;
+    const createWatchdog = vi.fn(options => {
+      transitionHandler = options.onTransition;
+      return { runOnce: vi.fn(), start: vi.fn(), stop: vi.fn() };
+    });
+
+    installOperationalHealthRuntime({} as any, {
+      registry: createHealthRegistry([]),
+      registerRoutes: vi.fn(),
+      createWatchdog,
+      watchdogIntervalMs: 5_000,
+      watchdogPolicy: { failuresToUnhealthy: 2, successesToRecover: 2, cooldownMs: 10_000 },
+      recoveryTransitionHandler,
+    });
+
+    await expect(
+      transitionHandler?.({
+        componentId: "database",
+        from: "healthy",
+        to: "unhealthy",
+        occurredAt: "2026-09-07T12:00:00.000Z",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      transitionHandler?.({
+        componentId: "database",
+        from: "unhealthy",
+        to: "healthy",
+        occurredAt: "2026-09-07T12:00:05.000Z",
+      }),
+    ).resolves.toBeUndefined();
+    expect(recoveryTransitionHandler).toHaveBeenCalledTimes(2);
+  });
+
+  it("mantém um único caminho de recovery ao instalar duas vezes no mesmo app", async () => {
+    const registry = createHealthRegistry([]);
+    const app = {} as any;
+    const start = vi.fn();
+    let transitionHandler: ((transition: any) => void | Promise<void>) | undefined;
+    const createWatchdog = vi.fn(options => {
+      transitionHandler = options.onTransition;
+      return { runOnce: vi.fn(), start, stop: vi.fn() };
+    });
+    const firstRecovery = vi.fn();
+    const secondRecovery = vi.fn();
+    const base = {
+      registry,
+      registerRoutes: vi.fn(),
+      createWatchdog,
+      watchdogIntervalMs: 5_000,
+      watchdogPolicy: { failuresToUnhealthy: 2, successesToRecover: 2, cooldownMs: 10_000 },
+    };
+
+    installOperationalHealthRuntime(app, { ...base, recoveryTransitionHandler: firstRecovery });
+    installOperationalHealthRuntime(app, { ...base, recoveryTransitionHandler: secondRecovery });
+    await transitionHandler?.({
+      componentId: "database",
+      from: "healthy",
+      to: "unhealthy",
+      occurredAt: "2026-09-07T12:00:00.000Z",
+    });
+
+    expect(createWatchdog).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(firstRecovery).toHaveBeenCalledTimes(1);
+    expect(secondRecovery).not.toHaveBeenCalled();
+  });
+
   it("não expõe nenhuma ação de restart/recover no runtime instalado", () => {
     const runtime = installOperationalHealthRuntime({} as any, {
       registry: createHealthRegistry([]),

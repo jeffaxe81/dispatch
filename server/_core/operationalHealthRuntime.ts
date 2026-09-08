@@ -22,6 +22,7 @@ export type OperationalHealthRuntimeOptions = {
   createWatchdog?: (options: PassiveHealthWatchdogOptions) => PassiveHealthWatchdog;
   onTransition?: (transition: HealthTransition) => void | Promise<void>;
   logTransition?: (transition: HealthTransition) => void;
+  recoveryTransitionHandler?: (transition: HealthTransition) => void | Promise<void>;
 };
 
 const installedRuntimeByApp = new WeakMap<object, OperationalHealthRuntime>();
@@ -55,6 +56,11 @@ export function installOperationalHealthRuntime(
       const sanitized = sanitizeTransition(transition);
       options.logTransition?.(sanitized);
       await options.onTransition?.(sanitized);
+      try {
+        await options.recoveryTransitionHandler?.(sanitized);
+      } catch {
+        // D-011B dry-run failures must never escape into the passive watchdog.
+      }
     },
   });
 
