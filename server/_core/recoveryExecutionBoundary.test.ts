@@ -346,18 +346,21 @@ describe("D-011B.4 RecoveryExecutionBoundary", () => {
 
   it("cancels cooperatively and terminalizes once even if the simulator finishes later", async () => {
     let resolveExecutor!: (value: RecoveryActionResult) => void;
+    let notifyStarted!: () => void;
+    const started = new Promise<void>(resolve => { notifyStarted = resolve; });
     let observedSignal: AbortSignal | undefined;
     const executor: RecoveryExecutorPort = {
       capability: "simulation",
       execute: vi.fn(async (_request, signal) => {
         observedSignal = signal;
+        notifyStarted();
         return await new Promise<RecoveryActionResult>(resolve => { resolveExecutor = resolve; });
       }),
     };
     const controller = new AbortController();
     const h = harness({ executor });
     const pending = h.boundary.execute({ request, lease, signal: controller.signal });
-    await Promise.resolve();
+    await started;
     controller.abort();
 
     const result = await pending;
