@@ -206,7 +206,7 @@ describe("D-011B.4 RecoveryExecutionBoundary", () => {
     const h = harness({ executor });
     const result = await h.boundary.execute({ request, lease });
 
-    expect(result).toEqual({ status: "failed", reasonCode: "EXECUTOR_FAILURE_SANITIZED" });
+    expect(result).toEqual({ status: "failed", reasonCode: "INTERNAL_SANITIZED_FAILURE" });
     expect(JSON.stringify(result)).not.toMatch(/10\.0\.0\.5|token=abc|stack details/);
     expect(h.ledger.compareAndSetState).toHaveBeenLastCalledWith(expect.objectContaining({
       actionId: request.actionId,
