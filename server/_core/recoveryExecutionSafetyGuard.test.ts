@@ -6,6 +6,7 @@ import type { RecoveryExecutionRequest } from "./recoveryExecution";
 import { createRecoveryExecutionSafetyGuard } from "./recoveryExecutionSafetyGuard";
 
 const now = new Date("2026-09-08T12:00:10.000Z");
+const expectedAuthorizationRef = "authz-v1:homologation-controlled:d011b3-v1:database:restart_component:action%3Adecision-1:transition-1:decision-1:2026-09-08T12%3A00%3A00.000Z";
 
 const config = (enabled = true): ActiveRecoveryConfig => ({
   enabled,
@@ -29,7 +30,7 @@ const request = (): RecoveryExecutionRequest => ({
   leaseNamespace: "d011b3-v1",
   ownerId: "instance-a",
   fencingToken: 7,
-  authorizationRef: "auth:decision-1",
+  authorizationRef: expectedAuthorizationRef,
   deadlineAt: "2026-09-08T12:00:30.000Z",
 });
 
@@ -98,6 +99,14 @@ describe("D-011B.4 execution safety guard", () => {
     const deniedConfig = { ...config(), authorizedComponent: "storage" as any };
     await expect(guard({ activeConfig: deniedConfig }).evaluate({ request: request(), lease: lease(), executorCapability: "simulation" }))
       .resolves.toEqual({ allowed: false, reasonCode: "AUTHORIZATION_DENIED" });
+  });
+
+  it("rejects an execution context whose authorization reference does not match the current authorization decision", async () => {
+    await expect(guard().evaluate({
+      request: { ...request(), authorizationRef: "authz-v1:stale-or-forged" },
+      lease: lease(),
+      executorCapability: "simulation",
+    })).resolves.toEqual({ allowed: false, reasonCode: "AUTHORIZATION_REFERENCE_MISMATCH" });
   });
 
   it("rejects a request that is not bound to its persistent reservation", async () => {
