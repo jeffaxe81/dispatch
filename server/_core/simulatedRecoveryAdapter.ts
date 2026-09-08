@@ -18,6 +18,13 @@ export function createSimulatedRecoveryAdapter(options: {
   cancellationSignal?: AbortSignal;
 }): RecoveryActionPort {
   const { scenario, clock, timeoutMs, cancellationSignal } = options;
+  const actions = new Map<
+    string,
+    { fingerprint: string; resultPromise: Promise<RecoveryActionResult> }
+  >();
+
+  const fingerprint = (request: RecoveryActionRequest): string =>
+    [request.transitionId, request.componentId, request.action, request.correlationId].join("|");
 
   const result = (
     request: RecoveryActionRequest,
@@ -36,57 +43,72 @@ export function createSimulatedRecoveryAdapter(options: {
     correlationId: request.correlationId,
   });
 
+  const simulate = async (request: RecoveryActionRequest): Promise<RecoveryActionResult> => {
+    const startedAt = clock.now();
+
+    if (scenario === "success") {
+      await clock.sleep(1);
+      return result(
+        request,
+        startedAt,
+        clock.now(),
+        "simulated_success",
+        "SIMULATED_SUCCESS",
+      );
+    }
+
+    if (scenario === "failure") {
+      await clock.sleep(1);
+      return result(
+        request,
+        startedAt,
+        clock.now(),
+        "simulated_failure",
+        "SIMULATED_FAILURE",
+      );
+    }
+
+    if (scenario === "timeout") {
+      await clock.sleep(Math.max(0, timeoutMs));
+      return result(
+        request,
+        startedAt,
+        clock.now(),
+        "simulated_timeout",
+        "SIMULATED_TIMEOUT",
+      );
+    }
+
+    if (scenario === "cancelled") {
+      if (!cancellationSignal?.aborted) {
+        await clock.sleep(0, cancellationSignal);
+      }
+      return result(
+        request,
+        startedAt,
+        clock.now(),
+        "simulated_cancelled",
+        "SIMULATED_CANCELLED",
+      );
+    }
+
+    throw new Error("SIMULATION_SCENARIO_NOT_IMPLEMENTED");
+  };
+
   return {
-    async execute(request) {
-      const startedAt = clock.now();
-
-      if (scenario === "success") {
-        await clock.sleep(1);
-        return result(
-          request,
-          startedAt,
-          clock.now(),
-          "simulated_success",
-          "SIMULATED_SUCCESS",
-        );
-      }
-
-      if (scenario === "failure") {
-        await clock.sleep(1);
-        return result(
-          request,
-          startedAt,
-          clock.now(),
-          "simulated_failure",
-          "SIMULATED_FAILURE",
-        );
-      }
-
-      if (scenario === "timeout") {
-        await clock.sleep(Math.max(0, timeoutMs));
-        return result(
-          request,
-          startedAt,
-          clock.now(),
-          "simulated_timeout",
-          "SIMULATED_TIMEOUT",
-        );
-      }
-
-      if (scenario === "cancelled") {
-        if (!cancellationSignal?.aborted) {
-          await clock.sleep(0, cancellationSignal);
+    execute(request) {
+      const requestFingerprint = fingerprint(request);
+      const existing = actions.get(request.actionId);
+      if (existing) {
+        if (existing.fingerprint !== requestFingerprint) {
+          return Promise.reject(new Error("DUPLICATE_ACTION_CONFLICT"));
         }
-        return result(
-          request,
-          startedAt,
-          clock.now(),
-          "simulated_cancelled",
-          "SIMULATED_CANCELLED",
-        );
+        return existing.resultPromise;
       }
 
-      throw new Error("SIMULATION_SCENARIO_NOT_IMPLEMENTED");
+      const resultPromise = simulate(request);
+      actions.set(request.actionId, { fingerprint: requestFingerprint, resultPromise });
+      return resultPromise;
     },
   };
 }
