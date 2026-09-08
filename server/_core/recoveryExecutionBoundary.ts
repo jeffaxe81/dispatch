@@ -178,7 +178,10 @@ export function createRecoveryExecutionBoundary(options: {
       }
 
       if (!fenceValid) {
-        await transition(request, "executing", "verification_failed");
+        const terminal = await transition(request, "executing", "verification_failed");
+        if (terminal.status !== "transitioned" && terminal.status !== "existing_terminal") {
+          return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
+        }
         return finish({ status: "rejected", reasonCode: "FENCE_REVALIDATION_FAILED" });
       }
 
@@ -234,7 +237,10 @@ export function createRecoveryExecutionBoundary(options: {
         return finish(await finalizeFailure(request, "EXECUTION_CANCELLED"));
       }
       if (outcome.kind === "executor_failure") {
-        await transition(request, "executing", "unknown_outcome");
+        const terminal = await transition(request, "executing", "unknown_outcome");
+        if (terminal.status !== "transitioned" && terminal.status !== "existing_terminal") {
+          return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
+        }
         return finish({ status: "failed", reasonCode: "INTERNAL_SANITIZED_FAILURE" });
       }
 
