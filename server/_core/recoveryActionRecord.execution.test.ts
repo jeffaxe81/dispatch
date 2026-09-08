@@ -19,6 +19,7 @@ const record = (state: RecoveryActionRecord["state"] = "reserved", fencingToken 
 describe("D-011B.4 recovery execution ledger transition contract", () => {
   it("allows reserved -> executing with the current fencing token", () => {
     expect(planRecoveryActionStateTransition(record(), {
+      expectedTenantId: "tenant-7",
       expectedState: "reserved",
       expectedFencingToken: 7,
       nextState: "executing",
@@ -29,6 +30,7 @@ describe("D-011B.4 recovery execution ledger transition contract", () => {
     "allows executing -> %s",
     (nextState) => {
       expect(planRecoveryActionStateTransition(record("executing"), {
+        expectedTenantId: "tenant-7",
         expectedState: "executing",
         expectedFencingToken: 7,
         nextState,
@@ -47,6 +49,7 @@ describe("D-011B.4 recovery execution ledger transition contract", () => {
 
   it("rejects a stale fencing token", () => {
     expect(planRecoveryActionStateTransition(record("reserved", 8), {
+      expectedTenantId: "tenant-7",
       expectedState: "reserved",
       expectedFencingToken: 7,
       nextState: "executing",
@@ -55,6 +58,7 @@ describe("D-011B.4 recovery execution ledger transition contract", () => {
 
   it("rejects compare-and-set when another caller already advanced the state", () => {
     expect(planRecoveryActionStateTransition(record("executing"), {
+      expectedTenantId: "tenant-7",
       expectedState: "reserved",
       expectedFencingToken: 7,
       nextState: "executing",
@@ -63,6 +67,7 @@ describe("D-011B.4 recovery execution ledger transition contract", () => {
 
   it("never regresses a terminal state", () => {
     expect(planRecoveryActionStateTransition(record("completed_success"), {
+      expectedTenantId: "tenant-7",
       expectedState: "completed_success",
       expectedFencingToken: 7,
       nextState: "executing",
@@ -71,6 +76,7 @@ describe("D-011B.4 recovery execution ledger transition contract", () => {
 
   it("treats an identical terminal transition as idempotent reuse", () => {
     expect(planRecoveryActionStateTransition(record("completed_failure"), {
+      expectedTenantId: "tenant-7",
       expectedState: "completed_failure",
       expectedFencingToken: 7,
       nextState: "completed_failure",
@@ -79,6 +85,7 @@ describe("D-011B.4 recovery execution ledger transition contract", () => {
 
   it("keeps unknown_outcome terminal and non-retryable", () => {
     expect(planRecoveryActionStateTransition(record("unknown_outcome"), {
+      expectedTenantId: "tenant-7",
       expectedState: "unknown_outcome",
       expectedFencingToken: 7,
       nextState: "reserved",
