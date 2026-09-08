@@ -61,7 +61,7 @@ export function createActiveRecoveryBootstrap(options: {
 
   const executor: RecoveryExecutorPort = {
     capability: "simulation",
-    execute: request => actionPort.execute(request),
+    execute: (request, signal) => actionPort.execute(request, signal),
   };
   const guard: RecoveryExecutionSafetyGuardPort = createRecoveryExecutionSafetyGuard({
     activeConfig: config,
