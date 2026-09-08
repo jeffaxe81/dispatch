@@ -13,6 +13,10 @@ import {
   type RecoveryExecutionRequest,
   type RecoveryExecutorPort,
 } from "./recoveryExecution";
+import {
+  buildRecoveryExecutionAuditEvent,
+  type RecoveryExecutionAuditPort,
+} from "./recoveryExecutionAudit";
 import type {
   RecoveryExecutionSafetyDecision,
   RecoveryExecutionSafetyReasonCode,
@@ -70,9 +74,10 @@ export function createRecoveryExecutionBoundary(options: {
   ledger: RecoveryExecutionLedgerPort;
   leasePort: RecoveryLeasePort;
   executor: RecoveryExecutorPort;
+  audit: RecoveryExecutionAuditPort;
   now?: () => Date;
 }) {
-  const { guard, ledger, leasePort, executor } = options;
+  const { guard, ledger, leasePort, executor, audit } = options;
   const now = options.now ?? (() => new Date());
 
   const transition = (
@@ -86,6 +91,26 @@ export function createRecoveryExecutionBoundary(options: {
     nextState,
     at: now().toISOString(),
   });
+
+  const appendAudit = async (
+    request: RecoveryExecutionRequest,
+    startedAt: string,
+    result: RecoveryExecutionBoundaryResult,
+  ): Promise<RecoveryExecutionBoundaryResult> => {
+    try {
+      await audit.append(buildRecoveryExecutionAuditEvent({
+        request,
+        startedAt,
+        finishedAt: now().toISOString(),
+        status: result.status,
+        reasonCode: result.reasonCode,
+      }));
+    } catch {
+      // Audit sinks are external to the execution state machine. Never leak sink
+      // diagnostics and never rewrite a terminal outcome into a retryable result.
+    }
+    return result;
+  };
 
   const finalizeFailure = async (
     request: RecoveryExecutionRequest,
@@ -105,6 +130,9 @@ export function createRecoveryExecutionBoundary(options: {
       signal?: AbortSignal;
     }): Promise<RecoveryExecutionBoundaryResult> {
       const { request, lease, signal } = input;
+      const startedAt = now().toISOString();
+      const finish = (result: RecoveryExecutionBoundaryResult) =>
+        appendAudit(request, startedAt, result);
 
       const safety = await guard.evaluate({
         request,
@@ -112,26 +140,26 @@ export function createRecoveryExecutionBoundary(options: {
         executorCapability: executor.capability,
       });
       if (!safety.allowed) {
-        return { status: "rejected", reasonCode: safety.reasonCode };
+        return finish({ status: "rejected", reasonCode: safety.reasonCode });
       }
 
       const capability = validateRecoveryExecutorCapability(executor.capability);
       if (!capability.valid) {
-        return { status: "rejected", reasonCode: "REAL_EXECUTOR_FORBIDDEN" };
+        return finish({ status: "rejected", reasonCode: "REAL_EXECUTOR_FORBIDDEN" });
       }
 
       const deadlineAtMs = Date.parse(request.deadlineAt);
       const beforeClaimMs = now().getTime();
       if (!Number.isFinite(deadlineAtMs) || !Number.isFinite(beforeClaimMs) || deadlineAtMs <= beforeClaimMs) {
-        return { status: "rejected", reasonCode: "EXECUTION_DEADLINE_EXCEEDED" };
+        return finish({ status: "rejected", reasonCode: "EXECUTION_DEADLINE_EXCEEDED" });
       }
 
       const claimed = await transition(request, "reserved", "executing");
       if (claimed.status === "store_unavailable") {
-        return { status: "failed", reasonCode: "ACTION_STORE_UNAVAILABLE" };
+        return finish({ status: "failed", reasonCode: "ACTION_STORE_UNAVAILABLE" });
       }
       if (claimed.status !== "transitioned") {
-        return { status: "rejected", reasonCode: "EXECUTION_ALREADY_CLAIMED" };
+        return finish({ status: "rejected", reasonCode: "EXECUTION_ALREADY_CLAIMED" });
       }
 
       let fenceValid = false;
@@ -143,7 +171,7 @@ export function createRecoveryExecutionBoundary(options: {
 
       if (!fenceValid) {
         await transition(request, "executing", "verification_failed");
-        return { status: "rejected", reasonCode: "FENCE_REVALIDATION_FAILED" };
+        return finish({ status: "rejected", reasonCode: "FENCE_REVALIDATION_FAILED" });
       }
 
       const controller = new AbortController();
@@ -192,14 +220,14 @@ export function createRecoveryExecutionBoundary(options: {
       if (signal && cancelListener) signal.removeEventListener("abort", cancelListener);
 
       if (outcome.kind === "timeout") {
-        return finalizeFailure(request, "EXECUTION_TIMEOUT");
+        return finish(await finalizeFailure(request, "EXECUTION_TIMEOUT"));
       }
       if (outcome.kind === "cancelled") {
-        return finalizeFailure(request, "EXECUTION_CANCELLED");
+        return finish(await finalizeFailure(request, "EXECUTION_CANCELLED"));
       }
       if (outcome.kind === "executor_failure") {
         await transition(request, "executing", "unknown_outcome");
-        return { status: "failed", reasonCode: "EXECUTOR_FAILURE_SANITIZED" };
+        return finish({ status: "failed", reasonCode: "EXECUTOR_FAILURE_SANITIZED" });
       }
 
       const terminal = await transition(
@@ -208,13 +236,13 @@ export function createRecoveryExecutionBoundary(options: {
         terminalStateFor(outcome.result.status),
       );
       if (terminal.status !== "transitioned" && terminal.status !== "existing_terminal") {
-        return { status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" };
+        return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
       }
-      return {
+      return finish({
         status: "executed",
         reasonCode: outcome.result.reasonCode,
         record: terminal.record,
-      };
+      });
     },
   };
 }
