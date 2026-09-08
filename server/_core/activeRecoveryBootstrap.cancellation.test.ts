@@ -5,15 +5,15 @@ import type { RecoveryExecutionAuditPort } from "./recoveryExecutionAudit";
 import type { RecoveryLease, RecoveryLeasePort } from "./recoveryLease";
 
 const mocks = vi.hoisted(() => ({
-  execute: vi.fn(async (request: { actionId: string; componentId: string; correlationId: string }) => ({
-    actionId: request.actionId,
-    componentId: request.componentId,
+  execute: vi.fn(async () => ({
+    actionId: "action:decision-1",
+    componentId: "database",
     status: "simulated_success" as const,
     reasonCode: "SIMULATED_SUCCESS" as const,
     startedAt: "2026-09-08T12:00:02.000Z",
     finishedAt: "2026-09-08T12:00:03.000Z",
     durationMs: 1_000,
-    correlationId: request.correlationId,
+    correlationId: "decision-1",
   })),
 }));
 
@@ -37,7 +37,7 @@ const request: RecoveryExecutionRequest = {
   ownerId: "node-a",
   fencingToken: 7,
   authorizationRef: "auth-1",
-  deadlineAt: "2099-09-08T12:01:00.000Z",
+  deadlineAt: "2026-09-08T23:59:00.000Z",
 };
 
 const lease: RecoveryLease = {
@@ -49,7 +49,7 @@ const lease: RecoveryLease = {
   ownerId: request.ownerId,
   fencingToken: request.fencingToken,
   acquiredAt: request.requestedAt,
-  expiresAt: "2099-09-08T12:01:00.000Z",
+  expiresAt: "2026-09-08T23:59:00.000Z",
 };
 
 function executionPorts() {
