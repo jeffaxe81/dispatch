@@ -17,7 +17,7 @@ export function createSimulatedRecoveryAdapter(options: {
   timeoutMs: number;
   cancellationSignal?: AbortSignal;
 }): RecoveryActionPort {
-  const { scenario, clock } = options;
+  const { scenario, clock, timeoutMs, cancellationSignal } = options;
 
   const result = (
     request: RecoveryActionRequest,
@@ -59,6 +59,30 @@ export function createSimulatedRecoveryAdapter(options: {
           clock.now(),
           "simulated_failure",
           "SIMULATED_FAILURE",
+        );
+      }
+
+      if (scenario === "timeout") {
+        await clock.sleep(Math.max(0, timeoutMs));
+        return result(
+          request,
+          startedAt,
+          clock.now(),
+          "simulated_timeout",
+          "SIMULATED_TIMEOUT",
+        );
+      }
+
+      if (scenario === "cancelled") {
+        if (!cancellationSignal?.aborted) {
+          await clock.sleep(0, cancellationSignal);
+        }
+        return result(
+          request,
+          startedAt,
+          clock.now(),
+          "simulated_cancelled",
+          "SIMULATED_CANCELLED",
         );
       }
 
