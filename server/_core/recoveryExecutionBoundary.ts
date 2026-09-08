@@ -34,7 +34,7 @@ export type RecoveryExecutionBoundaryReasonCode =
   | "EXECUTION_TIMEOUT"
   | "EXECUTION_CANCELLED"
   | "LEDGER_FINALIZATION_FAILED"
-  | "EXECUTOR_FAILURE_SANITIZED";
+  | "INTERNAL_SANITIZED_FAILURE";
 
 export type RecoveryExecutionBoundaryResult =
   | Readonly<{
@@ -227,7 +227,7 @@ export function createRecoveryExecutionBoundary(options: {
       }
       if (outcome.kind === "executor_failure") {
         await transition(request, "executing", "unknown_outcome");
-        return finish({ status: "failed", reasonCode: "EXECUTOR_FAILURE_SANITIZED" });
+        return finish({ status: "failed", reasonCode: "INTERNAL_SANITIZED_FAILURE" });
       }
 
       const terminal = await transition(
