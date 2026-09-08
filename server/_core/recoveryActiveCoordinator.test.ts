@@ -148,4 +148,74 @@ describe("RecoveryActiveCoordinator", () => {
       "reasonCode",
     ]);
   });
+
+  it("allows exactly one coordinator across two instances sharing atomic coordination state", async () => {
+    let currentLease: RecoveryLease | null = null;
+    let nextFence = 0;
+    const records = new Map<string, RecoveryActionRecord>();
+
+    const sharedLeasePort: RecoveryLeasePort = {
+      async acquire(input) {
+        if (currentLease !== null) {
+          return { acquired: false, reasonCode: "LEASE_HELD" };
+        }
+        nextFence += 1;
+        currentLease = {
+          leaseId: `lease-${nextFence}`,
+          namespace: input.namespace,
+          componentId: input.componentId,
+          actionId: input.actionId,
+          ownerId: input.ownerId,
+          fencingToken: nextFence,
+          acquiredAt: "2026-09-08T00:00:00.000Z",
+          expiresAt: "2026-09-08T00:00:30.000Z",
+        };
+        return { acquired: true, lease: currentLease };
+      },
+      async validateFence(candidate) {
+        return currentLease?.leaseId === candidate.leaseId
+          && currentLease.fencingToken === candidate.fencingToken;
+      },
+      async release(candidate) {
+        if (currentLease?.leaseId === candidate.leaseId) currentLease = null;
+      },
+    };
+
+    const sharedRecordPort: RecoveryActionRecordPort = {
+      async reserve(input) {
+        const existing = records.get(input.actionId);
+        if (existing) return { status: "existing_non_terminal", record: existing };
+        const record: RecoveryActionRecord = {
+          ...input,
+          state: "reserved",
+          createdAt: "2026-09-08T00:00:00.000Z",
+          updatedAt: "2026-09-08T00:00:00.000Z",
+        };
+        records.set(input.actionId, record);
+        return { status: "reserved", record };
+      },
+      async updateState() { return true; },
+      async get(actionId) { return records.get(actionId) ?? null; },
+    };
+
+    const first = createRecoveryActiveCoordinator({
+      config,
+      leasePort: sharedLeasePort,
+      recordPort: sharedRecordPort,
+      ownerId: "replica-a",
+      leaseTtlMs: 30_000,
+    });
+    const second = createRecoveryActiveCoordinator({
+      config,
+      leasePort: sharedLeasePort,
+      recordPort: sharedRecordPort,
+      ownerId: "replica-b",
+      leaseTtlMs: 30_000,
+    });
+
+    const results = await Promise.all([first.prepare(request), second.prepare(request)]);
+    expect(results.filter((result) => result.reasonCode === "AUTHORIZED_AND_RESERVED")).toHaveLength(1);
+    expect(results.filter((result) => result.allowedToReachFutureAdapter)).toHaveLength(1);
+    expect(results.some((result) => result.reasonCode === "LEASE_DENIED" || result.reasonCode === "ACTION_ALREADY_IN_PROGRESS")).toBe(true);
+  });
 });
