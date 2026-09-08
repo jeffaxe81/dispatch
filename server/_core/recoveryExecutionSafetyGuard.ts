@@ -23,6 +23,7 @@ export type RecoveryExecutionSafetyReasonCode =
   | "EXECUTION_CONTEXT_INVALID"
   | "KILL_SWITCH_OFF"
   | "AUTHORIZATION_DENIED"
+  | "AUTHORIZATION_REFERENCE_MISMATCH"
   | "RESERVATION_MISMATCH"
   | "TENANT_MISMATCH"
   | "LEASE_MISMATCH"
@@ -95,6 +96,10 @@ export function createRecoveryExecutionSafetyGuard(options: {
             ? "KILL_SWITCH_OFF"
             : "AUTHORIZATION_DENIED",
         );
+      }
+
+      if (!authorization.authorizationRef || request.authorizationRef !== authorization.authorizationRef) {
+        return deny("AUTHORIZATION_REFERENCE_MISMATCH");
       }
 
       if (request.reservationId !== request.actionId) {
