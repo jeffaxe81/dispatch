@@ -10,6 +10,7 @@ import {
 } from "./recoveryExecutionBoundary";
 import { createRecoveryExecutionSafetyGuard } from "./recoveryExecutionSafetyGuard";
 import type { RecoveryExecutorPort } from "./recoveryExecution";
+import type { RecoveryExecutionAuditPort } from "./recoveryExecutionAudit";
 import type { RecoveryLeasePort } from "./recoveryLease";
 import {
   createSimulatedRecoveryAdapter,
@@ -20,6 +21,7 @@ export type ActiveRecoveryExecutionPorts = Readonly<{
   leasePort: RecoveryLeasePort;
   recordPort: RecoveryActionRecordPort;
   ledger: RecoveryExecutionLedgerPort;
+  audit: RecoveryExecutionAuditPort;
 }>;
 
 export type ActiveRecoveryBootstrap = Readonly<{
@@ -71,6 +73,7 @@ export function createActiveRecoveryBootstrap(options: {
     ledger: options.execution.ledger,
     leasePort: options.execution.leasePort,
     executor,
+    audit: options.execution.audit,
   });
 
   return { config, actionPort, executionBoundary };
