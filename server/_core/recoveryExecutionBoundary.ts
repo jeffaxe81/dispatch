@@ -118,7 +118,7 @@ export function createRecoveryExecutionBoundary(options: {
     reasonCode: "EXECUTION_TIMEOUT" | "EXECUTION_CANCELLED",
   ): Promise<RecoveryExecutionBoundaryResult> => {
     const terminal = await transition(request, "executing", "completed_failure");
-    if (terminal.status !== "transitioned" && terminal.status !== "existing_terminal") {
+    if (terminal.status !== "transitioned") {
       return { status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" };
     }
     return { status: "failed", reasonCode };
@@ -180,7 +180,7 @@ export function createRecoveryExecutionBoundary(options: {
 
       if (!fenceValid) {
         const terminal = await transition(request, "executing", "verification_failed");
-        if (terminal.status !== "transitioned" && terminal.status !== "existing_terminal") {
+        if (terminal.status !== "transitioned") {
           return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
         }
         return finish({ status: "rejected", reasonCode: "FENCE_REVALIDATION_FAILED" });
@@ -247,7 +247,7 @@ export function createRecoveryExecutionBoundary(options: {
       }
       if (outcome.kind === "executor_failure") {
         const terminal = await transition(request, "executing", "unknown_outcome");
-        if (terminal.status !== "transitioned" && terminal.status !== "existing_terminal") {
+        if (terminal.status !== "transitioned") {
           return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
         }
         return finish({ status: "failed", reasonCode: "INTERNAL_SANITIZED_FAILURE" });
@@ -258,7 +258,7 @@ export function createRecoveryExecutionBoundary(options: {
         "executing",
         terminalStateFor(outcome.result.status),
       );
-      if (terminal.status !== "transitioned" && terminal.status !== "existing_terminal") {
+      if (terminal.status !== "transitioned") {
         return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
       }
       return finish({
