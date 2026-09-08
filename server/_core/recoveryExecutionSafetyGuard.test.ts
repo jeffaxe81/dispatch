@@ -17,6 +17,7 @@ const config = (enabled = true): ActiveRecoveryConfig => ({
 });
 
 const request = (): RecoveryExecutionRequest => ({
+  tenantId: "tenant-7",
   actionId: "action:decision-1",
   transitionId: "transition-1",
   componentId: "database",
