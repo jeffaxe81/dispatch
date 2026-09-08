@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RecoveryActionResult } from "./recoveryAction";
 import type {
   RecoveryActionRecord,
@@ -57,12 +57,15 @@ const simulatedSuccess: RecoveryActionResult = {
   correlationId: request.correlationId,
 };
 
+afterEach(() => vi.useRealTimers());
+
 function harness(overrides: {
   guardAllowed?: boolean;
   guardReason?: string;
   finalFenceValid?: boolean;
   firstTransitionStatus?: "transitioned" | "state_conflict" | "existing_terminal" | "store_unavailable";
   executor?: RecoveryExecutorPort;
+  now?: () => Date;
 } = {}) {
   const calls: string[] = [];
   let current = reserved;
@@ -112,7 +115,7 @@ function harness(overrides: {
     ledger,
     leasePort,
     executor,
-    now: () => new Date("2026-09-08T12:00:02.000Z"),
+    now: overrides.now ?? (() => new Date("2026-09-08T12:00:02.000Z")),
   });
 
   return { boundary, guard, ledger, leasePort, executor, calls };
@@ -192,5 +195,74 @@ describe("D-011B.4 RecoveryExecutionBoundary", () => {
 
     expect(result).toEqual({ status: "rejected", reasonCode: "REAL_EXECUTOR_FORBIDDEN" });
     expect(h.executor.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects an already-expired execution deadline before claiming or invoking", async () => {
+    const h = harness({ now: () => new Date("2026-09-08T12:02:00.000Z") });
+    const result = await h.boundary.execute({ request, lease });
+
+    expect(result).toEqual({ status: "rejected", reasonCode: "EXECUTION_DEADLINE_EXCEEDED" });
+    expect(h.ledger.compareAndSetState).not.toHaveBeenCalled();
+    expect(h.executor.execute).not.toHaveBeenCalled();
+  });
+
+  it("times out cooperatively, aborts the simulator and ignores late completion", async () => {
+    vi.useFakeTimers();
+    let resolveExecutor!: (value: RecoveryActionResult) => void;
+    let observedSignal: AbortSignal | undefined;
+    const executor: RecoveryExecutorPort = {
+      capability: "simulation",
+      execute: vi.fn(async (_request, signal) => {
+        observedSignal = signal;
+        return await new Promise<RecoveryActionResult>(resolve => { resolveExecutor = resolve; });
+      }),
+    };
+    const shortRequest = { ...request, deadlineAt: "2026-09-08T12:00:02.010Z" };
+    const h = harness({ executor });
+    const pending = h.boundary.execute({ request: shortRequest, lease });
+
+    await vi.advanceTimersByTimeAsync(11);
+    const result = await pending;
+    expect(result).toEqual({ status: "failed", reasonCode: "EXECUTION_TIMEOUT" });
+    expect(observedSignal?.aborted).toBe(true);
+    expect(h.ledger.compareAndSetState).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedState: "executing",
+      nextState: "completed_failure",
+    }));
+
+    const transitionCount = (h.ledger.compareAndSetState as any).mock.calls.length;
+    resolveExecutor(simulatedSuccess);
+    await Promise.resolve();
+    expect((h.ledger.compareAndSetState as any).mock.calls.length).toBe(transitionCount);
+  });
+
+  it("cancels cooperatively and terminalizes once even if the simulator finishes later", async () => {
+    let resolveExecutor!: (value: RecoveryActionResult) => void;
+    let observedSignal: AbortSignal | undefined;
+    const executor: RecoveryExecutorPort = {
+      capability: "simulation",
+      execute: vi.fn(async (_request, signal) => {
+        observedSignal = signal;
+        return await new Promise<RecoveryActionResult>(resolve => { resolveExecutor = resolve; });
+      }),
+    };
+    const controller = new AbortController();
+    const h = harness({ executor });
+    const pending = h.boundary.execute({ request, lease, signal: controller.signal });
+    await Promise.resolve();
+    controller.abort();
+
+    const result = await pending;
+    expect(result).toEqual({ status: "failed", reasonCode: "EXECUTION_CANCELLED" });
+    expect(observedSignal?.aborted).toBe(true);
+    expect(h.ledger.compareAndSetState).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedState: "executing",
+      nextState: "completed_failure",
+    }));
+
+    const transitionCount = (h.ledger.compareAndSetState as any).mock.calls.length;
+    resolveExecutor(simulatedSuccess);
+    await Promise.resolve();
+    expect((h.ledger.compareAndSetState as any).mock.calls.length).toBe(transitionCount);
   });
 });
