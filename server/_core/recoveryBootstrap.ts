@@ -1,6 +1,5 @@
 import type { HealthCriticality } from "./healthRegistry";
 import type { HealthTransition } from "./healthWatchdog";
-import { createDryRunRecoveryExecutor } from "./recoveryDryRunExecutor";
 import { createRecoveryOrchestrator, type RecoveryAuditEvent } from "./recoveryOrchestrator";
 import {
   createRecoveryPolicyEngine,
@@ -8,6 +7,10 @@ import {
   type RecoveryTransitionInput,
 } from "./recoveryPolicy";
 import { createInMemoryRecoveryPolicyStore } from "./recoveryPolicyStore";
+import {
+  createSimulatedRecoveryAdapter,
+  type SimulationClock,
+} from "./simulatedRecoveryAdapter";
 
 export const D011B1_POLICY: RecoveryPolicyConfig = {
   enabled: true,
@@ -21,6 +24,11 @@ export const D011B1_POLICY: RecoveryPolicyConfig = {
 const RECOVERY_COMPONENT_CRITICALITY: Readonly<Record<string, HealthCriticality>> = {
   database: "critical",
   storage: "critical",
+};
+
+const runtimeSimulationClock: SimulationClock = {
+  now: () => new Date(),
+  sleep: async () => undefined,
 };
 
 export function mapHealthTransitionToRecoveryInput(
@@ -45,13 +53,17 @@ export function createD011b1RecoveryRuntime(options: {
 } = {}) {
   const store = createInMemoryRecoveryPolicyStore();
   const engine = createRecoveryPolicyEngine({ store, config: D011B1_POLICY });
-  const executor = createDryRunRecoveryExecutor();
+  const actionPort = createSimulatedRecoveryAdapter({
+    scenario: "success",
+    clock: runtimeSimulationClock,
+    timeoutMs: 1_000,
+  });
   const orchestrator = createRecoveryOrchestrator({
     store,
     engine,
-    executor,
+    actionPort,
     audit: options.audit,
   });
 
-  return { store, engine, executor, orchestrator };
+  return { store, engine, actionPort, orchestrator };
 }
