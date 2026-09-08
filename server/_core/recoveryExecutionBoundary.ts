@@ -33,6 +33,7 @@ export type RecoveryExecutionBoundaryReasonCode =
   | "EXECUTION_DEADLINE_EXCEEDED"
   | "EXECUTION_TIMEOUT"
   | "EXECUTION_CANCELLED"
+  | "EXECUTOR_RESULT_MISMATCH"
   | "LEDGER_FINALIZATION_FAILED"
   | "INTERNAL_SANITIZED_FAILURE";
 
@@ -67,6 +68,15 @@ type ExecutionRaceOutcome =
 
 function terminalStateFor(status: RecoveryActionResult["status"]): RecoveryActionRecordState {
   return status === "simulated_success" ? "completed_success" : "completed_failure";
+}
+
+function resultMatchesRequest(
+  request: RecoveryExecutionRequest,
+  result: RecoveryActionResult,
+): boolean {
+  return result.actionId === request.actionId
+    && result.componentId === request.componentId
+    && result.correlationId === request.correlationId;
 }
 
 export function createRecoveryExecutionBoundary(options: {
@@ -251,6 +261,14 @@ export function createRecoveryExecutionBoundary(options: {
           return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
         }
         return finish({ status: "failed", reasonCode: "INTERNAL_SANITIZED_FAILURE" });
+      }
+
+      if (!resultMatchesRequest(request, outcome.result)) {
+        const terminal = await transition(request, "executing", "unknown_outcome");
+        if (terminal.status !== "transitioned") {
+          return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
+        }
+        return finish({ status: "failed", reasonCode: "EXECUTOR_RESULT_MISMATCH" });
       }
 
       const terminal = await transition(
