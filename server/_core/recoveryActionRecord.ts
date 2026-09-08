@@ -53,6 +53,34 @@ export type RecoveryActionStateTransitionPlan =
         | "invalid_transition";
     }>;
 
+export type RecoveryExecutionLedgerTransitionInput = Readonly<{
+  actionId: string;
+  expectedState: RecoveryActionRecordState;
+  expectedFencingToken: number;
+  nextState: RecoveryActionRecordState;
+  at: string;
+}>;
+
+export type RecoveryExecutionLedgerTransitionResult =
+  | Readonly<{ status: "transitioned"; record: RecoveryActionRecord }>
+  | Readonly<{ status: "existing_terminal"; record: RecoveryActionRecord }>
+  | Readonly<{ status: "state_conflict"; record?: RecoveryActionRecord }>
+  | Readonly<{ status: "fencing_conflict"; record?: RecoveryActionRecord }>
+  | Readonly<{ status: "terminal_conflict"; record?: RecoveryActionRecord }>
+  | Readonly<{ status: "invalid_transition"; record?: RecoveryActionRecord }>
+  | Readonly<{ status: "store_unavailable" }>;
+
+/**
+ * Execution-only ledger port. Implementations must perform compareAndSetState atomically
+ * in the authoritative store. The D-011B.4 boundary never emulates CAS with get()+update().
+ */
+export type RecoveryExecutionLedgerPort = {
+  get(actionId: string): Promise<RecoveryActionRecord | null>;
+  compareAndSetState(
+    input: RecoveryExecutionLedgerTransitionInput,
+  ): Promise<RecoveryExecutionLedgerTransitionResult>;
+};
+
 export function sameRecoveryActionIdentity(
   record: RecoveryActionRecord,
   input: Pick<RecoveryActionRecord, "actionId" | "componentId" | "correlationId" | "action">,
@@ -98,4 +126,15 @@ export function planRecoveryActionStateTransition(
   }
 
   return { allowed: false, status: "invalid_transition" };
+}
+
+export async function commitRecoveryActionStateTransition(
+  port: RecoveryExecutionLedgerPort,
+  input: RecoveryExecutionLedgerTransitionInput,
+): Promise<RecoveryExecutionLedgerTransitionResult> {
+  try {
+    return await port.compareAndSetState(input);
+  } catch {
+    return { status: "store_unavailable" };
+  }
 }
