@@ -22,6 +22,7 @@ export type RecoveryTransitionInput = {
   to: HealthState;
   criticality: HealthCriticality;
   occurredAt: string;
+  confirmedHealthyCycles?: number;
 };
 
 export type RecoveryDecision = {
@@ -138,7 +139,11 @@ export function createRecoveryPolicyEngine(options: {
 
       if (input.to === "healthy") {
         if (state.circuitOpen) {
-          const healthyStreak = state.healthyStreak + 1;
+          const confirmedHealthyCycles =
+            Number.isInteger(input.confirmedHealthyCycles) && input.confirmedHealthyCycles! > 0
+              ? input.confirmedHealthyCycles!
+              : 1;
+          const healthyStreak = state.healthyStreak + confirmedHealthyCycles;
           if (healthyStreak >= config.healthyCyclesToCloseCircuit) {
             state = {
               ...state,

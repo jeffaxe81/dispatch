@@ -25,6 +25,7 @@ const RECOVERY_COMPONENT_CRITICALITY: Readonly<Record<string, HealthCriticality>
 
 export function mapHealthTransitionToRecoveryInput(
   transition: HealthTransition,
+  confirmedHealthyCycles?: number,
 ): RecoveryTransitionInput {
   return {
     transitionId: `${transition.componentId}:${transition.from}:${transition.to}:${transition.occurredAt}`,
@@ -33,6 +34,9 @@ export function mapHealthTransitionToRecoveryInput(
     to: transition.to,
     criticality: RECOVERY_COMPONENT_CRITICALITY[transition.componentId] ?? "optional",
     occurredAt: transition.occurredAt,
+    ...(transition.to === "healthy" && confirmedHealthyCycles !== undefined
+      ? { confirmedHealthyCycles }
+      : {}),
   };
 }
 

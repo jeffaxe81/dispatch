@@ -44,7 +44,10 @@ async function startServer() {
       console.warn("Operational health transition", transition);
     },
     recoveryTransitionHandler: async transition => {
-      const input = mapHealthTransitionToRecoveryInput(transition);
+      const input = mapHealthTransitionToRecoveryInput(
+        transition,
+        transition.to === "healthy" ? HEALTH_WATCHDOG_POLICY.successesToRecover : undefined,
+      );
       await recoveryRuntime.orchestrator.handle(input, new Date(transition.occurredAt));
     },
   });
