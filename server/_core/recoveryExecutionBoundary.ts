@@ -34,6 +34,7 @@ export type RecoveryExecutionBoundaryReasonCode =
   | "EXECUTION_TIMEOUT"
   | "EXECUTION_CANCELLED"
   | "EXECUTOR_RESULT_MISMATCH"
+  | "EXECUTOR_RESULT_INVALID"
   | "LEDGER_FINALIZATION_FAILED"
   | "INTERNAL_SANITIZED_FAILURE";
 
@@ -77,6 +78,19 @@ function resultMatchesRequest(
   return result.actionId === request.actionId
     && result.componentId === request.componentId
     && result.correlationId === request.correlationId;
+}
+
+function resultSemanticsAreValid(result: RecoveryActionResult): boolean {
+  const expectedReasonByStatus: Record<
+    RecoveryActionResult["status"],
+    RecoveryActionResult["reasonCode"]
+  > = {
+    simulated_success: "SIMULATED_SUCCESS",
+    simulated_failure: "SIMULATED_FAILURE",
+    simulated_timeout: "SIMULATED_TIMEOUT",
+    simulated_cancelled: "SIMULATED_CANCELLED",
+  };
+  return expectedReasonByStatus[result.status] === result.reasonCode;
 }
 
 export function createRecoveryExecutionBoundary(options: {
@@ -269,6 +283,14 @@ export function createRecoveryExecutionBoundary(options: {
           return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
         }
         return finish({ status: "failed", reasonCode: "EXECUTOR_RESULT_MISMATCH" });
+      }
+
+      if (!resultSemanticsAreValid(outcome.result)) {
+        const terminal = await transition(request, "executing", "unknown_outcome");
+        if (terminal.status !== "transitioned") {
+          return finish({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
+        }
+        return finish({ status: "failed", reasonCode: "EXECUTOR_RESULT_INVALID" });
       }
 
       const terminal = await transition(
