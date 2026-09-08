@@ -185,6 +185,14 @@ export function createRecoveryExecutionBoundary(options: {
         return finish({ status: "rejected", reasonCode: "FENCE_REVALIDATION_FAILED" });
       }
 
+      const beforeInvokeMs = now().getTime();
+      if (!Number.isFinite(beforeInvokeMs) || deadlineAtMs <= beforeInvokeMs) {
+        return finish(await finalizeFailure(request, "EXECUTION_TIMEOUT"));
+      }
+      if (signal?.aborted) {
+        return finish(await finalizeFailure(request, "EXECUTION_CANCELLED"));
+      }
+
       const controller = new AbortController();
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
       let cancelListener: (() => void) | undefined;
@@ -200,7 +208,7 @@ export function createRecoveryExecutionBoundary(options: {
         }
       })();
 
-      const remainingMs = Math.max(0, deadlineAtMs - now().getTime());
+      const remainingMs = Math.max(0, deadlineAtMs - beforeInvokeMs);
       const timeoutPromise = new Promise<ExecutionRaceOutcome>(resolve => {
         timeoutHandle = setTimeout(() => {
           controller.abort();
