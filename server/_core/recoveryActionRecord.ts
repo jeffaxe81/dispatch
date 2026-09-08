@@ -35,6 +35,24 @@ export type RecoveryActionRecordPort = {
   get(actionId: string): Promise<RecoveryActionRecord | null>;
 };
 
+export type RecoveryActionStateTransitionInput = Readonly<{
+  expectedState: RecoveryActionRecordState;
+  expectedFencingToken: number;
+  nextState: RecoveryActionRecordState;
+}>;
+
+export type RecoveryActionStateTransitionPlan =
+  | Readonly<{ allowed: true; status: "transition" }>
+  | Readonly<{
+      allowed: false;
+      status:
+        | "fencing_conflict"
+        | "state_conflict"
+        | "terminal_conflict"
+        | "existing_terminal"
+        | "invalid_transition";
+    }>;
+
 export function sameRecoveryActionIdentity(
   record: RecoveryActionRecord,
   input: Pick<RecoveryActionRecord, "actionId" | "componentId" | "correlationId" | "action">,
@@ -50,4 +68,34 @@ export function isTerminalRecoveryActionState(state: RecoveryActionRecordState):
     || state === "completed_failure"
     || state === "verification_failed"
     || state === "unknown_outcome";
+}
+
+export function planRecoveryActionStateTransition(
+  record: RecoveryActionRecord,
+  input: RecoveryActionStateTransitionInput,
+): RecoveryActionStateTransitionPlan {
+  if (record.fencingToken !== input.expectedFencingToken) {
+    return { allowed: false, status: "fencing_conflict" };
+  }
+
+  if (isTerminalRecoveryActionState(record.state)) {
+    if (record.state === input.nextState && record.state === input.expectedState) {
+      return { allowed: false, status: "existing_terminal" };
+    }
+    return { allowed: false, status: "terminal_conflict" };
+  }
+
+  if (record.state !== input.expectedState) {
+    return { allowed: false, status: "state_conflict" };
+  }
+
+  if (record.state === "reserved" && input.nextState === "executing") {
+    return { allowed: true, status: "transition" };
+  }
+
+  if (record.state === "executing" && isTerminalRecoveryActionState(input.nextState)) {
+    return { allowed: true, status: "transition" };
+  }
+
+  return { allowed: false, status: "invalid_transition" };
 }
