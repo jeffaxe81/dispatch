@@ -25,6 +25,8 @@ const config: ActiveRecoveryConfig = {
   leaseNamespace: "d011b3-v1",
 };
 
+const expectedAuthorizationRef = "authz-v1:homologation-controlled:d011b3-v1:database:restart_component:action%3Adecision-1:transition-1:decision-1:2026-09-08T00%3A00%3A00.000Z";
+
 const lease: RecoveryLease = {
   leaseId: "lease-1",
   namespace: "d011b3-v1",
@@ -164,9 +166,11 @@ describe("RecoveryActiveCoordinator", () => {
       allowedToReachFutureAdapter: true,
       reasonCode: "AUTHORIZED_AND_RESERVED",
       fencingToken: 11,
+      authorizationRef: expectedAuthorizationRef,
     });
     expect(Object.keys(result).sort()).toEqual([
       "allowedToReachFutureAdapter",
+      "authorizationRef",
       "fencingToken",
       "reasonCode",
     ]);
