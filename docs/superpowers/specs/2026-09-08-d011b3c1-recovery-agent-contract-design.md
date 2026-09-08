@@ -13,8 +13,8 @@ D-011B.3c.1 remains side-effect free. It defines and tests:
 - a fixed logical-target mapping;
 - fencing and authorization evidence carried to the agent boundary;
 - normalized timeout/failure/unknown outcomes;
-- a fake/in-process Recovery Agent for deterministic tests;
-- a client adapter that talks only to that fake contract during this delivery;
+- a fake/in-process Recovery Agent isolated in test-support for deterministic tests;
+- a client adapter exercised only through injected test doubles during this delivery;
 - structural safety boundaries proving there is no Docker/systemd/Kubernetes/shell implementation yet.
 
 ## Mandatory scope restriction
@@ -59,11 +59,11 @@ RecoveryPolicyEngine
        -> authorization/fence re-check
        -> RecoveryAgentActionPort
             -> TrustedTargetMapper
-            -> RecoveryAgentClient
-                 -> FakeRecoveryAgent (D-011B.3c.1 only)
+            -> RecoveryAgentClient (interface only in 3c.1)
+                 -> injected FakeRecoveryAgent from test-support
 ```
 
-D-011B.3c.1 deliberately stops at the fake agent. No infrastructure library is imported.
+D-011B.3c.1 deliberately stops at an injected fake/test-double. No infrastructure library or real transport implementation is imported by production runtime.
 
 ## 1. Closed agent protocol
 
@@ -148,20 +148,26 @@ It must:
 - require the exact authorized component/action;
 - require valid current lease/fence evidence supplied by the coordinator;
 - invoke the trusted target mapper;
-- call only `RecoveryAgentClient`;
+- call only the injected `RecoveryAgentClient` interface;
 - enforce a bounded request timeout;
 - perform no implicit retry;
 - normalize all errors;
 - return `unknown_outcome` when timeout/transport ambiguity makes execution status uncertain;
 - never access Docker socket, systemd, Kubernetes, SSH, hypervisor, cloud SDK, or `server/recovery`.
 
-In D-011B.3c.1 the client is wired only to `FakeRecoveryAgent` in tests/harnesses. Runtime active execution remains disabled/default-off.
+In D-011B.3c.1 there is no production network transport implementation for `RecoveryAgentClient`. Tests inject the fake from test-support. Runtime active execution remains disabled/default-off.
 
 ## 4. FakeRecoveryAgent
 
-The fake agent is deterministic and in-process/test-only.
+The fake agent is deterministic, in-process and **test-only**.
 
-It supports configured scenarios:
+It must live under a clearly non-production path such as:
+
+`server/_core/testing/fakeRecoveryAgent.ts`
+
+Production modules, `index.ts`, bootstrap files, routers and services MUST NOT import from `server/_core/testing/`.
+
+The fake supports configured scenarios:
 - `success` -> `accepted_completed`;
 - `explicit_failure` -> `explicit_failure`;
 - `timeout_unknown` -> unresolved/bounded timeout mapped to `timeout_unknown`;
@@ -238,7 +244,8 @@ Mandatory:
 - no route/controller can invoke the agent client;
 - no remote kill-switch endpoint exists;
 - no background scheduler invokes the agent;
-- no bootstrap chooses the fake scenario from environment input;
+- no bootstrap imports `server/_core/testing/`;
+- no bootstrap chooses a fake scenario from environment input;
 - no CI test performs a real restart.
 
 ## 10. Audit
@@ -290,7 +297,10 @@ At minimum forbid in D-011B.3c.1 production files:
 - arbitrary `command`, `args`, `containerId`, `unitName`, `podName`, `host`, `endpoint`, or `script` fields in the action contract;
 - HTTP/UI/CLI mutation paths that directly invoke the agent.
 
-It must also assert that the fake agent/harness is not imported by normal production bootstrap.
+It must also assert that:
+- production modules do not import `server/_core/testing/`;
+- normal production bootstrap does not import the fake agent/harness;
+- no real `RecoveryAgentClient` transport implementation exists in D-011B.3c.1.
 
 ## 12. Required tests
 
@@ -308,6 +318,7 @@ The implementation plan must include RED->GREEN coverage for at least:
 - conflicting duplicate fails closed;
 - test-only auth verifier rejects untrusted caller;
 - fake scenario selector cannot enter production bootstrap;
+- production code cannot import the test-support fake;
 - no active runtime path is enabled;
 - structural boundary forbids real infrastructure primitives;
 - full existing regression/security/TypeScript/build remains GREEN.
@@ -317,13 +328,13 @@ The implementation plan must include RED->GREEN coverage for at least:
 Proposed focused modules:
 - `server/_core/recoveryAgentProtocol.ts` — closed request/response types and validation;
 - `server/_core/recoveryTargetMapper.ts` — pure fixed logical target mapper;
-- `server/_core/recoveryAgentClient.ts` — narrow client abstraction, no real transport;
-- `server/_core/fakeRecoveryAgent.ts` — deterministic test-only fake;
+- `server/_core/recoveryAgentClient.ts` — narrow client interface only, no real transport;
 - `server/_core/recoveryAgentActionPort.ts` — normalization/timeout/idempotency-defense boundary;
+- `server/_core/testing/fakeRecoveryAgent.ts` — deterministic test-only fake;
 - corresponding `.test.ts` files;
-- `server/d011b3c1SafetyBoundary.test.ts` — structural proof of no real side effect.
+- `server/d011b3c1SafetyBoundary.test.ts` — structural proof of no real side effect and no production import of test-support.
 
-No Docker/systemd/Kubernetes implementation file is permitted in D-011B.3c.1.
+No Docker/systemd/Kubernetes implementation file and no real network transport implementation are permitted in D-011B.3c.1.
 
 ## 14. Explicit boundary to D-011B.3c.2
 
