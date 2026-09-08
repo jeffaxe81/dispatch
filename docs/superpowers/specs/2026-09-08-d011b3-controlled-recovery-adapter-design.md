@@ -67,9 +67,14 @@ HealthRegistry
    -> RecoveryPolicyEngine
    -> RecoveryOrchestrator
    -> RecoveryActionAuthorizationGate
-   -> DistributedRecoveryLease
+   -> DistributedRecoveryLease + fencing token
+   -> PersistentActionReservation
+   -> Authorization re-check
    -> ControlledRecoveryAdapter
+   -> Persistent action outcome
    -> PostActionVerifier
+   -> Persistent verification outcome
+   -> Lease release
    -> Audit / RecoveryPolicy state
 ```
 
@@ -120,9 +125,11 @@ The kill switch must satisfy all of these:
 - cannot be enabled by health event metadata;
 - cannot be enabled by component-controlled input;
 - state is auditable;
-- adapter must re-check authorization immediately before the side-effect boundary.
+- authorization MUST be re-evaluated immediately before the side-effect boundary, after lease acquisition and persistent action reservation.
 
 A later implementation may choose an environment variable or configuration source, but the implementation plan must ensure it is deployment/operator-controlled and not remotely mutable through application APIs.
+
+If the kill switch is disabled during an in-flight action, the currently executing infrastructure call is not force-killed by D-011B.3; instead, no subsequent side effect may begin and post-action state must still be reconciled/audited. Force-cancellation of real infrastructure calls requires a separate design.
 
 ## 3. Environment restriction
 
@@ -166,13 +173,16 @@ The exact target and adapter mechanism are deferred to implementation planning a
 
 Unknown or mismatched mappings fail closed.
 
-## 6. DistributedRecoveryLease
+## 6. DistributedRecoveryLease and fencing
 
 Before any real action is allowed, D-011B.3 requires coordination that is safe across multiple application replicas.
 
+A plain expiring lock is not sufficient for real side effects. Lease expiry while an old executor is still running can otherwise permit a second replica to start the same recovery. Therefore the coordination model MUST include a monotonically increasing fencing token (or an equivalent backend-enforced generation/version) associated with every successful acquisition.
+
 The lease abstraction must provide:
 - atomic acquire by logical component/action namespace;
-- owner/token identity;
+- owner identity;
+- monotonically increasing `fencingToken` or equivalent generation;
 - TTL/expiry;
 - release by owner token only;
 - compare-and-release semantics;
@@ -187,6 +197,7 @@ export type RecoveryLease = Readonly<{
   leaseId: string;
   componentId: string;
   ownerId: string;
+  fencingToken: number;
   expiresAt: string;
 }>;
 
@@ -203,13 +214,20 @@ export type RecoveryLeasePort = {
 
 `null` means another actor owns the lease and active execution must be suppressed.
 
+### Fencing requirement
+The selected persistence/coordination backend and the side-effect path must be able to reject stale generations, or the design must provide an equivalent guarantee that a stale lease holder cannot begin a new side effect after losing ownership.
+
+If the selected infrastructure API cannot participate in fencing directly, the implementation plan MUST enforce a pre-side-effect ownership/generation check atomically against the coordination backend immediately before the operational call and choose a lease TTL greater than the maximum bounded action start window. If this still cannot provide a credible single-execution guarantee for the chosen adapter, active implementation must not proceed.
+
+Lease renewal is NOT implicit. If renewal is required by the selected backend/action duration, it must be explicitly designed and tested in the implementation plan; renewal failure must fail closed for any not-yet-started side effect and must never cause an automatic retry of an uncertain action.
+
 The exact persistence backend is deferred. Active adapter implementation MUST NOT ship until a real atomic backend is selected and tested.
 
 ## 7. Persistent action idempotency
 
 D-011B.2 in-memory idempotency is insufficient for real side effects.
 
-Before active execution, the system must persist an action record keyed by `actionId` with immutable identity fields and terminal/non-terminal state.
+Before active execution, the system must persist an action record keyed by `actionId` with immutable identity fields, lease/fencing identity, and terminal/non-terminal state.
 
 Minimum states:
 - `reserved`;
@@ -224,7 +242,9 @@ Required semantics:
 - conflicting duplicate fails closed;
 - non-terminal duplicate does not create a second action;
 - persistence failure before action means no side effect;
-- ambiguous persistence failure after side effect yields `unknown_outcome` and MUST NOT automatically retry.
+- ambiguous persistence failure after side effect yields `unknown_outcome` and MUST NOT automatically retry;
+- the action record stores the fencing generation used for execution;
+- stale fencing generation cannot transition an action record into a new executing state.
 
 No automatic retry is permitted for `unknown_outcome`.
 
@@ -238,6 +258,7 @@ It must:
 - perform exactly one bounded operational action;
 - use a fixed infrastructure API/mechanism chosen by the implementation plan;
 - enforce its own target allowlist as defense in depth;
+- validate current authorization/lease generation immediately before the side effect;
 - implement bounded timeout;
 - avoid implicit retries;
 - return only normalized/sanitized results;
@@ -282,14 +303,33 @@ Closed verification outcomes:
 - `verification_timeout`;
 - `verification_unavailable`.
 
-The verifier MUST NOT create a new scheduler/watchdog loop. It must reuse existing health evidence/event mechanisms or a bounded orchestration wait strategy defined in the implementation plan.
+The verifier MUST NOT create a new permanent scheduler/watchdog loop. It must reuse existing health evidence/event mechanisms or a bounded orchestration wait strategy defined in the implementation plan.
 
-## 11. Failure and unknown-outcome handling
+## 11. Required execution order
+
+The active path must preserve this order:
+
+1. D-011B.1 policy permits the semantic action.
+2. D-011B.3 authorization gate evaluates environment/component/action/kill switch.
+3. Distributed lease is acquired with fencing generation.
+4. Persistent action reservation is created or an exact prior result is reused.
+5. Lease ownership/fencing generation and authorization are re-validated immediately before the side-effect boundary.
+6. Action record transitions to `executing` using the current generation.
+7. Exactly one bounded operational call is attempted.
+8. Normalized action outcome is persisted.
+9. Post-action verification runs if the operational outcome allows verification.
+10. Verification outcome is persisted.
+11. Lease is released by the current owner.
+12. Sanitized final audit is emitted.
+
+Failure at steps 2–6 means no side effect. Failure after step 7 must be treated according to explicit/unknown outcome semantics and must never trigger an implicit retry.
+
+## 12. Failure and unknown-outcome handling
 
 ### Failure before side effect
-Examples: authorization denied, lease unavailable, idempotency reservation failure.
+Examples: authorization denied, lease unavailable, idempotency reservation failure, stale fencing generation, authorization disabled during re-check.
 
-Behavior: no action; sanitized audit; policy remains authoritative.
+Behavior: no action; release any acquired lease where applicable; sanitized audit; policy remains authoritative.
 
 ### Adapter returns explicit failure
 Behavior: persist terminal failure, release lease, audit; no hidden retry.
@@ -300,7 +340,10 @@ If it is impossible to know whether the side effect occurred, mark `unknown_outc
 ### Verification failure after apparent action success
 Persist `verification_failed`; release lease; audit; allow the Recovery Policy Engine to control any later decision according to its own cooldown/circuit limits. Do not immediately retry in the same orchestration cycle.
 
-## 12. Rollback/fallback policy
+### Persistence failure after side effect
+If the action may have happened but the terminal result cannot be durably recorded, classify the action as operationally uncertain. A later reconciliation process may inspect state, but D-011B.3 MUST NOT replay the action automatically.
+
+## 13. Rollback/fallback policy
 
 Automatic rollback is NOT part of the first active adapter implementation.
 
@@ -312,7 +355,7 @@ For D-011B.3, rollback/fallback means only:
 
 No version rollback, restore, failover, database promotion, or alternate-host switch may be implemented under D-011B.3 without another approved spec.
 
-## 13. Audit and observability
+## 14. Audit and observability
 
 Every active-recovery evaluation must produce sanitized structured events, including denied attempts.
 
@@ -336,7 +379,7 @@ Audit metadata may include:
 - decision/correlation id;
 - authorization reason code;
 - environment class;
-- lease id/owner id in non-secret form;
+- lease id/owner id and fencing generation in non-secret form;
 - normalized action/verification status;
 - timestamps/durations.
 
@@ -350,7 +393,7 @@ Forbidden:
 - access tokens;
 - credential-bearing URLs.
 
-## 14. Security invariants
+## 15. Security invariants
 
 The first active adapter implementation must have structural and behavioral tests proving:
 - active recovery disabled by default;
@@ -359,9 +402,10 @@ The first active adapter implementation must have structural and behavioral test
 - only the single configured component is permitted;
 - only `restart_component` is permitted;
 - unknown action/component fail closed;
-- a valid distributed lease is required before side effect;
+- a valid distributed lease with current fencing generation is required before side effect;
 - persistent reservation is required before side effect;
 - duplicate action cannot execute twice across independent orchestrator instances sharing the same coordination store;
+- stale lease/fencing holder cannot begin a second side effect;
 - lease backend failure suppresses active action;
 - idempotency store failure suppresses active action;
 - adapter target is fixed and cannot be influenced by untrusted payload;
@@ -374,7 +418,7 @@ The first active adapter implementation must have structural and behavioral test
 - no arbitrary command API exists;
 - no remote API can toggle the kill switch or invoke the adapter directly.
 
-## 15. Deployment activation model
+## 16. Deployment activation model
 
 Code deployment and operational activation are separate events.
 
@@ -389,7 +433,7 @@ Recommended sequence:
 
 Production enablement requires a separate explicit approval gate and is not implied by successful homologation.
 
-## 16. Proposed implementation decomposition
+## 17. Proposed implementation decomposition
 
 The implementation plan should split D-011B.3 into small homologatable deliveries rather than one large active-recovery PR.
 
@@ -399,17 +443,17 @@ Recommended sequence:
 No real side effect. Adds fail-closed authorization and kill-switch semantics.
 
 ### D-011B.3b — Distributed lease + persistent action reservation
-No real side effect. Proves cross-instance exclusion and persistent idempotency.
+No real side effect. Proves cross-instance exclusion, fencing, persistent idempotency, and stale-owner rejection.
 
 ### D-011B.3c — Controlled adapter behind disabled composition root
-Introduces the single real side-effect adapter, but runtime activation remains disabled by default and structural tests prevent bypass.
+Introduces the single real side-effect adapter, but runtime activation remains disabled by default and structural tests prevent bypass. This subdelivery requires a new explicit human approval immediately before introducing the operational dependency/API.
 
 ### D-011B.3d — Post-action verifier + controlled drill harness
 Adds verification semantics and a controlled homologation procedure. No production enablement.
 
 This decomposition is recommended because it lets each high-risk boundary be tested and approved independently.
 
-## 17. Acceptance criteria for the overall D-011B.3 design
+## 18. Acceptance criteria for the overall D-011B.3 design
 
 The architecture is ready for implementation planning only when:
 - environment restriction is explicit;
@@ -417,15 +461,18 @@ The architecture is ready for implementation planning only when:
 - kill switch is default-off/fail-closed;
 - active authorization is separate from D-011B.1 recoverability;
 - fixed target mapping is defined;
-- distributed lease is mandatory;
+- distributed lease with fencing is mandatory;
 - persistent action idempotency is mandatory;
+- required execution order is explicit;
+- stale ownership cannot begin a side effect;
 - ambiguous outcomes cannot auto-retry;
 - post-action verification is mandatory;
 - rollback remains non-operational/deferred;
 - active side-effect code is isolated;
 - production activation remains out of scope;
 - `server/recovery` remains separate;
-- implementation is decomposed into independently homologatable microdeliveries.
+- implementation is decomposed into independently homologatable microdeliveries;
+- D-011B.3c has its own explicit human approval before any real operational adapter code is introduced.
 
 ## Deferred work
 The following require later independent approval/specification:
