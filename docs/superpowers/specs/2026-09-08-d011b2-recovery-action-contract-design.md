@@ -45,7 +45,7 @@ D-011B.2 does not weaken or replace those controls. It introduces a clearer acti
 Create a narrow interface representing execution of one already-authorized recovery action.
 
 Conceptual contract:
-- input: immutable `RecoveryActionRequest`;
+- input: immutable `RecoveryActionRequest` plus an optional cooperative cancellation token/signal owned by the caller;
 - output: immutable `RecoveryActionResult`;
 - no direct dependency on watchdog internals;
 - no responsibility for policy decisions;
@@ -54,6 +54,8 @@ Conceptual contract:
 - no exposure of raw infrastructure handles or credentials.
 
 The orchestrator remains the caller. The Policy Engine remains the authority that decides whether an action may be attempted.
+
+The cancellation token/signal is an in-process control primitive only. It must not represent a process signal, shell signal, container command, network call, or infrastructure handle.
 
 ### 2. Closed action catalog
 D-011B.2 supports a deliberately closed action vocabulary.
@@ -66,16 +68,17 @@ This is a semantic intention only. In D-011B.2 it never maps to a real restart A
 Unknown action kinds are rejected by default. There is no generic command/string field that could become a shell escape hatch.
 
 ### 3. RecoveryActionRequest
-The request should contain only sanitized operational metadata required to simulate execution:
+The runtime request contains only sanitized operational metadata required to describe the simulated action:
 - `actionId`: unique immutable id for this attempted action;
 - `transitionId`: source transition correlation id;
 - `componentId`: allowlisted logical component id;
 - `action`: closed action kind;
 - `requestedAt`: normalized timestamp;
-- `correlationId`: trace/run correlation id;
-- optional bounded simulation scenario selector for tests/harness only.
+- `correlationId`: trace/run correlation id.
 
-It MUST NOT contain:
+The runtime request MUST NOT contain any simulation scenario selector. Simulation outcomes are configured only through the test harness/factory that constructs the simulated adapter. This prevents production/runtime callers from selecting arbitrary simulated behavior through the action contract.
+
+The request also MUST NOT contain:
 - shell command text;
 - executable paths;
 - host credentials;
@@ -111,6 +114,7 @@ The only concrete adapter in D-011B.2 is a deterministic in-process simulator im
 
 It must:
 - produce controlled success, failure, timeout, and cancellation outcomes;
+- obtain its deterministic scenario from constructor/factory configuration supplied by the test harness, never from `RecoveryActionRequest`;
 - support deterministic timing through injected clock/timer controls or test-safe hooks;
 - never import Node process execution modules;
 - never call network APIs;
@@ -123,7 +127,9 @@ The simulator exists to validate semantics, not to emulate a real service manage
 ### 6. Harness
 Provide a test harness/factory around the simulator so test code can specify deterministic scenarios without exposing unsafe production knobs.
 
-The harness should be test-oriented and bounded. If a runtime diagnostic surface is added later, it requires separate approval. D-011B.2 should not add an HTTP endpoint, admin UI, CLI command, or remote trigger for simulated recovery unless separately approved.
+The harness is test-only infrastructure. Production bootstrap must not expose the scenario selector, must not read it from environment variables, and must not make it remotely configurable.
+
+If a runtime diagnostic surface is added later, it requires separate approval. D-011B.2 must not add an HTTP endpoint, admin UI, CLI command, environment switch, or remote trigger for selecting simulated recovery outcomes.
 
 ### 7. Orchestrator integration
 Replace or adapt the current D-011B.1 dry-run execution seam so that the orchestrator invokes `RecoveryActionPort` rather than depending on a concrete dry-run executor shape.
@@ -144,21 +150,24 @@ Only known logical component ids may be converted into `RecoveryActionRequest`.
 Unknown components must fail closed before adapter execution. No dynamic discovery of services/processes/containers is allowed in this delivery.
 
 ### 9. Cancellation and timeout semantics
-D-011B.2 should define the contract behavior now so future real adapters cannot invent incompatible semantics.
+D-011B.2 defines these semantics now so future real adapters cannot invent incompatible behavior.
 
 Timeout:
-- caller supplies or adapter receives a bounded timeout policy through configuration, not arbitrary request data;
-- timeout yields `simulated_timeout`;
+- the adapter receives a bounded timeout policy through construction/configuration owned by the composition root, not arbitrary request data;
+- the simulator uses an injected/test-safe clock or timer abstraction so timeout tests do not depend on real wall-clock delays;
+- timeout yields exactly one `simulated_timeout` result;
 - timeout does not cause a second hidden execution;
 - timeout does not crash the orchestrator.
 
 Cancellation:
-- cancellation is cooperative in the simulator;
-- cancelled actions yield `simulated_cancelled`;
+- the orchestrator may provide a cooperative in-process cancellation token/signal to the port;
+- the simulator checks that token/signal only at deterministic test-safe boundaries;
+- cancelled actions yield exactly one `simulated_cancelled` result;
 - cancellation must not be reported as success;
-- cancellation must release the per-component in-flight guard.
+- cancellation must release the per-component in-flight guard;
+- cancellation does not call any process signal, OS primitive, container API, or network API.
 
-No retry is implicit in either timeout or cancellation.
+No retry is implicit in success, failure, timeout, or cancellation.
 
 ## Data flow
 
@@ -168,7 +177,7 @@ No retry is implicit in either timeout or cancellation.
 4. If decision is non-executable, audit and stop.
 5. If decision is executable, orchestrator creates a sanitized `RecoveryActionRequest` using a closed mapper/allowlist.
 6. Orchestrator obtains the per-component in-flight lock.
-7. `RecoveryActionPort.execute(request)` is invoked.
+7. `RecoveryActionPort.execute(request, cancellation?)` is invoked.
 8. `SimulatedRecoveryAdapter` returns one deterministic normalized result.
 9. Orchestrator emits sanitized audit/result information.
 10. In-flight lock is released in all terminal paths.
@@ -192,12 +201,14 @@ Reject before adapter invocation.
 ### Duplicate action id
 The action boundary must be idempotent for a duplicate `actionId` during its in-memory lifetime. A duplicate must not cause a second simulated execution.
 
+The first terminal normalized result for an `actionId` is retained in-memory and reused for exact duplicate calls during that lifetime. If the duplicate conflicts on immutable identity fields (`componentId`, `action`, `transitionId`), fail closed with a stable sanitized reason code rather than executing again.
+
 Persistence/distributed idempotency is not part of D-011B.2; it belongs to a later delivery for multi-instance coordination.
 
 ## State and multi-instance limitation
 D-011B.2 may use in-memory state for action idempotency and harness coordination because it still has no real side effects.
 
-The specification must explicitly preserve this limitation: in-memory coordination is insufficient before enabling real recovery in a multi-replica deployment. A later delivery must introduce a distributed lease/lock/idempotency mechanism before any active adapter can be approved for Kubernetes or horizontally scaled environments.
+The specification explicitly preserves this limitation: in-memory coordination is insufficient before enabling real recovery in a multi-replica deployment. A later delivery must introduce a distributed lease/lock/idempotency mechanism before any active adapter can be approved for Kubernetes or horizontally scaled environments.
 
 ## Audit and observability
 Every executable simulation attempt must emit sanitized structured audit metadata sufficient to answer:
@@ -219,6 +230,7 @@ D-011B.2 must add/extend structural regression tests that prove:
 - no Kubernetes/Docker SDK dependencies in the D-011B.2 action path;
 - no calls into automatic restore/failover/migration code;
 - no generic arbitrary command field in the action contract;
+- no runtime simulation-scenario field, env switch, HTTP route, UI, or CLI for selecting simulator outcomes;
 - the only concrete runtime adapter is the simulated adapter;
 - no new scheduler/timer loop for recovery orchestration.
 
@@ -231,26 +243,27 @@ Required test groups:
 1. `RecoveryActionPort` contract typing/shape and closed action vocabulary.
 2. deterministic simulated success.
 3. deterministic simulated failure with sanitized reason code.
-4. deterministic simulated timeout.
-5. deterministic cooperative cancellation.
-6. duplicate `actionId` does not execute twice.
-7. unknown component rejected before adapter call.
-8. unknown action rejected before adapter call.
-9. suppress/escalate policy decisions do not call the port.
-10. one in-flight simulation per component.
-11. different components may simulate concurrently.
-12. thrown adapter error is isolated and sanitized.
-13. in-flight lock is released on success/failure/timeout/cancel/throw.
-14. audit event contains stable metadata and no raw secret/error payload.
-15. structural safety boundary proves absence of real operational adapter capability.
-16. regression tests for D-011A and D-011B.1 remain green.
-17. full repository security, TypeScript, test suite, and build gates remain green on exact PR head and after merge.
+4. deterministic simulated timeout with injected time control.
+5. deterministic cooperative in-process cancellation.
+6. duplicate `actionId` returns the first result without executing twice.
+7. conflicting duplicate `actionId` fails closed without executing twice.
+8. unknown component rejected before adapter call.
+9. unknown action rejected before adapter call.
+10. suppress/escalate policy decisions do not call the port.
+11. one in-flight simulation per component.
+12. different components may simulate concurrently.
+13. thrown adapter error is isolated and sanitized.
+14. in-flight lock is released on success/failure/timeout/cancel/throw.
+15. audit event contains stable metadata and no raw secret/error payload.
+16. structural safety boundary proves absence of real operational adapter capability and runtime scenario controls.
+17. regression tests for D-011A and D-011B.1 remain green.
+18. full repository security, TypeScript, test suite, and build gates remain green on exact PR head and after merge.
 
 ## Proposed file boundaries
-Exact names may be adjusted during implementation planning, but responsibilities should stay separated:
+Exact names may be adjusted during implementation planning, but responsibilities must stay separated:
 - `server/_core/recoveryAction.ts` — request/result/action vocabulary and port interface;
 - `server/_core/simulatedRecoveryAdapter.ts` — only concrete D-011B.2 adapter;
-- `server/_core/recoveryActionHarness.ts` — deterministic test harness/factory if needed;
+- `server/_core/recoveryActionHarness.ts` — deterministic test-only harness/factory if needed;
 - `server/_core/recoveryOrchestrator.ts` — adapts existing orchestration to the port;
 - focused `*.test.ts` files;
 - extend `server/d011b1SafetyBoundary.test.ts` or add a D-011B.2-specific structural boundary test.
@@ -263,9 +276,11 @@ D-011B.2 is complete only when all of the following are true:
 - the only concrete implementation is simulation-only;
 - orchestrator uses the port without changing Policy Engine authority;
 - success/failure/timeout/cancel are deterministic and tested;
-- duplicate action execution is suppressed;
+- duplicate action execution is suppressed with stable same-result semantics;
+- conflicting duplicate identities fail closed;
 - component allowlist/default-deny is enforced;
 - audit/error handling is sanitized;
+- no runtime control can choose simulator outcomes;
 - no active operational recovery mechanism exists;
 - structural safety tests are green;
 - full security/TypeScript/test/build gates are green on exact head;
