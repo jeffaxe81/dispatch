@@ -8,6 +8,7 @@ export type RecoveryActionRecordState =
 
 export type RecoveryActionRecord = Readonly<{
   actionId: string;
+  tenantId: string;
   componentId: string;
   correlationId: string;
   action: "restart_component";
@@ -83,9 +84,10 @@ export type RecoveryExecutionLedgerPort = {
 
 export function sameRecoveryActionIdentity(
   record: RecoveryActionRecord,
-  input: Pick<RecoveryActionRecord, "actionId" | "componentId" | "correlationId" | "action">,
+  input: Pick<RecoveryActionRecord, "actionId" | "tenantId" | "componentId" | "correlationId" | "action">,
 ): boolean {
   return record.actionId === input.actionId
+    && record.tenantId === input.tenantId
     && record.componentId === input.componentId
     && record.correlationId === input.correlationId
     && record.action === input.action;
