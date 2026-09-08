@@ -5,6 +5,7 @@ import type {
   RecoveryExecutionLedgerPort,
 } from "./recoveryActionRecord";
 import type { RecoveryExecutionRequest, RecoveryExecutorPort } from "./recoveryExecution";
+import type { RecoveryExecutionAuditPort } from "./recoveryExecutionAudit";
 import type { RecoveryLease, RecoveryLeasePort } from "./recoveryLease";
 import { createRecoveryExecutionBoundary } from "./recoveryExecutionBoundary";
 
@@ -28,6 +29,7 @@ const request: RecoveryExecutionRequest = {
 const lease: RecoveryLease = {
   leaseId: "lease-1",
   namespace: "d011b3-v1",
+  tenantId: "tenant-7",
   componentId: "database",
   actionId: "action:decision-1",
   ownerId: "node-a",
@@ -38,6 +40,7 @@ const lease: RecoveryLease = {
 
 const reserved: RecoveryActionRecord = {
   actionId: request.actionId,
+  tenantId: request.tenantId,
   componentId: request.componentId,
   correlationId: request.correlationId,
   action: request.action,
@@ -111,15 +114,20 @@ function harness(overrides: {
     }),
   };
 
+  const audit: RecoveryExecutionAuditPort = {
+    append: vi.fn(async () => undefined),
+  };
+
   const boundary = createRecoveryExecutionBoundary({
     guard,
     ledger,
     leasePort,
     executor,
+    audit,
     now: overrides.now ?? (() => new Date("2026-09-08T12:00:02.000Z")),
-  });
+  } as any);
 
-  return { boundary, guard, ledger, leasePort, executor, calls };
+  return { boundary, guard, ledger, leasePort, executor, audit, calls };
 }
 
 describe("D-011B.4 RecoveryExecutionBoundary", () => {
@@ -136,6 +144,24 @@ describe("D-011B.4 RecoveryExecutionBoundary", () => {
       "ledger:executing->completed_success",
     ]);
     expect(h.executor.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("appends one allowlisted audit event for a completed simulated execution", async () => {
+    const h = harness();
+    await h.boundary.execute({ request, lease });
+    expect(h.audit.append).toHaveBeenCalledTimes(1);
+    expect(h.audit.append).toHaveBeenCalledWith({
+      eventType: "recovery.execution.finished",
+      actionId: request.actionId,
+      componentId: request.componentId,
+      action: request.action,
+      correlationId: request.correlationId,
+      fencingToken: request.fencingToken,
+      startedAt: "2026-09-08T12:00:02.000Z",
+      finishedAt: "2026-09-08T12:00:02.000Z",
+      status: "executed",
+      reasonCode: "SIMULATED_SUCCESS",
+    });
   });
 
   it("never touches ledger or executor when the safety guard denies", async () => {
