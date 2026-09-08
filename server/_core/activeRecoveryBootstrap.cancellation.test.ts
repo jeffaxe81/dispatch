@@ -36,7 +36,7 @@ const request: RecoveryExecutionRequest = {
   leaseNamespace: "d011b3-v1",
   ownerId: "node-a",
   fencingToken: 7,
-  authorizationRef: "auth-1",
+  authorizationRef: "authz-v1:homologation-controlled:d011b3-v1:database:restart_component:action%3Adecision-1:transition-1:decision-1:2026-09-08T12%3A00%3A00.000Z",
   deadlineAt: "2026-09-08T23:59:00.000Z",
 };
 
