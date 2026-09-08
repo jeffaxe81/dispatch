@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { authorizeRecoveryAction } from "./activeRecoveryAuthorization";
+import type { RecoveryActionRecord, RecoveryActionRecordPort, RecoveryExecutionLedgerPort } from "./recoveryActionRecord";
 import { createActiveRecoveryBootstrap } from "./activeRecoveryBootstrap";
+import type { RecoveryExecutionRequest } from "./recoveryExecution";
+import type { RecoveryLease, RecoveryLeasePort } from "./recoveryLease";
 
 const request = {
   actionId: "action:decision-1",
@@ -11,6 +14,70 @@ const request = {
   requestedAt: "2026-09-08T00:00:00.000Z",
   correlationId: "decision-1",
 };
+
+const tenantId = "tenant-7";
+
+const lease: RecoveryLease = {
+  leaseId: "lease-1",
+  namespace: "d011b3-v1",
+  tenantId,
+  componentId: request.componentId,
+  actionId: request.actionId,
+  ownerId: "replica-a",
+  fencingToken: 7,
+  acquiredAt: "2026-09-08T00:00:00.000Z",
+  expiresAt: "2099-09-08T00:00:30.000Z",
+};
+
+const executionRequest: RecoveryExecutionRequest = {
+  tenantId,
+  ...request,
+  reservationId: request.actionId,
+  leaseId: lease.leaseId,
+  leaseNamespace: lease.namespace,
+  ownerId: lease.ownerId,
+  fencingToken: lease.fencingToken,
+  authorizationRef: "auth:decision-1",
+  deadlineAt: "2099-09-08T00:00:30.000Z",
+};
+
+function executionPorts() {
+  let record: RecoveryActionRecord = {
+    actionId: request.actionId,
+    tenantId,
+    componentId: request.componentId,
+    correlationId: request.correlationId,
+    action: request.action,
+    state: "reserved",
+    fencingToken: lease.fencingToken,
+    createdAt: "2026-09-08T00:00:00.000Z",
+    updatedAt: "2026-09-08T00:00:00.000Z",
+  };
+  const leasePort: RecoveryLeasePort = {
+    acquire: async () => ({ acquired: true, lease }),
+    validateFence: async () => true,
+    release: async () => undefined,
+  };
+  const recordPort: RecoveryActionRecordPort = {
+    reserve: async () => ({ status: "reserved", record }),
+    updateState: async () => true,
+    get: async () => record,
+  };
+  const ledger: RecoveryExecutionLedgerPort = {
+    get: async () => record,
+    compareAndSetState: async input => {
+      if (record.fencingToken !== input.expectedFencingToken) {
+        return { status: "fencing_conflict", record };
+      }
+      if (record.state !== input.expectedState) {
+        return { status: "state_conflict", record };
+      }
+      record = { ...record, state: input.nextState, updatedAt: input.at };
+      return { status: "transitioned", record };
+    },
+  };
+  return { leasePort, recordPort, ledger };
+}
 
 describe("createActiveRecoveryBootstrap", () => {
   it("is disabled by default and scoped to homologation/database/restart", () => {
@@ -30,6 +97,31 @@ describe("createActiveRecoveryBootstrap", () => {
     const result = await bootstrap.actionPort.execute(request);
     expect(result.status).toBe("simulated_success");
     expect(result.reasonCode).toBe("SIMULATED_SUCCESS");
+  });
+
+  it("wires the D-011B.4 boundary only to the internal simulated executor when authoritative coordination ports are supplied", async () => {
+    const ports = executionPorts();
+    const bootstrap = createActiveRecoveryBootstrap({
+      config: {
+        enabled: true,
+        environment: "homologation-controlled",
+        authorizedEnvironment: "homologation-controlled",
+        authorizedComponent: "database",
+        authorizedAction: "restart_component",
+        leaseNamespace: "d011b3-v1",
+      },
+      execution: ports,
+    } as any);
+    expect((bootstrap as any).executionBoundary).toBeDefined();
+    const result = await (bootstrap as any).executionBoundary.execute({
+      request: executionRequest,
+      lease,
+    });
+    expect(result).toMatchObject({ status: "executed", reasonCode: "SIMULATED_SUCCESS" });
+  });
+
+  it("does not expose an execution boundary when authoritative coordination ports are absent", () => {
+    expect((createActiveRecoveryBootstrap() as any).executionBoundary).toBeUndefined();
   });
 
   it("never authorizes production", () => {
