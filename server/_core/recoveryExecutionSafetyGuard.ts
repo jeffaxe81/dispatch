@@ -24,6 +24,7 @@ export type RecoveryExecutionSafetyReasonCode =
   | "KILL_SWITCH_OFF"
   | "AUTHORIZATION_DENIED"
   | "RESERVATION_MISMATCH"
+  | "TENANT_MISMATCH"
   | "LEASE_MISMATCH"
   | "STALE_LEASE"
   | "OWNER_MISMATCH"
@@ -104,6 +105,10 @@ export function createRecoveryExecutionSafetyGuard(options: {
         return deny("STALE_LEASE");
       }
 
+      if (lease.tenantId !== request.tenantId) {
+        return deny("TENANT_MISMATCH");
+      }
+
       if (
         lease.leaseId !== request.leaseId
         || lease.namespace !== request.leaseNamespace
@@ -138,6 +143,10 @@ export function createRecoveryExecutionSafetyGuard(options: {
         return deny("RESERVATION_MISMATCH");
       }
 
+      if (record.tenantId !== request.tenantId) {
+        return deny("TENANT_MISMATCH");
+      }
+
       if (record.fencingToken !== request.fencingToken) {
         return deny("FENCING_MISMATCH");
       }
@@ -147,6 +156,7 @@ export function createRecoveryExecutionSafetyGuard(options: {
         || isTerminalRecoveryActionState(record.state)
         || !sameRecoveryActionIdentity(record, {
           actionId: request.actionId,
+          tenantId: request.tenantId,
           componentId: request.componentId,
           correlationId: request.correlationId,
           action: request.action,
