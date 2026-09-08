@@ -94,6 +94,7 @@ describe("D-011B.4 recovery execution ledger transition contract", () => {
 
   it("rejects reserved -> terminal because execution must be claimed first", () => {
     expect(planRecoveryActionStateTransition(record("reserved"), {
+      expectedTenantId: "tenant-7",
       expectedState: "reserved",
       expectedFencingToken: 7,
       nextState: "completed_success",
