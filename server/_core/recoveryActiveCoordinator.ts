@@ -26,6 +26,7 @@ export type RecoveryActiveCoordinationResult = Readonly<{
     | "ACTION_STORE_UNAVAILABLE"
     | "FENCE_INVALID";
   fencingToken?: number;
+  authorizationRef?: string;
 }>;
 
 export function createRecoveryActiveCoordinator(options: {
@@ -63,7 +64,7 @@ export function createRecoveryActiveCoordinator(options: {
       }
 
       const authorization = authorizeRecoveryAction({ request, config });
-      if (!authorization.authorized) {
+      if (!authorization.authorized || !authorization.authorizationRef) {
         return deny("AUTHORIZATION_DENIED");
       }
 
@@ -160,6 +161,7 @@ export function createRecoveryActiveCoordinator(options: {
         allowedToReachFutureAdapter: true,
         reasonCode: "AUTHORIZED_AND_RESERVED",
         fencingToken: lease.fencingToken,
+        authorizationRef: authorization.authorizationRef,
       };
     },
   };
