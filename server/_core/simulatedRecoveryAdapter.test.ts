@@ -47,4 +47,37 @@ describe("SimulatedRecoveryAdapter", () => {
     expect(result.durationMs).toBe(1);
     expect(JSON.stringify(result)).not.toContain("stack");
   });
+
+  it("returns simulated_timeout without retrying", async () => {
+    let sleeps = 0;
+    const clock = {
+      now: () => new Date("2026-09-08T00:00:00.000Z"),
+      sleep: async () => {
+        sleeps += 1;
+      },
+    };
+    const adapter = createSimulatedRecoveryAdapter({
+      scenario: "timeout",
+      clock,
+      timeoutMs: 250,
+    });
+    const result = await adapter.execute(request);
+    expect(result.status).toBe("simulated_timeout");
+    expect(result.reasonCode).toBe("SIMULATED_TIMEOUT");
+    expect(sleeps).toBe(1);
+  });
+
+  it("returns simulated_cancelled for cooperative in-process cancellation", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const adapter = createSimulatedRecoveryAdapter({
+      scenario: "cancelled",
+      clock: createClock(),
+      timeoutMs: 250,
+      cancellationSignal: controller.signal,
+    });
+    const result = await adapter.execute(request);
+    expect(result.status).toBe("simulated_cancelled");
+    expect(result.reasonCode).toBe("SIMULATED_CANCELLED");
+  });
 });
