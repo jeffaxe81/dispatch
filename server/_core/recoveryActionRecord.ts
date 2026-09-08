@@ -37,6 +37,7 @@ export type RecoveryActionRecordPort = {
 };
 
 export type RecoveryActionStateTransitionInput = Readonly<{
+  expectedTenantId: string;
   expectedState: RecoveryActionRecordState;
   expectedFencingToken: number;
   nextState: RecoveryActionRecordState;
@@ -47,6 +48,7 @@ export type RecoveryActionStateTransitionPlan =
   | Readonly<{
       allowed: false;
       status:
+        | "tenant_conflict"
         | "fencing_conflict"
         | "state_conflict"
         | "terminal_conflict"
@@ -56,6 +58,7 @@ export type RecoveryActionStateTransitionPlan =
 
 export type RecoveryExecutionLedgerTransitionInput = Readonly<{
   actionId: string;
+  expectedTenantId: string;
   expectedState: RecoveryActionRecordState;
   expectedFencingToken: number;
   nextState: RecoveryActionRecordState;
@@ -66,6 +69,7 @@ export type RecoveryExecutionLedgerTransitionResult =
   | Readonly<{ status: "transitioned"; record: RecoveryActionRecord }>
   | Readonly<{ status: "existing_terminal"; record: RecoveryActionRecord }>
   | Readonly<{ status: "state_conflict"; record?: RecoveryActionRecord }>
+  | Readonly<{ status: "tenant_conflict"; record?: RecoveryActionRecord }>
   | Readonly<{ status: "fencing_conflict"; record?: RecoveryActionRecord }>
   | Readonly<{ status: "terminal_conflict"; record?: RecoveryActionRecord }>
   | Readonly<{ status: "invalid_transition"; record?: RecoveryActionRecord }>
@@ -104,6 +108,10 @@ export function planRecoveryActionStateTransition(
   record: RecoveryActionRecord,
   input: RecoveryActionStateTransitionInput,
 ): RecoveryActionStateTransitionPlan {
+  if (record.tenantId !== input.expectedTenantId) {
+    return { allowed: false, status: "tenant_conflict" };
+  }
+
   if (record.fencingToken !== input.expectedFencingToken) {
     return { allowed: false, status: "fencing_conflict" };
   }
