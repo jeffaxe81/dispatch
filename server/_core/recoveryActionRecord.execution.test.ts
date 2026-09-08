@@ -6,6 +6,7 @@ import {
 
 const record = (state: RecoveryActionRecord["state"] = "reserved", fencingToken = 7): RecoveryActionRecord => ({
   actionId: "action:decision-1",
+  tenantId: "tenant-7",
   componentId: "database",
   correlationId: "decision-1",
   action: "restart_component",
@@ -34,6 +35,15 @@ describe("D-011B.4 recovery execution ledger transition contract", () => {
       })).toEqual({ allowed: true, status: "transition" });
     },
   );
+
+  it("rejects a transition for a different tenant before state or fencing can match", () => {
+    expect(planRecoveryActionStateTransition(record(), {
+      expectedTenantId: "tenant-8",
+      expectedState: "reserved",
+      expectedFencingToken: 7,
+      nextState: "executing",
+    })).toEqual({ allowed: false, status: "tenant_conflict" });
+  });
 
   it("rejects a stale fencing token", () => {
     expect(planRecoveryActionStateTransition(record("reserved", 8), {
