@@ -10,6 +10,9 @@ function atomicFake(initial: RecoveryActionRecord): RecoveryExecutionLedgerPort 
   return {
     get: async () => current,
     compareAndSetState: async input => {
+      if (current.tenantId !== input.expectedTenantId) {
+        return { status: "tenant_conflict", record: current };
+      }
       if (current.fencingToken !== input.expectedFencingToken) {
         return { status: "fencing_conflict", record: current };
       }
@@ -24,6 +27,7 @@ function atomicFake(initial: RecoveryActionRecord): RecoveryExecutionLedgerPort 
 
 const reserved: RecoveryActionRecord = {
   actionId: "action:decision-1",
+  tenantId: "tenant-7",
   componentId: "database",
   correlationId: "decision-1",
   action: "restart_component",
@@ -38,6 +42,7 @@ describe("D-011B.4 atomic recovery execution ledger CAS", () => {
     const port = atomicFake(reserved);
     const input = {
       actionId: reserved.actionId,
+      expectedTenantId: reserved.tenantId,
       expectedState: "reserved" as const,
       expectedFencingToken: 7,
       nextState: "executing" as const,
@@ -51,6 +56,20 @@ describe("D-011B.4 atomic recovery execution ledger CAS", () => {
 
     expect(results.filter(result => result.status === "transitioned")).toHaveLength(1);
     expect(results.filter(result => result.status === "state_conflict")).toHaveLength(1);
+  });
+
+  it("rejects a same-action and same-fence claim from another tenant atomically", async () => {
+    const port = atomicFake(reserved);
+    const result = await commitRecoveryActionStateTransition(port, {
+      actionId: reserved.actionId,
+      expectedTenantId: "tenant-8",
+      expectedState: "reserved",
+      expectedFencingToken: 7,
+      nextState: "executing",
+      at: "2026-09-08T12:00:02.000Z",
+    });
+
+    expect(result).toEqual({ status: "tenant_conflict", record: reserved });
   });
 
   it("does not emulate CAS with a read followed by a legacy update", async () => {
@@ -68,6 +87,7 @@ describe("D-011B.4 atomic recovery execution ledger CAS", () => {
 
     const result = await commitRecoveryActionStateTransition(port, {
       actionId: reserved.actionId,
+      expectedTenantId: reserved.tenantId,
       expectedState: "reserved",
       expectedFencingToken: 7,
       nextState: "executing",
@@ -86,6 +106,7 @@ describe("D-011B.4 atomic recovery execution ledger CAS", () => {
 
     await expect(commitRecoveryActionStateTransition(port, {
       actionId: reserved.actionId,
+      expectedTenantId: reserved.tenantId,
       expectedState: "reserved",
       expectedFencingToken: 7,
       nextState: "executing",
