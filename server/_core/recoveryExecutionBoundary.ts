@@ -67,6 +67,8 @@ type ExecutionRaceOutcome =
   | Readonly<{ kind: "timeout" }>
   | Readonly<{ kind: "cancelled" }>;
 
+const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
+
 function terminalStateFor(status: RecoveryActionResult["status"]): RecoveryActionRecordState {
   return status === "simulated_success" ? "completed_success" : "completed_failure";
 }
@@ -235,10 +237,19 @@ export function createRecoveryExecutionBoundary(options: {
 
       const remainingMs = Math.max(0, deadlineAtMs - beforeInvokeMs);
       const timeoutPromise = new Promise<ExecutionRaceOutcome>(resolve => {
-        timeoutHandle = setTimeout(() => {
-          controller.abort();
-          resolve({ kind: "timeout" });
-        }, remainingMs);
+        const scheduleTimeoutSlice = (delayMs: number) => {
+          const sliceMs = Math.min(delayMs, MAX_NODE_TIMER_DELAY_MS);
+          timeoutHandle = setTimeout(() => {
+            const nextDelayMs = delayMs - sliceMs;
+            if (nextDelayMs > 0) {
+              scheduleTimeoutSlice(nextDelayMs);
+              return;
+            }
+            controller.abort();
+            resolve({ kind: "timeout" });
+          }, sliceMs);
+        };
+        scheduleTimeoutSlice(remainingMs);
       });
 
       const cancellationPromise = new Promise<ExecutionRaceOutcome>(resolve => {
