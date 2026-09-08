@@ -3,7 +3,10 @@ import {
   type ActiveRecoveryConfig,
 } from "./activeRecoveryAuthorization";
 import type { RecoveryActionRequest } from "./recoveryAction";
-import type { RecoveryActionRecordPort } from "./recoveryActionRecord";
+import {
+  sameRecoveryActionIdentity,
+  type RecoveryActionRecordPort,
+} from "./recoveryActionRecord";
 import {
   isValidRecoveryLease,
   type RecoveryLease,
@@ -81,7 +84,12 @@ export function createRecoveryActiveCoordinator(options: {
       }
 
       const lease = acquireResult.lease;
-      if (!isValidRecoveryLease(lease)) {
+      const leaseMatchesRequest = isValidRecoveryLease(lease)
+        && lease.namespace === authorization.leaseNamespace
+        && lease.componentId === request.componentId
+        && lease.actionId === request.actionId
+        && lease.ownerId === ownerId;
+      if (!leaseMatchesRequest) {
         await safeRelease(lease);
         return deny("LEASE_DENIED");
       }
@@ -112,6 +120,19 @@ export function createRecoveryActiveCoordinator(options: {
           case "store_unavailable":
             return deny("ACTION_STORE_UNAVAILABLE");
         }
+      }
+
+      const reservedRecordMatchesRequest = reserveResult.record.state === "reserved"
+        && reserveResult.record.fencingToken === lease.fencingToken
+        && sameRecoveryActionIdentity(reserveResult.record, {
+          actionId: request.actionId,
+          componentId: request.componentId,
+          correlationId: request.correlationId,
+          action: request.action,
+        });
+      if (!reservedRecordMatchesRequest) {
+        await safeRelease(lease);
+        return deny("ACTION_CONFLICT");
       }
 
       let fenceValid = false;
