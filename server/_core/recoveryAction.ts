@@ -37,7 +37,7 @@ export type RecoveryActionResult = Readonly<{
 }>;
 
 export type RecoveryActionPort = {
-  execute(request: RecoveryActionRequest): Promise<RecoveryActionResult>;
+  execute(request: RecoveryActionRequest, signal?: AbortSignal): Promise<RecoveryActionResult>;
 };
 
 const ACTIONABLE_COMPONENTS = new Set(["database", "storage"] as const);
