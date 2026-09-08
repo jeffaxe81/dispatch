@@ -107,6 +107,15 @@ describe("RecoveryActiveCoordinator", () => {
     expect(ports.recordPort.reserve).not.toHaveBeenCalled();
   });
 
+  it("rejects a structurally valid lease whose identity does not match the acquisition request", async () => {
+    const mismatchedLease: RecoveryLease = { ...lease, ownerId: "replica-b" };
+    const ports = createPorts({ acquire: { acquired: true, lease: mismatchedLease } });
+    const result = await coordinator(ports).prepare(request);
+    expect(result).toEqual({ allowedToReachFutureAdapter: false, reasonCode: "LEASE_DENIED" });
+    expect(ports.release).toHaveBeenCalledWith(mismatchedLease);
+    expect(ports.recordPort.reserve).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["store_unavailable", "ACTION_STORE_UNAVAILABLE"],
     ["conflict", "ACTION_CONFLICT"],
@@ -122,6 +131,15 @@ describe("RecoveryActiveCoordinator", () => {
     const ports = createPorts({ reserve: reserve as RecoveryActionReserveResult });
     const result = await coordinator(ports).prepare(request);
     expect(result.reasonCode).toBe(reasonCode);
+    expect(ports.release).toHaveBeenCalledWith(lease);
+    expect(ports.leasePort.validateFence).not.toHaveBeenCalled();
+  });
+
+  it("rejects a reserved record whose identity or fencing token does not match the request", async () => {
+    const mismatchedRecord: RecoveryActionRecord = { ...reservedRecord, fencingToken: 99 };
+    const ports = createPorts({ reserve: { status: "reserved", record: mismatchedRecord } });
+    const result = await coordinator(ports).prepare(request);
+    expect(result).toEqual({ allowedToReachFutureAdapter: false, reasonCode: "ACTION_CONFLICT" });
     expect(ports.release).toHaveBeenCalledWith(lease);
     expect(ports.leasePort.validateFence).not.toHaveBeenCalled();
   });
