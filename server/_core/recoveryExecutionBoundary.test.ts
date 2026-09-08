@@ -68,6 +68,7 @@ function harness(overrides: {
   guardReason?: string;
   finalFenceValid?: boolean;
   firstTransitionStatus?: "transitioned" | "state_conflict" | "existing_terminal" | "store_unavailable";
+  terminalTransitionStatus?: "state_conflict" | "store_unavailable";
   executor?: RecoveryExecutorPort;
   now?: () => Date;
 } = {}) {
@@ -90,6 +91,10 @@ function harness(overrides: {
       if (input.expectedState === "reserved" && overrides.firstTransitionStatus) {
         if (overrides.firstTransitionStatus === "store_unavailable") return { status: "store_unavailable" as const };
         return { status: overrides.firstTransitionStatus as any, record: current };
+      }
+      if (input.expectedState === "executing" && overrides.terminalTransitionStatus) {
+        if (overrides.terminalTransitionStatus === "store_unavailable") return { status: "store_unavailable" as const };
+        return { status: "state_conflict" as const, record: current };
       }
       if (current.state !== input.expectedState) return { status: "state_conflict" as const, record: current };
       current = { ...current, state: input.nextState, updatedAt: input.at };
@@ -194,6 +199,41 @@ describe("D-011B.4 RecoveryExecutionBoundary", () => {
       "ledger:executing->verification_failed",
     ]);
     expect(h.executor.execute).not.toHaveBeenCalled();
+  });
+
+  it("reports ledger finalization failure when verification_failed cannot be persisted", async () => {
+    const h = harness({
+      finalFenceValid: false,
+      terminalTransitionStatus: "store_unavailable",
+    });
+    const result = await h.boundary.execute({ request, lease });
+
+    expect(result).toEqual({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
+    expect(h.executor.execute).not.toHaveBeenCalled();
+    expect(h.audit.append).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      reasonCode: "LEDGER_FINALIZATION_FAILED",
+    }));
+  });
+
+  it("reports ledger finalization failure when unknown_outcome cannot be persisted", async () => {
+    const executor: RecoveryExecutorPort = {
+      capability: "simulation",
+      execute: vi.fn(async () => {
+        throw new Error("sensitive executor details");
+      }),
+    };
+    const h = harness({
+      executor,
+      terminalTransitionStatus: "state_conflict",
+    });
+    const result = await h.boundary.execute({ request, lease });
+
+    expect(result).toEqual({ status: "failed", reasonCode: "LEDGER_FINALIZATION_FAILED" });
+    expect(h.audit.append).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      reasonCode: "LEDGER_FINALIZATION_FAILED",
+    }));
   });
 
   it("sanitizes executor exceptions and records unknown_outcome after invocation", async () => {
