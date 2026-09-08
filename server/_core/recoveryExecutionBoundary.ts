@@ -134,11 +134,19 @@ export function createRecoveryExecutionBoundary(options: {
       const finish = (result: RecoveryExecutionBoundaryResult) =>
         appendAudit(request, startedAt, result);
 
-      const safety = await guard.evaluate({
-        request,
-        lease,
-        executorCapability: executor.capability,
-      });
+      let safety: RecoveryExecutionSafetyDecision;
+      try {
+        safety = await guard.evaluate({
+          request,
+          lease,
+          executorCapability: executor.capability,
+        });
+      } catch {
+        return finish({
+          status: "rejected",
+          reasonCode: "INTERNAL_SANITIZED_FAILURE",
+        });
+      }
       if (!safety.allowed) {
         return finish({ status: "rejected", reasonCode: safety.reasonCode });
       }
