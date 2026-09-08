@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { authorizeRecoveryAction } from "./activeRecoveryAuthorization";
 import type { RecoveryActionRecord, RecoveryActionRecordPort, RecoveryExecutionLedgerPort } from "./recoveryActionRecord";
 import { createActiveRecoveryBootstrap } from "./activeRecoveryBootstrap";
 import type { RecoveryExecutionRequest } from "./recoveryExecution";
+import type { RecoveryExecutionAuditPort } from "./recoveryExecutionAudit";
 import type { RecoveryLease, RecoveryLeasePort } from "./recoveryLease";
 
 const request = {
@@ -76,7 +77,10 @@ function executionPorts() {
       return { status: "transitioned", record };
     },
   };
-  return { leasePort, recordPort, ledger };
+  const audit: RecoveryExecutionAuditPort = {
+    append: vi.fn(async () => undefined),
+  };
+  return { leasePort, recordPort, ledger, audit };
 }
 
 describe("createActiveRecoveryBootstrap", () => {
@@ -111,17 +115,18 @@ describe("createActiveRecoveryBootstrap", () => {
         leaseNamespace: "d011b3-v1",
       },
       execution: ports,
-    } as any);
-    expect((bootstrap as any).executionBoundary).toBeDefined();
-    const result = await (bootstrap as any).executionBoundary.execute({
+    });
+    expect(bootstrap.executionBoundary).toBeDefined();
+    const result = await bootstrap.executionBoundary!.execute({
       request: executionRequest,
       lease,
     });
     expect(result).toMatchObject({ status: "executed", reasonCode: "SIMULATED_SUCCESS" });
+    expect(ports.audit.append).toHaveBeenCalledTimes(1);
   });
 
   it("does not expose an execution boundary when authoritative coordination ports are absent", () => {
-    expect((createActiveRecoveryBootstrap() as any).executionBoundary).toBeUndefined();
+    expect(createActiveRecoveryBootstrap().executionBoundary).toBeUndefined();
   });
 
   it("never authorizes production", () => {
