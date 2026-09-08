@@ -86,6 +86,7 @@ export function createRecoveryExecutionBoundary(options: {
     nextState: RecoveryActionRecordState,
   ) => commitRecoveryActionStateTransition(ledger, {
     actionId: request.actionId,
+    expectedTenantId: request.tenantId,
     expectedState,
     expectedFencingToken: request.fencingToken,
     nextState,
