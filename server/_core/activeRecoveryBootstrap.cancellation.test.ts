@@ -37,7 +37,7 @@ const request: RecoveryExecutionRequest = {
   ownerId: "node-a",
   fencingToken: 7,
   authorizationRef: "authz-v1:homologation-controlled:d011b3-v1:database:restart_component:action%3Adecision-1:transition-1:decision-1:2026-09-08T12%3A00%3A00.000Z",
-  deadlineAt: "2026-09-08T23:59:00.000Z",
+  deadlineAt: "2099-12-31T23:59:00.000Z",
 };
 
 const lease: RecoveryLease = {
@@ -49,7 +49,7 @@ const lease: RecoveryLease = {
   ownerId: request.ownerId,
   fencingToken: request.fencingToken,
   acquiredAt: request.requestedAt,
-  expiresAt: "2026-09-08T23:59:00.000Z",
+  expiresAt: "2099-12-31T23:59:00.000Z",
 };
 
 function executionPorts() {

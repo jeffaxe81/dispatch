@@ -34,10 +34,14 @@ describe("D-011B.4 sanitized recovery execution audit", () => {
 
     expect(event).toEqual({
       eventType: "recovery.execution.finished",
+      evidenceVersion: "d011b5-v1",
+      evidenceId: expect.stringMatching(/^[a-f0-9]{64}$/),
       actionId: request.actionId,
       componentId: "database",
       action: "restart_component",
       correlationId: "decision-1",
+      authorizationRef: "auth-1",
+      leaseId: "lease-1",
       fencingToken: 7,
       startedAt: "2026-09-08T12:00:02.000Z",
       finishedAt: "2026-09-08T12:00:03.000Z",
@@ -47,15 +51,45 @@ describe("D-011B.4 sanitized recovery execution audit", () => {
     expect(Object.keys(event).sort()).toEqual([
       "action",
       "actionId",
+      "authorizationRef",
       "componentId",
       "correlationId",
       "eventType",
+      "evidenceId",
+      "evidenceVersion",
       "fencingToken",
       "finishedAt",
+      "leaseId",
       "reasonCode",
       "startedAt",
       "status",
     ]);
+  });
+
+  it("binds the evidence id deterministically to authorization, lease and tenant identity", () => {
+    const input = {
+      request,
+      startedAt: "2026-09-08T12:00:02.000Z",
+      finishedAt: "2026-09-08T12:00:03.000Z",
+      status: "executed" as const,
+      reasonCode: "SIMULATED_SUCCESS",
+    };
+
+    const first = buildRecoveryExecutionAuditEvent(input) as unknown as Record<string, unknown>;
+    const second = buildRecoveryExecutionAuditEvent(input) as unknown as Record<string, unknown>;
+    const changedAuthorization = buildRecoveryExecutionAuditEvent({
+      ...input,
+      request: { ...request, authorizationRef: "auth-2" },
+    }) as unknown as Record<string, unknown>;
+    const changedTenant = buildRecoveryExecutionAuditEvent({
+      ...input,
+      request: { ...request, tenantId: "tenant-8" },
+    }) as unknown as Record<string, unknown>;
+
+    expect(first.evidenceId).toMatch(/^[a-f0-9]{64}$/);
+    expect(second.evidenceId).toBe(first.evidenceId);
+    expect(changedAuthorization.evidenceId).not.toBe(first.evidenceId);
+    expect(changedTenant.evidenceId).not.toBe(first.evidenceId);
   });
 
   it("converts unknown exceptions to one constant sanitized failure without leaking diagnostics", () => {
