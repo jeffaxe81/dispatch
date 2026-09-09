@@ -45,6 +45,7 @@ function buildRecoveryExecutionEvidenceId(input: {
 }): string {
   const canonicalEvidence = JSON.stringify([
     "d011b5-v1",
+    input.request.tenantId,
     input.request.actionId,
     input.request.componentId,
     input.request.action,
