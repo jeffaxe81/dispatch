@@ -161,10 +161,14 @@ describe("D-011B.4 RecoveryExecutionBoundary", () => {
     expect(h.audit.append).toHaveBeenCalledTimes(1);
     expect(h.audit.append).toHaveBeenCalledWith({
       eventType: "recovery.execution.finished",
+      evidenceVersion: "d011b5-v1",
+      evidenceId: expect.stringMatching(/^[a-f0-9]{64}$/),
       actionId: request.actionId,
       componentId: request.componentId,
       action: request.action,
       correlationId: request.correlationId,
+      authorizationRef: request.authorizationRef,
+      leaseId: request.leaseId,
       fencingToken: request.fencingToken,
       startedAt: "2026-09-08T12:00:02.000Z",
       finishedAt: "2026-09-08T12:00:02.000Z",
