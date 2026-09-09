@@ -19,6 +19,8 @@ const enabledConfig = {
   leaseNamespace: "d011b3-v1" as const,
 };
 
+const expectedAuthorizationRef = "authz-v1:homologation-controlled:d011b3-v1:database:restart_component:action%3Adecision-1:transition-1:decision-1:2026-09-08T00%3A00%3A00.000Z";
+
 describe("authorizeRecoveryAction", () => {
   it("denies when config is absent", () => {
     expect(authorizeRecoveryAction({ request, config: null }).reasonCode)
@@ -46,12 +48,26 @@ describe("authorizeRecoveryAction", () => {
     }).reasonCode).toBe("COMPONENT_NOT_AUTHORIZED");
   });
 
-  it("authorizes only the exact homologation/database/restart tuple", () => {
+  it("authorizes only the exact homologation/database/restart tuple and binds the decision to the request identity", () => {
     expect(authorizeRecoveryAction({ request, config: enabledConfig })).toMatchObject({
       authorized: true,
       reasonCode: "AUTHORIZED",
       componentId: "database",
       environment: "homologation-controlled",
+      authorizationRef: expectedAuthorizationRef,
     });
+  });
+
+  it("changes the authorization reference when the authorized request identity changes", () => {
+    const original = authorizeRecoveryAction({ request, config: enabledConfig });
+    const changed = authorizeRecoveryAction({
+      request: { ...request, transitionId: "transition-2" },
+      config: enabledConfig,
+    });
+
+    expect(original.authorized).toBe(true);
+    expect(changed.authorized).toBe(true);
+    expect(original.authorizationRef).toBe(expectedAuthorizationRef);
+    expect(changed.authorizationRef).not.toBe(original.authorizationRef);
   });
 });

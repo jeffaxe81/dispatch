@@ -1,6 +1,7 @@
 export type RecoveryLease = Readonly<{
   leaseId: string;
   namespace: "d011b3-v1";
+  tenantId: string;
   componentId: string;
   actionId: string;
   ownerId: string;
@@ -19,6 +20,7 @@ export type RecoveryLeaseAcquireResult =
 export type RecoveryLeasePort = {
   acquire(input: {
     namespace: "d011b3-v1";
+    tenantId: string;
     componentId: string;
     actionId: string;
     ownerId: string;
@@ -37,6 +39,7 @@ export function isValidRecoveryLease(value: unknown): value is RecoveryLease {
   const lease = value as Record<string, unknown>;
   if (!isNonEmptyString(lease.leaseId)) return false;
   if (lease.namespace !== "d011b3-v1") return false;
+  if (!isNonEmptyString(lease.tenantId)) return false;
   if (!isNonEmptyString(lease.componentId)) return false;
   if (!isNonEmptyString(lease.actionId)) return false;
   if (!isNonEmptyString(lease.ownerId)) return false;

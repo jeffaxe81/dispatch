@@ -26,9 +26,11 @@ export type RecoveryActiveCoordinationResult = Readonly<{
     | "ACTION_STORE_UNAVAILABLE"
     | "FENCE_INVALID";
   fencingToken?: number;
+  authorizationRef?: string;
 }>;
 
 export function createRecoveryActiveCoordinator(options: {
+  tenantId: string;
   config: ActiveRecoveryConfig;
   leasePort: RecoveryLeasePort;
   recordPort: RecoveryActionRecordPort;
@@ -38,7 +40,7 @@ export function createRecoveryActiveCoordinator(options: {
 }): {
   prepare(request: RecoveryActionRequest): Promise<RecoveryActiveCoordinationResult>;
 } {
-  const { config, leasePort, recordPort, ownerId, leaseTtlMs } = options;
+  const { tenantId, config, leasePort, recordPort, ownerId, leaseTtlMs } = options;
 
   const deny = (
     reasonCode: Exclude<RecoveryActiveCoordinationResult["reasonCode"], "AUTHORIZED_AND_RESERVED">,
@@ -57,8 +59,12 @@ export function createRecoveryActiveCoordinator(options: {
 
   return {
     async prepare(request) {
+      if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+        return deny("AUTHORIZATION_DENIED");
+      }
+
       const authorization = authorizeRecoveryAction({ request, config });
-      if (!authorization.authorized) {
+      if (!authorization.authorized || !authorization.authorizationRef) {
         return deny("AUTHORIZATION_DENIED");
       }
 
@@ -66,6 +72,7 @@ export function createRecoveryActiveCoordinator(options: {
       try {
         acquireResult = await leasePort.acquire({
           namespace: authorization.leaseNamespace,
+          tenantId,
           componentId: request.componentId,
           actionId: request.actionId,
           ownerId,
@@ -86,6 +93,7 @@ export function createRecoveryActiveCoordinator(options: {
       const lease = acquireResult.lease;
       const leaseMatchesRequest = isValidRecoveryLease(lease)
         && lease.namespace === authorization.leaseNamespace
+        && lease.tenantId === tenantId
         && lease.componentId === request.componentId
         && lease.actionId === request.actionId
         && lease.ownerId === ownerId;
@@ -98,6 +106,7 @@ export function createRecoveryActiveCoordinator(options: {
       try {
         reserveResult = await recordPort.reserve({
           actionId: request.actionId,
+          tenantId,
           componentId: request.componentId,
           correlationId: request.correlationId,
           action: request.action,
@@ -126,6 +135,7 @@ export function createRecoveryActiveCoordinator(options: {
         && reserveResult.record.fencingToken === lease.fencingToken
         && sameRecoveryActionIdentity(reserveResult.record, {
           actionId: request.actionId,
+          tenantId,
           componentId: request.componentId,
           correlationId: request.correlationId,
           action: request.action,
@@ -151,6 +161,7 @@ export function createRecoveryActiveCoordinator(options: {
         allowedToReachFutureAdapter: true,
         reasonCode: "AUTHORIZED_AND_RESERVED",
         fencingToken: lease.fencingToken,
+        authorizationRef: authorization.authorizationRef,
       };
     },
   };

@@ -43,11 +43,15 @@ export function createSimulatedRecoveryAdapter(options: {
     correlationId: request.correlationId,
   });
 
-  const simulate = async (request: RecoveryActionRequest): Promise<RecoveryActionResult> => {
+  const simulate = async (
+    request: RecoveryActionRequest,
+    signal?: AbortSignal,
+  ): Promise<RecoveryActionResult> => {
     const startedAt = clock.now();
+    const effectiveSignal = signal ?? cancellationSignal;
 
     if (scenario === "success") {
-      await clock.sleep(1);
+      await clock.sleep(1, effectiveSignal);
       return result(
         request,
         startedAt,
@@ -58,7 +62,7 @@ export function createSimulatedRecoveryAdapter(options: {
     }
 
     if (scenario === "failure") {
-      await clock.sleep(1);
+      await clock.sleep(1, effectiveSignal);
       return result(
         request,
         startedAt,
@@ -69,7 +73,7 @@ export function createSimulatedRecoveryAdapter(options: {
     }
 
     if (scenario === "timeout") {
-      await clock.sleep(Math.max(0, timeoutMs));
+      await clock.sleep(Math.max(0, timeoutMs), effectiveSignal);
       return result(
         request,
         startedAt,
@@ -80,8 +84,8 @@ export function createSimulatedRecoveryAdapter(options: {
     }
 
     if (scenario === "cancelled") {
-      if (!cancellationSignal?.aborted) {
-        await clock.sleep(0, cancellationSignal);
+      if (!effectiveSignal?.aborted) {
+        await clock.sleep(0, effectiveSignal);
       }
       return result(
         request,
@@ -96,7 +100,7 @@ export function createSimulatedRecoveryAdapter(options: {
   };
 
   return {
-    execute(request) {
+    execute(request, signal) {
       const requestFingerprint = fingerprint(request);
       const existing = actions.get(request.actionId);
       if (existing) {
@@ -106,7 +110,7 @@ export function createSimulatedRecoveryAdapter(options: {
         return existing.resultPromise;
       }
 
-      const resultPromise = simulate(request);
+      const resultPromise = simulate(request, signal);
       actions.set(request.actionId, { fingerprint: requestFingerprint, resultPromise });
       return resultPromise;
     },
