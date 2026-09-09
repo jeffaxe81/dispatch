@@ -100,6 +100,13 @@ export function verifyRecoveryExecutionAuditEvidence(input: {
   tenantId: string;
   event: RecoveryExecutionAuditEvent;
 }): RecoveryExecutionEvidenceVerification {
+  if (
+    input.event.eventType !== "recovery.execution.finished" ||
+    input.event.evidenceVersion !== "d011b5-v1"
+  ) {
+    return { valid: false, reasonCode: "EVIDENCE_MISMATCH" };
+  }
+
   const expectedEvidenceId = hashRecoveryExecutionEvidence({
     tenantId: input.tenantId,
     actionId: input.event.actionId,
