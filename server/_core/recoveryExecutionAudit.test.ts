@@ -66,7 +66,7 @@ describe("D-011B.4 sanitized recovery execution audit", () => {
     ]);
   });
 
-  it("binds the evidence id deterministically to the authorization and lease identity", () => {
+  it("binds the evidence id deterministically to authorization, lease and tenant identity", () => {
     const input = {
       request,
       startedAt: "2026-09-08T12:00:02.000Z",
@@ -81,10 +81,15 @@ describe("D-011B.4 sanitized recovery execution audit", () => {
       ...input,
       request: { ...request, authorizationRef: "auth-2" },
     }) as unknown as Record<string, unknown>;
+    const changedTenant = buildRecoveryExecutionAuditEvent({
+      ...input,
+      request: { ...request, tenantId: "tenant-8" },
+    }) as unknown as Record<string, unknown>;
 
     expect(first.evidenceId).toMatch(/^[a-f0-9]{64}$/);
     expect(second.evidenceId).toBe(first.evidenceId);
     expect(changedAuthorization.evidenceId).not.toBe(first.evidenceId);
+    expect(changedTenant.evidenceId).not.toBe(first.evidenceId);
   });
 
   it("converts unknown exceptions to one constant sanitized failure without leaking diagnostics", () => {
