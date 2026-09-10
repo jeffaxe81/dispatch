@@ -77,31 +77,33 @@ describe("D-011B.10 evidence-to-ledger binding gate", () => {
     })).toEqual({ eligible: false, reasonCode: "EVIDENCE_CHAIN_INVALID" });
   });
 
-  it("fails closed when tenant or action identity does not match the ledger record", () => {
+  it("fails closed when tenant or action id does not match the ledger record", () => {
     const { executionEvent, verificationReceipt } = evidenceChain();
 
-    expect(verifyRecoveryPostActionLedgerBinding({
-      tenantId: request.tenantId,
-      executionEvent,
-      verificationReceipt,
-      record: ledgerRecord({ tenantId: "tenant-8" }),
-    })).toEqual({ eligible: false, reasonCode: "LEDGER_IDENTITY_MISMATCH" });
-
-    expect(verifyRecoveryPostActionLedgerBinding({
-      tenantId: request.tenantId,
-      executionEvent,
-      verificationReceipt,
-      record: ledgerRecord({ actionId: "action-22" }),
-    })).toEqual({ eligible: false, reasonCode: "LEDGER_IDENTITY_MISMATCH" });
+    for (const record of [
+      ledgerRecord({ tenantId: "tenant-8" }),
+      ledgerRecord({ actionId: "action-22" }),
+    ]) {
+      expect(verifyRecoveryPostActionLedgerBinding({
+        tenantId: request.tenantId,
+        executionEvent,
+        verificationReceipt,
+        record,
+      })).toEqual({ eligible: false, reasonCode: "LEDGER_IDENTITY_MISMATCH" });
+    }
   });
 
-  it("fails closed when component, correlation or action differs from the ledger record", () => {
+  it("fails closed when component, correlation or action differs from the execution evidence", () => {
     const { executionEvent, verificationReceipt } = evidenceChain();
+    const malformedActionRecord = {
+      ...ledgerRecord(),
+      action: "unexpected_action",
+    } as unknown as RecoveryActionRecord;
 
     for (const record of [
       ledgerRecord({ componentId: "storage" }),
       ledgerRecord({ correlationId: "corr-other" }),
-      ledgerRecord({ action: "restart_component" }),
+      malformedActionRecord,
     ]) {
       expect(verifyRecoveryPostActionLedgerBinding({
         tenantId: request.tenantId,
