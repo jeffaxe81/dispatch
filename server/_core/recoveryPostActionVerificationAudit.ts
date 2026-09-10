@@ -19,7 +19,10 @@ export type RecoveryPostActionVerificationReceipt = Readonly<{
 
 export type RecoveryPostActionVerificationReceiptVerification =
   | Readonly<{ valid: true }>
-  | Readonly<{ valid: false; reasonCode: "EVIDENCE_MISMATCH" }>;
+  | Readonly<{
+      valid: false;
+      reasonCode: "EVIDENCE_MISMATCH" | "INVALID_VERIFICATION_STATE";
+    }>;
 
 function hashRecoveryPostActionVerificationEvidence(input: {
   tenantId: string;
@@ -98,6 +101,13 @@ export function verifyRecoveryPostActionVerificationReceipt(input: {
 
   if (expectedEvidenceId !== input.receipt.evidenceId) {
     return { valid: false, reasonCode: "EVIDENCE_MISMATCH" };
+  }
+
+  if (
+    (input.receipt.verified && input.receipt.reasonCode !== null)
+    || (!input.receipt.verified && input.receipt.reasonCode === null)
+  ) {
+    return { valid: false, reasonCode: "INVALID_VERIFICATION_STATE" };
   }
 
   return { valid: true };
