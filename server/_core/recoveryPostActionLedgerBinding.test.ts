@@ -137,4 +137,46 @@ describe("D-011B.10 evidence-to-ledger binding gate", () => {
       })).toEqual({ eligible: false, reasonCode: "LEDGER_STATE_INVALID" });
     }
   });
+
+  it("fails closed when intact execution evidence does not represent simulated success", () => {
+    const executionEvent = buildRecoveryExecutionAuditEvent({
+      request,
+      startedAt: "2026-09-10T09:00:10.000Z",
+      finishedAt: "2026-09-10T09:00:20.000Z",
+      status: "failed",
+      reasonCode: "SIMULATED_FAILURE",
+    });
+    const verificationReceipt = buildRecoveryPostActionVerificationReceipt({
+      tenantId: request.tenantId,
+      executionEvent,
+      verification: { verified: true as const },
+      healthCheckedAt: "2026-09-10T09:00:21.000Z",
+      recordedAt: "2026-09-10T09:00:22.000Z",
+    });
+
+    expect(verifyRecoveryPostActionLedgerBinding({
+      tenantId: request.tenantId,
+      executionEvent,
+      verificationReceipt,
+      record: ledgerRecord(),
+    })).toEqual({ eligible: false, reasonCode: "EXECUTION_OUTCOME_INVALID" });
+  });
+
+  it("fails closed when an intact post-action receipt records a negative verification", () => {
+    const { executionEvent } = evidenceChain();
+    const verificationReceipt = buildRecoveryPostActionVerificationReceipt({
+      tenantId: request.tenantId,
+      executionEvent,
+      verification: { verified: false as const, reasonCode: "HEALTH_NOT_HEALTHY" as const },
+      healthCheckedAt: "2026-09-10T09:00:21.000Z",
+      recordedAt: "2026-09-10T09:00:22.000Z",
+    });
+
+    expect(verifyRecoveryPostActionLedgerBinding({
+      tenantId: request.tenantId,
+      executionEvent,
+      verificationReceipt,
+      record: ledgerRecord(),
+    })).toEqual({ eligible: false, reasonCode: "POST_ACTION_NOT_VERIFIED" });
+  });
 });
