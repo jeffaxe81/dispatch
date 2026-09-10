@@ -55,22 +55,31 @@ Criar `RecoveryPostActionClosureReceipt` com os seguintes campos:
 - `reconciliationRecordedAt: string`;
 - `recordedAt: string`.
 
+`RecoveryPostActionClosureReasonCode` deve ser restrito aos reason codes sanitizados que já podem existir em uma reconciliação B11 inelegível; a B12 não introduz motivos de negócio adicionais no receipt.
+
 `tenantId` participa do contexto canônico do hash, mas não precisa ser exposto como campo persistido do receipt.
 
+## Contrato do builder
+O builder recebe `tenantId`, um `RecoveryPostActionReconciliationReceipt` B11 e `recordedAt` e retorna uma união discriminada:
+
+- sucesso: `{ built: true, receipt: RecoveryPostActionClosureReceipt }`;
+- falha de origem: `{ built: false, reasonCode: "RECONCILIATION_EVIDENCE_INVALID" }`.
+
+Antes de produzir qualquer receipt B12, o builder deve verificar o receipt B11 usando `verifyRecoveryPostActionReconciliationReceipt` com o mesmo `tenantId` recebido.
+
+Um receipt B11 inválido, inclusive por tenant incorreto, hash divergente, estado semântico inválido ou cronologia inválida, **não gera receipt B12**. Essa condição retorna somente `RECONCILIATION_EVIDENCE_INVALID`.
+
 ## Semântica do fechamento
-O builder da B12 recebe `tenantId`, um `RecoveryPostActionReconciliationReceipt` B11 e `recordedAt`.
+Quando o B11 é válido:
 
-Antes de gerar o fechamento, o builder deve verificar o receipt B11 usando `verifyRecoveryPostActionReconciliationReceipt`.
-
-Regras:
-
-1. B11 válido com `eligible: true` gera `closureStatus: "closed_verified"` e `reasonCode: null`.
-2. B11 válido com `eligible: false` gera `closureStatus: "closed_rejected"` e preserva somente um reason code sanitizado derivado da reconciliação.
-3. B11 inválido não pode gerar um fechamento positivo.
-4. Nenhum fechamento B12 altera ou corrige o estado do ledger.
+1. `eligible: true` gera `closureStatus: "closed_verified"` e `reasonCode: null`.
+2. `eligible: false` gera `closureStatus: "closed_rejected"` e preserva exatamente o reason code sanitizado não nulo da reconciliação.
+3. `closed_verified` nunca pode coexistir com `reasonCode` não nulo.
+4. `closed_rejected` nunca pode coexistir com `reasonCode: null`.
+5. Nenhum fechamento B12 altera ou corrige o estado do ledger.
 
 ## Estratégia fail-closed
-Qualquer condição ambígua ou inconsistente deve resultar em rejeição da evidência, nunca em `closed_verified`.
+Qualquer condição ambígua ou inconsistente deve resultar em falha de construção ou rejeição da evidência, nunca em `closed_verified`.
 
 O verifier B12 deve rejeitar pelo menos:
 
@@ -89,7 +98,7 @@ O verifier B12 deve rejeitar pelo menos:
 - adulteração de `fencingToken`.
 
 ## Reason codes do verifier
-O verifier B12 deve expor um conjunto pequeno e sanitizado de reason codes:
+O verifier B12 deve expor somente:
 
 - `EVIDENCE_MISMATCH`;
 - `INVALID_CLOSURE_STATE`;
@@ -138,14 +147,15 @@ A implementação deverá seguir RED -> GREEN -> hardening.
 
 Casos mínimos:
 
-1. B11 válido e `eligible: true` -> `closed_verified`, `reasonCode: null`.
-2. B11 válido e `eligible: false` -> `closed_rejected` com reason code sanitizado.
-3. B11 adulterado ou hash inválido -> fail-closed.
-4. tenant incorreto -> `EVIDENCE_MISMATCH`.
-5. combinação impossível entre `closureStatus` e `reasonCode` -> `INVALID_CLOSURE_STATE`.
-6. `recordedAt` anterior à reconciliação -> `CLOSURE_TIMELINE_INVALID`.
-7. timestamp inválido -> `CLOSURE_TIMELINE_INVALID`.
-8. adulteração de qualquer identidade protegida ou fencing token -> falha de evidência.
+1. B11 válido e `eligible: true` -> builder produz `closed_verified`, `reasonCode: null`.
+2. B11 válido e `eligible: false` -> builder produz `closed_rejected` com o reason code sanitizado da reconciliação.
+3. B11 adulterado ou hash inválido -> builder retorna `RECONCILIATION_EVIDENCE_INVALID` e não produz receipt.
+4. tenant incorreto na construção -> builder retorna `RECONCILIATION_EVIDENCE_INVALID` e não produz receipt.
+5. tenant incorreto na verificação de um receipt B12 existente -> `EVIDENCE_MISMATCH`.
+6. combinação impossível entre `closureStatus` e `reasonCode` -> `INVALID_CLOSURE_STATE`.
+7. `recordedAt` anterior à reconciliação -> `CLOSURE_TIMELINE_INVALID`.
+8. timestamp inválido -> `CLOSURE_TIMELINE_INVALID`.
+9. adulteração de qualquer identidade protegida ou fencing token -> `EVIDENCE_MISMATCH`.
 
 Os testes devem demonstrar que nenhuma rota inválida produz `closed_verified`.
 
@@ -172,7 +182,8 @@ A microentrega deve continuar:
 ## Critérios de aceite
 A B12 será considerada pronta para revisão de implementação quando:
 
-- o builder derivar o fechamento somente de B11 válido;
+- o builder produzir receipt somente de B11 válido;
+- B11 inválido resultar em falha de construção sem receipt;
 - o verifier detectar adulterações e inconsistências;
 - a cronologia for validada;
 - o hash canônico incluir o contexto de tenant;
