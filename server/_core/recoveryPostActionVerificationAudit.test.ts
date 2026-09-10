@@ -101,4 +101,44 @@ describe("D-011B.8 post-action verification audit receipt", () => {
     expect(verifyRecoveryPostActionVerificationReceipt({ tenantId: "tenant-7", receipt: tampered }))
       .toEqual({ valid: false, reasonCode: "EVIDENCE_MISMATCH" });
   });
+
+  it("fails closed for semantically impossible verification states even with recomputed evidence", () => {
+    const successful = buildRecoveryPostActionVerificationReceipt({
+      tenantId: "tenant-7",
+      executionEvent: executionEvent(),
+      verification: { verified: true as const },
+      healthCheckedAt: "2026-09-09T20:00:21.000Z",
+      recordedAt: "2026-09-09T20:00:22.000Z",
+    });
+    const failed = buildRecoveryPostActionVerificationReceipt({
+      tenantId: "tenant-7",
+      executionEvent: executionEvent(),
+      verification: { verified: false as const, reasonCode: "HEALTH_NOT_HEALTHY" as const },
+      healthCheckedAt: "2026-09-09T20:00:21.000Z",
+      recordedAt: "2026-09-09T20:00:22.000Z",
+    });
+
+    const successWithReason = buildRecoveryPostActionVerificationReceipt({
+      tenantId: "tenant-7",
+      executionEvent: executionEvent(),
+      verification: { verified: false as const, reasonCode: "HEALTH_NOT_HEALTHY" as const },
+      healthCheckedAt: successful.healthCheckedAt,
+      recordedAt: successful.recordedAt,
+    });
+    const falseWithoutReason = buildRecoveryPostActionVerificationReceipt({
+      tenantId: "tenant-7",
+      executionEvent: executionEvent(),
+      verification: { verified: true as const },
+      healthCheckedAt: failed.healthCheckedAt,
+      recordedAt: failed.recordedAt,
+    });
+
+    const impossibleSuccess = { ...successWithReason, verified: true } as typeof successful;
+    const impossibleFailure = { ...falseWithoutReason, verified: false } as typeof failed;
+
+    expect(verifyRecoveryPostActionVerificationReceipt({ tenantId: "tenant-7", receipt: impossibleSuccess }))
+      .toEqual({ valid: false, reasonCode: "INVALID_VERIFICATION_STATE" });
+    expect(verifyRecoveryPostActionVerificationReceipt({ tenantId: "tenant-7", receipt: impossibleFailure }))
+      .toEqual({ valid: false, reasonCode: "INVALID_VERIFICATION_STATE" });
+  });
 });
