@@ -15,7 +15,8 @@ export type RecoveryPostActionEvidenceChainVerification =
         | "EXECUTION_EVIDENCE_MISMATCH"
         | "VERIFICATION_EVIDENCE_MISMATCH"
         | "VERIFICATION_STATE_INVALID"
-        | "EVIDENCE_LINK_MISMATCH";
+        | "EVIDENCE_LINK_MISMATCH"
+        | "EVIDENCE_TIMELINE_INVALID";
     }>;
 
 export function verifyRecoveryPostActionEvidenceChain(input: {
@@ -51,6 +52,19 @@ export function verifyRecoveryPostActionEvidenceChain(input: {
     || input.verificationReceipt.componentId !== input.executionEvent.componentId
   ) {
     return { valid: false, reasonCode: "EVIDENCE_LINK_MISMATCH" };
+  }
+
+  const finishedAtMs = Date.parse(input.executionEvent.finishedAt);
+  const healthCheckedAtMs = Date.parse(input.verificationReceipt.healthCheckedAt);
+  const recordedAtMs = Date.parse(input.verificationReceipt.recordedAt);
+  if (
+    !Number.isFinite(finishedAtMs)
+    || !Number.isFinite(healthCheckedAtMs)
+    || !Number.isFinite(recordedAtMs)
+    || healthCheckedAtMs < finishedAtMs
+    || recordedAtMs < healthCheckedAtMs
+  ) {
+    return { valid: false, reasonCode: "EVIDENCE_TIMELINE_INVALID" };
   }
 
   return { valid: true };
