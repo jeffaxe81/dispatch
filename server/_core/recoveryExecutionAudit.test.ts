@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { RecoveryExecutionRequest } from "./recoveryExecution";
-import {
+import * as recoveryExecutionAudit from "./recoveryExecutionAudit";
+
+const {
   buildRecoveryExecutionAuditEvent,
   sanitizeRecoveryExecutionFailure,
-} from "./recoveryExecutionAudit";
+} = recoveryExecutionAudit;
 
 const request: RecoveryExecutionRequest = {
   tenantId: "tenant-7",
@@ -116,5 +118,48 @@ describe("D-011B.4 sanitized recovery execution audit", () => {
     const serialized = JSON.stringify(failure);
     expect(failure.reasonCode).toBe("INTERNAL_SANITIZED_FAILURE");
     expect(serialized).not.toMatch(/super-secret|abc123|infra\.internal|docker restart|boom/i);
+  });
+});
+
+describe("D-011B.6 recovery execution evidence verifier", () => {
+  it("validates the exact receipt and fails closed after tampering or tenant substitution", () => {
+    const verify = (recoveryExecutionAudit as any).verifyRecoveryExecutionAuditEvidence;
+    const event = buildRecoveryExecutionAuditEvent({
+      request,
+      startedAt: "2026-09-08T12:00:02.000Z",
+      finishedAt: "2026-09-08T12:00:03.000Z",
+      status: "executed",
+      reasonCode: "SIMULATED_SUCCESS",
+    });
+
+    expect(verify({ tenantId: "tenant-7", event })).toEqual({ valid: true });
+    expect(verify({ tenantId: "tenant-7", event: { ...event, authorizationRef: "auth-tampered" } })).toEqual({
+      valid: false,
+      reasonCode: "EVIDENCE_MISMATCH",
+    });
+    expect(verify({ tenantId: "tenant-8", event })).toEqual({
+      valid: false,
+      reasonCode: "EVIDENCE_MISMATCH",
+    });
+  });
+
+  it("fails closed when the audit envelope type or evidence version is substituted", () => {
+    const verify = (recoveryExecutionAudit as any).verifyRecoveryExecutionAuditEvidence;
+    const event = buildRecoveryExecutionAuditEvent({
+      request,
+      startedAt: "2026-09-08T12:00:02.000Z",
+      finishedAt: "2026-09-08T12:00:03.000Z",
+      status: "executed",
+      reasonCode: "SIMULATED_SUCCESS",
+    });
+
+    expect(verify({ tenantId: "tenant-7", event: { ...event, eventType: "recovery.execution.other" } })).toEqual({
+      valid: false,
+      reasonCode: "EVIDENCE_MISMATCH",
+    });
+    expect(verify({ tenantId: "tenant-7", event: { ...event, evidenceVersion: "d011b6-v2" } })).toEqual({
+      valid: false,
+      reasonCode: "EVIDENCE_MISMATCH",
+    });
   });
 });
