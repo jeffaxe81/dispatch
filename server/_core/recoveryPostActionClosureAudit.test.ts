@@ -113,4 +113,119 @@ describe("D-011B.12 post-action closure audit", () => {
     expect(result.receipt.closureStatus).toBe("closed_rejected");
     expect(result.receipt.reasonCode).toBe("POST_ACTION_NOT_VERIFIED");
   });
+
+  it("does not build any B12 receipt from a tampered B11 receipt", () => {
+    const reconciliationReceipt = reconciliationInputs(true);
+    const tampered = {
+      ...reconciliationReceipt,
+      actionId: "action-tampered",
+    };
+
+    expect(buildRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      reconciliationReceipt: tampered,
+      recordedAt: "2026-09-10T11:00:24.000Z",
+    })).toEqual({
+      built: false,
+      reasonCode: "RECONCILIATION_EVIDENCE_INVALID",
+    });
+  });
+
+  it("does not build any B12 receipt when the B11 tenant context is wrong", () => {
+    const reconciliationReceipt = reconciliationInputs(true);
+
+    expect(buildRecoveryPostActionClosureReceipt({
+      tenantId: "tenant-other",
+      reconciliationReceipt,
+      recordedAt: "2026-09-10T11:00:24.000Z",
+    })).toEqual({
+      built: false,
+      reasonCode: "RECONCILIATION_EVIDENCE_INVALID",
+    });
+  });
+
+  it("rejects an existing B12 receipt under the wrong tenant context", () => {
+    const reconciliationReceipt = reconciliationInputs(true);
+    const result = buildRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      reconciliationReceipt,
+      recordedAt: "2026-09-10T11:00:24.000Z",
+    });
+    if (!result.built) throw new Error("expected closure receipt");
+
+    expect(verifyRecoveryPostActionClosureReceipt({
+      tenantId: "tenant-other",
+      receipt: result.receipt,
+    })).toEqual({ valid: false, reasonCode: "EVIDENCE_MISMATCH" });
+  });
+
+  it("rejects tampering of a protected identity field", () => {
+    const reconciliationReceipt = reconciliationInputs(true);
+    const result = buildRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      reconciliationReceipt,
+      recordedAt: "2026-09-10T11:00:24.000Z",
+    });
+    if (!result.built) throw new Error("expected closure receipt");
+
+    const tampered = {
+      ...result.receipt,
+      fencingToken: result.receipt.fencingToken + 1,
+    };
+
+    expect(verifyRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      receipt: tampered,
+    })).toEqual({ valid: false, reasonCode: "EVIDENCE_MISMATCH" });
+  });
+
+  it("rejects a closure recorded before its reconciliation", () => {
+    const reconciliationReceipt = reconciliationInputs(true);
+    const result = buildRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      reconciliationReceipt,
+      recordedAt: "2026-09-10T11:00:22.999Z",
+    });
+    if (!result.built) throw new Error("expected closure receipt");
+
+    expect(verifyRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      receipt: result.receipt,
+    })).toEqual({ valid: false, reasonCode: "CLOSURE_TIMELINE_INVALID" });
+  });
+
+  it("rejects invalid closure timestamps", () => {
+    const reconciliationReceipt = reconciliationInputs(true);
+    const result = buildRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      reconciliationReceipt,
+      recordedAt: "not-a-timestamp",
+    });
+    if (!result.built) throw new Error("expected closure receipt");
+
+    expect(verifyRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      receipt: result.receipt,
+    })).toEqual({ valid: false, reasonCode: "CLOSURE_TIMELINE_INVALID" });
+  });
+
+  it("rejects an impossible verified/reasonCode combination", () => {
+    const reconciliationReceipt = reconciliationInputs(false);
+    const result = buildRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      reconciliationReceipt,
+      recordedAt: "2026-09-10T11:00:24.000Z",
+    });
+    if (!result.built) throw new Error("expected closure receipt");
+
+    const impossible = {
+      ...result.receipt,
+      closureStatus: "closed_verified" as const,
+    };
+
+    expect(verifyRecoveryPostActionClosureReceipt({
+      tenantId: request.tenantId,
+      receipt: impossible,
+    })).toEqual({ valid: false, reasonCode: "EVIDENCE_MISMATCH" });
+  });
 });
