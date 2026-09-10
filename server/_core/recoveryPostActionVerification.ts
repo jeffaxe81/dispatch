@@ -52,6 +52,13 @@ export function verifyRecoveryPostActionHealth(input: {
     return { verified: false, reasonCode: "HEALTH_COMPONENT_MISSING" };
   }
 
+  const componentCheckedAtMs = component.checkedAt === null
+    ? Number.NaN
+    : Date.parse(component.checkedAt);
+  if (!Number.isFinite(componentCheckedAtMs) || componentCheckedAtMs < finishedAtMs) {
+    return { verified: false, reasonCode: "HEALTH_EVIDENCE_NOT_POST_ACTION" };
+  }
+
   if (component.state !== "healthy") {
     return { verified: false, reasonCode: "HEALTH_NOT_HEALTHY" };
   }
