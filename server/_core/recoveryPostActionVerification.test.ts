@@ -78,6 +78,13 @@ describe("D-011B.7 post-action health verification", () => {
     })).toEqual({ verified: false, reasonCode: "HEALTH_EVIDENCE_NOT_POST_ACTION" });
   });
 
+  it("fails closed when snapshot is fresh but target component evidence is stale", () => {
+    const snapshot = health("healthy", "2026-09-09T20:00:21.000Z");
+    snapshot.components[0]!.checkedAt = "2026-09-09T20:00:19.000Z";
+    expect(verifyRecoveryPostActionHealth({ tenantId: "tenant-7", event: event(), health: snapshot }))
+      .toEqual({ verified: false, reasonCode: "HEALTH_EVIDENCE_NOT_POST_ACTION" });
+  });
+
   it("fails closed when target component is missing or not healthy", () => {
     const missing: HealthSnapshot = { status: "ready", checkedAt: "2026-09-09T20:00:21.000Z", components: [] };
     expect(verifyRecoveryPostActionHealth({ tenantId: "tenant-7", event: event(), health: missing }))
