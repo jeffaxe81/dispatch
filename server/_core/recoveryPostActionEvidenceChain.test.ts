@@ -84,4 +84,39 @@ describe("D-011B.9 post-action evidence chain verifier", () => {
     expect(verifyRecoveryPostActionEvidenceChain({ tenantId: "tenant-7", executionEvent: secondEvent, verificationReceipt: first.receipt }))
       .toEqual({ valid: false, reasonCode: "EVIDENCE_LINK_MISMATCH" });
   });
+
+  it("fails closed when health evidence predates execution completion", () => {
+    const event = executionEvent();
+    const receipt = buildRecoveryPostActionVerificationReceipt({
+      tenantId: "tenant-7",
+      executionEvent: event,
+      verification: { verified: true as const },
+      healthCheckedAt: "2026-09-10T09:00:19.000Z",
+      recordedAt: "2026-09-10T09:00:22.000Z",
+    });
+    expect(verifyRecoveryPostActionEvidenceChain({ tenantId: "tenant-7", executionEvent: event, verificationReceipt: receipt }))
+      .toEqual({ valid: false, reasonCode: "EVIDENCE_TIMELINE_INVALID" });
+  });
+
+  it("fails closed when receipt is recorded before the health check or timestamps are invalid", () => {
+    const event = executionEvent();
+    const recordedTooEarly = buildRecoveryPostActionVerificationReceipt({
+      tenantId: "tenant-7",
+      executionEvent: event,
+      verification: { verified: true as const },
+      healthCheckedAt: "2026-09-10T09:00:21.000Z",
+      recordedAt: "2026-09-10T09:00:20.500Z",
+    });
+    const invalidTimestamp = buildRecoveryPostActionVerificationReceipt({
+      tenantId: "tenant-7",
+      executionEvent: event,
+      verification: { verified: true as const },
+      healthCheckedAt: "not-a-date",
+      recordedAt: "2026-09-10T09:00:22.000Z",
+    });
+    expect(verifyRecoveryPostActionEvidenceChain({ tenantId: "tenant-7", executionEvent: event, verificationReceipt: recordedTooEarly }))
+      .toEqual({ valid: false, reasonCode: "EVIDENCE_TIMELINE_INVALID" });
+    expect(verifyRecoveryPostActionEvidenceChain({ tenantId: "tenant-7", executionEvent: event, verificationReceipt: invalidTimestamp }))
+      .toEqual({ valid: false, reasonCode: "EVIDENCE_TIMELINE_INVALID" });
+  });
 });
