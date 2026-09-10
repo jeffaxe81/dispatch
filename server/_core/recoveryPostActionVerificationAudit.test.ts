@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildRecoveryExecutionAuditEvent } from "./recoveryExecutionAudit";
 import {
   buildRecoveryPostActionVerificationReceipt,
   verifyRecoveryPostActionVerificationReceipt,
+  type RecoveryPostActionVerificationReceipt,
 } from "./recoveryPostActionVerificationAudit";
 
 const request = {
@@ -30,6 +32,26 @@ function executionEvent() {
     status: "executed",
     reasonCode: "SIMULATED_SUCCESS",
   });
+}
+
+function withRecomputedEvidence(
+  tenantId: string,
+  receipt: Omit<RecoveryPostActionVerificationReceipt, "evidenceId">,
+): RecoveryPostActionVerificationReceipt {
+  const canonicalEvidence = JSON.stringify([
+    "d011b8-v1",
+    tenantId,
+    receipt.executionEvidenceId,
+    receipt.componentId,
+    receipt.verified,
+    receipt.reasonCode,
+    receipt.healthCheckedAt,
+    receipt.recordedAt,
+  ]);
+  return {
+    ...receipt,
+    evidenceId: createHash("sha256").update(canonicalEvidence, "utf8").digest("hex"),
+  };
 }
 
 describe("D-011B.8 post-action verification audit receipt", () => {
@@ -102,39 +124,26 @@ describe("D-011B.8 post-action verification audit receipt", () => {
       .toEqual({ valid: false, reasonCode: "EVIDENCE_MISMATCH" });
   });
 
-  it("fails closed for semantically impossible verification states even with recomputed evidence", () => {
-    const successful = buildRecoveryPostActionVerificationReceipt({
+  it("fails closed for semantically impossible verification states even with matching evidence", () => {
+    const valid = buildRecoveryPostActionVerificationReceipt({
       tenantId: "tenant-7",
       executionEvent: executionEvent(),
       verification: { verified: true as const },
       healthCheckedAt: "2026-09-09T20:00:21.000Z",
       recordedAt: "2026-09-09T20:00:22.000Z",
     });
-    const failed = buildRecoveryPostActionVerificationReceipt({
-      tenantId: "tenant-7",
-      executionEvent: executionEvent(),
-      verification: { verified: false as const, reasonCode: "HEALTH_NOT_HEALTHY" as const },
-      healthCheckedAt: "2026-09-09T20:00:21.000Z",
-      recordedAt: "2026-09-09T20:00:22.000Z",
-    });
 
-    const successWithReason = buildRecoveryPostActionVerificationReceipt({
-      tenantId: "tenant-7",
-      executionEvent: executionEvent(),
-      verification: { verified: false as const, reasonCode: "HEALTH_NOT_HEALTHY" as const },
-      healthCheckedAt: successful.healthCheckedAt,
-      recordedAt: successful.recordedAt,
+    const { evidenceId: _validEvidenceId, ...base } = valid;
+    const impossibleSuccess = withRecomputedEvidence("tenant-7", {
+      ...base,
+      verified: true,
+      reasonCode: "HEALTH_NOT_HEALTHY",
     });
-    const falseWithoutReason = buildRecoveryPostActionVerificationReceipt({
-      tenantId: "tenant-7",
-      executionEvent: executionEvent(),
-      verification: { verified: true as const },
-      healthCheckedAt: failed.healthCheckedAt,
-      recordedAt: failed.recordedAt,
+    const impossibleFailure = withRecomputedEvidence("tenant-7", {
+      ...base,
+      verified: false,
+      reasonCode: null,
     });
-
-    const impossibleSuccess = { ...successWithReason, verified: true } as typeof successful;
-    const impossibleFailure = { ...falseWithoutReason, verified: false } as typeof failed;
 
     expect(verifyRecoveryPostActionVerificationReceipt({ tenantId: "tenant-7", receipt: impossibleSuccess }))
       .toEqual({ valid: false, reasonCode: "INVALID_VERIFICATION_STATE" });
