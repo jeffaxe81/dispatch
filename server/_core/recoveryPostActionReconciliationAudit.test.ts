@@ -70,6 +70,7 @@ describe("D-011B.11 post-action reconciliation audit receipt", () => {
       evidenceVersion: "d011b11-v1",
       executionEvidenceId: executionEvent.evidenceId,
       verificationEvidenceId: verificationReceipt.evidenceId,
+      verificationRecordedAt: verificationReceipt.recordedAt,
       actionId: request.actionId,
       componentId: request.componentId,
       correlationId: request.correlationId,
@@ -83,5 +84,37 @@ describe("D-011B.11 post-action reconciliation audit receipt", () => {
       tenantId: request.tenantId,
       receipt,
     })).toEqual({ valid: true });
+  });
+
+  it("fails closed when reconciliation is recorded before the verification receipt", () => {
+    const { executionEvent, verificationReceipt, record } = validInputs();
+    const receipt = buildRecoveryPostActionReconciliationReceipt({
+      tenantId: request.tenantId,
+      executionEvent,
+      verificationReceipt,
+      record,
+      recordedAt: "2026-09-10T10:00:21.999Z",
+    });
+
+    expect(verifyRecoveryPostActionReconciliationReceipt({
+      tenantId: request.tenantId,
+      receipt,
+    })).toEqual({ valid: false, reasonCode: "RECONCILIATION_TIMELINE_INVALID" });
+  });
+
+  it("fails closed when reconciliation timestamps are invalid", () => {
+    const { executionEvent, verificationReceipt, record } = validInputs();
+    const receipt = buildRecoveryPostActionReconciliationReceipt({
+      tenantId: request.tenantId,
+      executionEvent,
+      verificationReceipt,
+      record,
+      recordedAt: "not-a-timestamp",
+    });
+
+    expect(verifyRecoveryPostActionReconciliationReceipt({
+      tenantId: request.tenantId,
+      receipt,
+    })).toEqual({ valid: false, reasonCode: "RECONCILIATION_TIMELINE_INVALID" });
   });
 });
