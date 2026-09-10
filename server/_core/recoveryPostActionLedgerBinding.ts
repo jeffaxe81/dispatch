@@ -11,6 +11,8 @@ export type RecoveryPostActionLedgerBindingDecision =
       eligible: false;
       reasonCode:
         | "EVIDENCE_CHAIN_INVALID"
+        | "EXECUTION_OUTCOME_INVALID"
+        | "POST_ACTION_NOT_VERIFIED"
         | "LEDGER_IDENTITY_MISMATCH"
         | "LEDGER_FENCING_MISMATCH"
         | "LEDGER_STATE_INVALID";
@@ -30,6 +32,17 @@ export function verifyRecoveryPostActionLedgerBinding(input: {
 
   if (!chain.valid) {
     return { eligible: false, reasonCode: "EVIDENCE_CHAIN_INVALID" };
+  }
+
+  if (
+    input.executionEvent.status !== "executed"
+    || input.executionEvent.reasonCode !== "SIMULATED_SUCCESS"
+  ) {
+    return { eligible: false, reasonCode: "EXECUTION_OUTCOME_INVALID" };
+  }
+
+  if (!input.verificationReceipt.verified) {
+    return { eligible: false, reasonCode: "POST_ACTION_NOT_VERIFIED" };
   }
 
   if (
