@@ -1,6 +1,6 @@
 # Motor de Ativos / Inventário — Plano de Microentregas
 
-> **Execução:** cada microentrega deve usar TDD, checkpoint, revisão, evidência e commit próprio. A implementação poderá usar execução orientada a subagentes ou execução inline, mas cada gate é independente.
+> **Execução:** cada microentrega deve usar TDD, checkpoint, revisão, evidência e commit próprio. A implementação poderá usar execução orientada a subagentes quando disponível ou execução inline, mas cada gate é independente.
 
 **Goal:** construir o Motor de Ativos como produto separado e integrá-lo ao Sistema de Despacho por REST/eventos, mantendo prontuário completo, histórico auditável, geolocalização e ausência de gravação cruzada em bancos.
 
@@ -114,7 +114,7 @@ Cada microentrega deve terminar utilizável/testável de forma isolada; nenhuma 
 
 ## Microentrega 5 — Timeline e prontuário consolidado
 
-**Peso:** 9%
+**Peso:** 8%
 
 **Objetivo:** oferecer a visão cronológica central do ativo.
 
@@ -130,7 +130,7 @@ Cada microentrega deve terminar utilizável/testável de forma isolada; nenhuma 
 
 ## Microentrega 6 — Fotos, documentos, laudos e assinaturas
 
-**Peso:** 8%
+**Peso:** 7%
 
 **Objetivo:** incorporar evidências documentais ao prontuário sem colocar binários no histórico principal.
 
@@ -196,7 +196,7 @@ Cada microentrega deve terminar utilizável/testável de forma isolada; nenhuma 
 
 ## Microentrega 10 — Ocorrências e ordens do Despacho no prontuário
 
-**Peso:** 8%
+**Peso:** 7%
 
 **Objetivo:** ligar operação de campo ao ativo mantendo ownership de cada produto.
 
@@ -244,7 +244,7 @@ Cada microentrega deve terminar utilizável/testável de forma isolada; nenhuma 
 
 ## Microentrega 13 — Cliente REST do Motor no Sistema de Despacho
 
-**Peso:** 6%
+**Peso:** 5%
 
 **Objetivo:** permitir que o Despacho pesquise e consulte ativos sem conhecer seu banco.
 
@@ -260,7 +260,7 @@ Cada microentrega deve terminar utilizável/testável de forma isolada; nenhuma 
 
 ## Microentrega 14 — Experiência do ativo dentro do Despacho
 
-**Peso:** 5%
+**Peso:** 4%
 
 **Objetivo:** contextualizar ativos na operação sem duplicar o módulo de Inventário.
 
@@ -318,16 +318,16 @@ Cada microentrega deve terminar utilizável/testável de forma isolada; nenhuma 
 | M2 Versionamento/histórico | 7% |
 | M3 Geolocalização/mapa | 7% |
 | M4 Busca/listagem | 6% |
-| M5 Timeline/prontuário | 9% |
-| M6 Evidências/documentos | 8% |
+| M5 Timeline/prontuário | 8% |
+| M6 Evidências/documentos | 7% |
 | M7 Inspeções/checklists | 7% |
 | M8 Peças/custos/garantias | 7% |
 | M9 Relacionamentos | 5% |
-| M10 Ocorrências/ordens | 8% |
+| M10 Ocorrências/ordens | 7% |
 | M11 Telemetria/eventos | 6% |
 | M12 Indicadores | 5% |
-| M13 Cliente REST no Despacho | 6% |
-| M14 UX dentro do Despacho | 5% |
+| M13 Cliente REST no Despacho | 5% |
+| M14 UX dentro do Despacho | 4% |
 | M15 Eventos no Despacho | 4% |
 | M16 Hardening/release | 2% |
 | **Total** | **100%** |
