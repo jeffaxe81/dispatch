@@ -21,6 +21,7 @@ export type RecoveryPostActionReconciliationReceipt = Readonly<{
   evidenceId: string;
   executionEvidenceId: string;
   verificationEvidenceId: string;
+  verificationRecordedAt: string;
   actionId: string;
   componentId: string;
   correlationId: string;
@@ -35,13 +36,17 @@ export type RecoveryPostActionReconciliationReceiptVerification =
   | Readonly<{ valid: true }>
   | Readonly<{
       valid: false;
-      reasonCode: "EVIDENCE_MISMATCH" | "INVALID_RECONCILIATION_STATE";
+      reasonCode:
+        | "EVIDENCE_MISMATCH"
+        | "INVALID_RECONCILIATION_STATE"
+        | "RECONCILIATION_TIMELINE_INVALID";
     }>;
 
 function hashRecoveryPostActionReconciliationEvidence(input: {
   tenantId: string;
   executionEvidenceId: string;
   verificationEvidenceId: string;
+  verificationRecordedAt: string;
   actionId: string;
   componentId: string;
   correlationId: string;
@@ -56,6 +61,7 @@ function hashRecoveryPostActionReconciliationEvidence(input: {
     input.tenantId,
     input.executionEvidenceId,
     input.verificationEvidenceId,
+    input.verificationRecordedAt,
     input.actionId,
     input.componentId,
     input.correlationId,
@@ -88,6 +94,7 @@ export function buildRecoveryPostActionReconciliationReceipt(input: {
     tenantId: input.tenantId,
     executionEvidenceId: input.executionEvent.evidenceId,
     verificationEvidenceId: input.verificationReceipt.evidenceId,
+    verificationRecordedAt: input.verificationReceipt.recordedAt,
     actionId: input.executionEvent.actionId,
     componentId: input.executionEvent.componentId,
     correlationId: input.executionEvent.correlationId,
@@ -104,6 +111,7 @@ export function buildRecoveryPostActionReconciliationReceipt(input: {
     evidenceId,
     executionEvidenceId: input.executionEvent.evidenceId,
     verificationEvidenceId: input.verificationReceipt.evidenceId,
+    verificationRecordedAt: input.verificationReceipt.recordedAt,
     actionId: input.executionEvent.actionId,
     componentId: input.executionEvent.componentId,
     correlationId: input.executionEvent.correlationId,
@@ -130,6 +138,7 @@ export function verifyRecoveryPostActionReconciliationReceipt(input: {
     tenantId: input.tenantId,
     executionEvidenceId: input.receipt.executionEvidenceId,
     verificationEvidenceId: input.receipt.verificationEvidenceId,
+    verificationRecordedAt: input.receipt.verificationRecordedAt,
     actionId: input.receipt.actionId,
     componentId: input.receipt.componentId,
     correlationId: input.receipt.correlationId,
@@ -149,6 +158,16 @@ export function verifyRecoveryPostActionReconciliationReceipt(input: {
     || (!input.receipt.eligible && input.receipt.reasonCode === null)
   ) {
     return { valid: false, reasonCode: "INVALID_RECONCILIATION_STATE" };
+  }
+
+  const verificationRecordedAtMs = Date.parse(input.receipt.verificationRecordedAt);
+  const recordedAtMs = Date.parse(input.receipt.recordedAt);
+  if (
+    !Number.isFinite(verificationRecordedAtMs)
+    || !Number.isFinite(recordedAtMs)
+    || recordedAtMs < verificationRecordedAtMs
+  ) {
+    return { valid: false, reasonCode: "RECONCILIATION_TIMELINE_INVALID" };
   }
 
   return { valid: true };
