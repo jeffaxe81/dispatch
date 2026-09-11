@@ -1,5 +1,43 @@
 # Changelog
 
+## [Unreleased] — D-011 Observabilidade e Recovery
+
+### D-011B — Recovery controlado e cadeia auditável
+
+Conclusão funcional da D-011B, consolidando política de recovery, autorização/coordenação, safety boundary, evidências determinísticas, verificação pós-ação, binding com ledger, reconciliação, closure e verificação ponta a ponta da cadeia.
+
+### Incluído
+- Recovery Policy Engine com dry-run;
+- contrato de ação e adapter exclusivamente simulado;
+- autorização fail-closed, kill switch default-off, lease/fencing e reserva idempotente;
+- safety boundary que aceita somente capability `simulation`/`noop`;
+- receipts de execução, verificação pós-ação, reconciliação e closure;
+- verificadores de integridade, cadeia e cronologia;
+- binding evidence-to-ledger sem mutação adicional;
+- verificação final end-to-end entre execução, verificação, reconciliação e closure;
+- vínculo de tenant, identidade da ação e fencing nas evidências aplicáveis;
+- reason codes sanitizados e contratos fail-closed.
+
+### Limites preservados
+- runtime permanece `simulation-only`;
+- nenhum executor/restart real foi habilitado;
+- nenhum retry automático, failover, restore, rollback ou migration foi autorizado;
+- nenhuma integração com systemd, Docker, Podman, Kubernetes, SSH, cloud ou hypervisor foi introduzida;
+- nenhuma migration produtiva, grant ou deploy é autorizado por este registro;
+- qualquer evolução para executor real exige nova microentrega, desenho, TDD e aprovação explícita.
+
+### Evidência
+- último merge funcional: PR #71 — D-011B.14;
+- `main` após D-011B.14: `a58eac2599813bb63a7005cd7e996d1f506ea564`;
+- último head funcional verificado: `1e18dc6a5af2d9a037b7e69bfe17c00f3754f3f6`;
+- validação B14: 235 arquivos / 1035 testes GREEN, security check, TypeScript e build GREEN;
+- relatório de fechamento: `docs/releases/d011b-recovery-verification.md`.
+
+### Controle de fechamento
+- checkpoint pré-fechamento: `checkpoint/pre-d011b-recovery-closure-20260910`;
+- branch documental: `docs/d011b-recovery-closure-20260910`;
+- merge do fechamento depende de gates frescos no SHA documental final e aprovação explícita do responsável técnico.
+
 ## [Unreleased] — D-010 Workspace Operacional
 
 ### D-010C — Catálogo ampliado de widgets operacionais
