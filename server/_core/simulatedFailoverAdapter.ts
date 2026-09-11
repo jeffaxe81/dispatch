@@ -37,6 +37,9 @@ export function createSimulatedFailoverAdapter(
   options: SimulatedFailoverAdapterOptions,
 ): FailoverSimulationPort {
   const { mode, now = () => new Date() } = options;
+  if (mode !== "success" && mode !== "failure") {
+    throw new Error("simulated failover mode must be success or failure");
+  }
 
   return Object.freeze({
     capability: FAILOVER_SIMULATION_CAPABILITY,
