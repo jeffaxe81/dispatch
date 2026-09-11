@@ -18,14 +18,31 @@ services:
     networks:
       - dispatch_internal
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-alertas}:${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}@mysql:3306/${MYSQL_DATABASE:-central_alertas}
+    networks:
+      - dispatch_internal
+
   dispatch:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -39,7 +56,6 @@ services:
       ALRT_INGRESS_HMAC_SECRET: ${ALRT_INGRESS_HMAC_SECRET:-}
       ALRT_TIMESTAMP_TOLERANCE_SECONDS: ${ALRT_TIMESTAMP_TOLERANCE_SECONDS:-300}
       ALRT_RATE_LIMIT: ${ALRT_RATE_LIMIT:-60}
-    command: ["sh", "-c", "pnpm db:migrate && node dist/index.js"]
     ports:
       - "${APP_PORT:-3000}:3000"
     networks:
