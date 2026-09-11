@@ -186,7 +186,7 @@ describe("D-011C.4 failover simulation evidence", () => {
         plan,
         receipt,
       }),
-    ).toEqual({ valid: false, reasonCode: "EVIDENCE_MISMATCH" });
+    ).toEqual({ valid: false, reasonCode: "EVIDENCE_LINK_MISMATCH" });
   });
 
   it("rejects a receipt built for a different tenant than the supplied plan", () => {
@@ -287,7 +287,7 @@ describe("D-011C.4 failover simulation evidence", () => {
         plan,
         receipt,
       }),
-    ).toEqual({ valid: false, reasonCode: "EVIDENCE_MISMATCH" });
+    ).toEqual({ valid: false, reasonCode: "EVIDENCE_LINK_MISMATCH" });
   });
 
   it("rejects receipt semantic tampering before digest acceptance", () => {
