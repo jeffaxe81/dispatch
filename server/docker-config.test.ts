@@ -11,12 +11,18 @@ describe("Docker production startup contract", () => {
     expect(packageJson.scripts["db:migrate"]).toBe("drizzle-kit migrate");
   });
 
-  it("keeps drizzle tooling available in the runtime image", () => {
-    expect(dockerfile).toContain("drizzle-kit");
+  it("provides a dedicated migration image target", () => {
+    expect(dockerfile).toContain("FROM deps AS migrate");
+    expect(dockerfile).toContain('CMD ["pnpm", "db:migrate"]');
   });
 
-  it("runs migrations before starting the application", () => {
-    expect(compose).toContain("pnpm db:migrate");
-    expect(compose).toContain("node dist/index.js");
+  it("blocks application startup until migrations succeed", () => {
+    expect(compose).toContain("migrate:");
+    expect(compose).toContain("condition: service_completed_successfully");
+  });
+
+  it("keeps the production runtime focused on application startup", () => {
+    expect(dockerfile).toContain('CMD ["node", "dist/index.js"]');
+    expect(dockerfile).not.toContain("pnpm add --global drizzle-kit");
   });
 });
