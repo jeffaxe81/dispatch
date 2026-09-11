@@ -1,106 +1,63 @@
 # Changelog
 
-## [Unreleased] — D-011 Observabilidade e Recovery
+## [2.18.0] — 2026-09-11
+
+### Release final — Workspace Operacional + Observabilidade/Recovery seguro
+
+Esta versão fecha o ciclo posterior à v2.17.0, consolidando o Workspace Operacional D-010 e a linha D-011 de observabilidade, recovery controlado e failover estritamente simulado.
+
+### D-010 — Workspace Operacional
+- WorkspaceLayout v2 com migração determinística v1 → v2;
+- uma superfície principal e múltiplas superfícies externas configuráveis;
+- Multi-Monitor com abertura, foco, reabertura e coordenação same-origin;
+- rota externa sem tenant/user como autoridade na URL;
+- catálogo fechado de 15 tipos de widgets;
+- widgets operacionais para Kanban, ocorrência, recursos, alertas SLA, timeline, NEO, iframe autorizado, formulário D-008 read-only e dashboard configurável;
+- settings tipados, allowlists fechadas e isolamento local de falha por widget;
+- migration `0007_d010a_workspace_layouts.sql` versionada, sem aplicação automática em banco real.
+
+### D-011A — Health Checks + Watchdog Passivo + Circuit Breaker
+- health registry tipado;
+- readiness reutilizando probes existentes de banco/storage;
+- watchdog passivo com hysteresis/anti-flapping;
+- isolamento/circuit breaker e observabilidade sanitizada;
+- sem restart automático, failover real ou mutação produtiva.
 
 ### D-011B — Recovery controlado e cadeia auditável
-
-Conclusão funcional da D-011B, consolidando política de recovery, autorização/coordenação, safety boundary, evidências determinísticas, verificação pós-ação, binding com ledger, reconciliação, closure e verificação ponta a ponta da cadeia.
-
-### Incluído
 - Recovery Policy Engine com dry-run;
 - contrato de ação e adapter exclusivamente simulado;
 - autorização fail-closed, kill switch default-off, lease/fencing e reserva idempotente;
-- safety boundary que aceita somente capability `simulation`/`noop`;
-- receipts de execução, verificação pós-ação, reconciliação e closure;
-- verificadores de integridade, cadeia e cronologia;
-- binding evidence-to-ledger sem mutação adicional;
-- verificação final end-to-end entre execução, verificação, reconciliação e closure;
-- vínculo de tenant, identidade da ação e fencing nas evidências aplicáveis;
-- reason codes sanitizados e contratos fail-closed.
+- safety boundary permitindo somente capability `simulation`/`noop`;
+- evidências determinísticas de execução e verificação pós-ação;
+- binding evidence-to-ledger, reconciliação, closure e verificadores de cadeia/cronologia;
+- verificação ponta a ponta execução → verificação → reconciliação → closure;
+- runtime preservado `simulation-only`, sem executor/restart real.
 
-### Limites preservados
-- runtime permanece `simulation-only`;
-- nenhum executor/restart real foi habilitado;
-- nenhum retry automático, failover, restore, rollback ou migration foi autorizado;
-- nenhuma integração com systemd, Docker, Podman, Kubernetes, SSH, cloud ou hypervisor foi introduzida;
-- nenhuma migration produtiva, grant ou deploy é autorizado por este registro;
-- qualquer evolução para executor real exige nova microentrega, desenho, TDD e aprovação explícita.
+### D-011C.1–C.4 — Failover estritamente simulado
+- contrato de topologia e elegibilidade fail-closed;
+- planner determinístico com anti-split-brain, generation/fencing e TTL controlado;
+- adapter de failover exclusivamente in-memory/simulado;
+- safety boundary estrutural sem filesystem, subprocesso, HTTP, DB/ORM, cloud SDK, containers/orquestradores ou SSH;
+- receipt canônico SHA-256 e verifier puro para a simulação;
+- vínculo de tenant, plano, source/target, topology, generation/fencing, health evidence e timeline `startedAt <= finishedAt <= recordedAt`;
+- proteção contra cross-tenant, adulteração de digest, links inconsistentes e cronologia impossível;
+- nenhum failover real/automático, promoção/demotion, DNS/VIP/route ou restart foi habilitado.
 
-### Evidência
-- último merge funcional: PR #71 — D-011B.14;
-- `main` após D-011B.14: `a58eac2599813bb63a7005cd7e996d1f506ea564`;
-- último head funcional verificado: `1e18dc6a5af2d9a037b7e69bfe17c00f3754f3f6`;
-- validação B14: 235 arquivos / 1035 testes GREEN, security check, TypeScript e build GREEN;
-- relatório de fechamento: `docs/releases/d011b-recovery-verification.md`.
-
-### Controle de fechamento
-- checkpoint pré-fechamento: `checkpoint/pre-d011b-recovery-closure-20260910`;
-- branch documental: `docs/d011b-recovery-closure-20260910`;
-- merge do fechamento depende de gates frescos no SHA documental final e aprovação explícita do responsável técnico.
-
-## [Unreleased] — D-010 Workspace Operacional
-
-### D-010C — Catálogo ampliado de widgets operacionais
-
-Ampliação do Workspace para um catálogo fechado de 15 tipos, com nove widgets D-010C funcionais e reutilizáveis em superfície principal ou externa, preservando RBAC, tenant e integrações homologadas.
-
-### Incluído
-- settings tipados e estritos por tipo de widget;
-- registry fechado de renderers locais, sem componente remoto arbitrário;
-- contexto operacional efêmero e isolado por superfície;
-- widgets read-only de Kanban, detalhe de ocorrência, recursos, alertas SLA e timeline operacional;
-- widget NEO resolvido exclusivamente pelo catálogo autorizado de aplicações incorporadas;
-- widget iframe autorizado baseado somente em `applicationId`, sem URL livre em settings;
-- widget de formulário dinâmico reutilizando D-008, somente para versão publicada e em modo read-only;
-- dashboard configurável com allowlist fechada de métricas;
-- montagem funcional no `WorkspaceScreenCanvas` para superfície principal e N superfícies externas;
-- isolamento local de falha por widget, sem exposição de mensagem ou stack para a operação;
-- regressões específicas contra URL arbitrária, métricas desconhecidas, formulários não publicados e falha de renderer.
-
-### Controles
-- nenhuma migration nova foi necessária para D-010C;
-- nenhuma nova autenticação/SSO do NEO foi introduzida;
-- nenhum grant produtivo executado;
-- nenhum deploy produtivo executado;
-- nenhum merge em `main` autorizado por este registro;
-- relatório de verificação: `docs/releases/d010c-verification.md`.
-
-### D-010A / D-010B — Workspace configurável e Multi-Monitor
-
-Evolução do workspace operacional para layout persistido e superfícies lógicas múltiplas, mantendo autorização e persistência no backend.
-
-### Incluído
-- WorkspaceLayout v2 com migração determinística v1 → v2;
-- uma superfície principal e N superfícies externas configuráveis;
-- criação, renomeação, reordenação, definição da principal, movimentação de widgets e remoção com realocação;
-- rota externa interna `/workspace/external`, sem tenant/user como autoridade na URL;
-- abertura/foco/reabertura coordenados de superfícies em janelas do navegador;
-- detecção explícita de bloqueio de pop-up;
-- sincronização entre janelas por BroadcastChannel apenas para coordenação;
-- hints progressivos de posicionamento por display, sem dependência obrigatória da Window Management API;
-- catálogo fechado de widgets;
-- navegação acessível das tabs por teclado com setas, Home e End;
-- inventário tRPC incluindo `workspace.getOwn`, `workspace.getOwnScreen`, `workspace.saveOwn` e `workspace.resetOwn`;
-- regressões específicas de segurança e integração do multi-monitor.
-
-### Qualidade registrada no candidato funcional
-- candidato: `7dcbb8939d647a39ceb848493ef141c2480d3c44`;
-- 181/181 arquivos de teste aprovados;
-- 762/762 testes aprovados;
-- security check aprovado;
-- TypeScript aprovado;
-- build de produção aprovado;
-- GIS visual homologation #680 aprovado;
-- NEO external compatibility #617 aprovado;
-- NEO workspace visual homologation #660 aprovado.
+### Qualidade funcional antes do fechamento
+- D-011C.4 validada em 242/242 arquivos e 1120/1120 testes;
+- security check, TypeScript e build aprovados no candidato funcional D-011C.4;
+- GIS visual, NEO external compatibility e NEO workspace aprovados no candidato funcional D-011C.4;
+- o candidato de release `release/2.18.0` deve repetir integralmente os gates antes do merge.
 
 ### Controles de release
-- migration `0007_d010a_workspace_layouts.sql` versionada, sem aplicação produtiva neste fechamento;
-- nenhum grant produtivo executado;
-- nenhum deploy produtivo executado;
-- nenhum merge em `main` autorizado por este registro;
-- relatório de verificação: `docs/releases/d010b-verification.md`;
-- checkpoint somente após novo GREEN do SHA documental final.
+- baseline pré-release: `main` em `8fc0fc60030152a5a488c8209101a3c64f27fd35`;
+- checkpoint pré-release: `checkpoint/pre-release-v2.18.0-20260911`;
+- branch de release: `release/2.18.0`;
+- migrations permanecem apenas versionadas; nenhuma aplicação automática em banco real;
+- nenhum grant produtivo é concedido automaticamente;
+- nenhum deploy produtivo é autorizado pelo fechamento;
+- checkpoints devem ser preservados;
+- qualquer evolução para executor/failover real exige novo desenho, TDD, revisão e aprovação explícita.
 
 ## [2.17.0] — 2026-09-06
 
@@ -141,8 +98,8 @@ Esta versão consolida o épico D-008 do AXE Dispatch, mantendo a disciplina de 
 - permissões catalogadas, sem grants automáticos;
 - nenhum deploy é autorizado pelo fechamento documental.
 
-### Pendente antes da publicação final
-A branch `release/2.17.0` deve passar pelos gates finais de release e revisão do diff. A tag final `v2.17.0` e a publicação da GitHub Release somente devem apontar para o commit aprovado após esses gates.
+### Publicação
+A release de código `2.17.0` foi integrada em `main` pelo PR #46. Tag/GitHub Release permanecem objetos de publicação separados quando não criados pelo fluxo de integração.
 
 ## [2.16.0] — 2026-09-05
 
@@ -173,5 +130,5 @@ Esta versão consolida o ciclo de evolução do AXE Dispatch até o Controle de 
 - permissões catalogadas, sem grants automáticos;
 - nenhum deploy é autorizado pelo fechamento documental.
 
-### Pendente antes da publicação final
-A branch `release/2.16.0` deve passar pelos gates finais de release e revisão do diff. A tag final `v2.16.0` e a publicação da GitHub Release somente devem apontar para o commit aprovado após esses gates.
+### Publicação
+A release de código `2.16.0` foi integrada em `main` pelo PR #42. Tag/GitHub Release permanecem objetos de publicação separados quando não criados pelo fluxo de integração.
