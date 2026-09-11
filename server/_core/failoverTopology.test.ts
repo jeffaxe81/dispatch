@@ -185,4 +185,43 @@ describe("D-011C.1 failover topology validation", () => {
       reasonCode: "HEALTH_EVIDENCE_STALE",
     });
   });
+
+  it("rejects multiple health evidence records for the same node", () => {
+    const input = makeValidInput();
+    input.healthEvidence.push({
+      ...input.healthEvidence[1],
+      evidenceId: "health-b-duplicate",
+      state: "unhealthy",
+    });
+
+    expect(validateFailoverTopologyInput(input, now)).toEqual({
+      valid: false,
+      reasonCode: "TOPOLOGY_INVALID",
+    });
+  });
+
+  it("rejects health evidence checked in the future", () => {
+    const input = makeValidInput();
+    input.healthEvidence[1] = {
+      ...input.healthEvidence[1],
+      checkedAt: "2026-09-10T20:00:10.000Z",
+      validUntil: "2026-09-10T20:01:10.000Z",
+    };
+
+    expect(validateFailoverTopologyInput(input, now)).toEqual({
+      valid: false,
+      reasonCode: "TOPOLOGY_INVALID",
+    });
+  });
+
+  it("rejects a coordination context that has not started yet", () => {
+    const input = makeValidInput();
+    input.coordination.issuedAt = "2026-09-10T20:00:10.000Z";
+    input.coordination.expiresAt = "2026-09-10T20:01:10.000Z";
+
+    expect(validateFailoverTopologyInput(input, now)).toEqual({
+      valid: false,
+      reasonCode: "TOPOLOGY_INVALID",
+    });
+  });
 });
