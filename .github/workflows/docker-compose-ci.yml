@@ -14,7 +14,7 @@ on:
       - pnpm-lock.yaml
       - drizzle.config.ts
       - drizzle/**
-      - scripts/docker-config.test.ts
+      - server/docker-config.test.ts
       - .github/workflows/docker-compose-ci.yml
 
 permissions:
@@ -55,7 +55,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify Docker startup contract
-        run: pnpm vitest run scripts/docker-config.test.ts
+        run: pnpm vitest run server/docker-config.test.ts
 
       - name: TypeScript check
         run: pnpm check
