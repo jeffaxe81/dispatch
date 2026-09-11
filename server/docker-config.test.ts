@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const dockerfile = readFileSync("Dockerfile", "utf8");
 const compose = readFileSync("docker-compose.yml", "utf8");
+const serverEntry = readFileSync("server/_core/index.ts", "utf8");
 
 describe("Docker production startup contract", () => {
   it("separates migration generation from applying reviewed migrations", () => {
@@ -26,8 +27,9 @@ describe("Docker production startup contract", () => {
     expect(dockerfile).not.toContain("pnpm add --global drizzle-kit");
   });
 
-  it("installs Vite in the production runtime because the server bundle imports it", () => {
-    expect(packageJson.dependencies.vite).toBeTruthy();
-    expect(packageJson.devDependencies?.vite).toBeUndefined();
+  it("does not statically load Vite from the production server entrypoint", () => {
+    expect(serverEntry).not.toContain('import { serveStatic, setupVite } from "./vite"');
+    expect(serverEntry).toContain('await import("./vite")');
+    expect(serverEntry).toContain('import { serveStatic } from "./static"');
   });
 });
