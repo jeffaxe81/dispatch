@@ -46,5 +46,18 @@ export function verifyRecoveryEndToEndEvidenceChain(input: {
     return { valid: false, reasonCode: "CLOSURE_CHAIN_INVALID" };
   }
 
+  if (
+    input.reconciliationReceipt.executionEvidenceId !== input.executionEvent.evidenceId
+    || input.reconciliationReceipt.verificationEvidenceId !== input.verificationReceipt.evidenceId
+    || input.reconciliationReceipt.verificationRecordedAt !== input.verificationReceipt.recordedAt
+    || input.reconciliationReceipt.actionId !== input.executionEvent.actionId
+    || input.reconciliationReceipt.componentId !== input.executionEvent.componentId
+    || input.reconciliationReceipt.componentId !== input.verificationReceipt.componentId
+    || input.reconciliationReceipt.correlationId !== input.executionEvent.correlationId
+    || input.reconciliationReceipt.fencingToken !== input.executionEvent.fencingToken
+  ) {
+    return { valid: false, reasonCode: "RECONCILIATION_LINK_MISMATCH" };
+  }
+
   return { valid: true };
 }
