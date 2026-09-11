@@ -25,4 +25,9 @@ describe("Docker production startup contract", () => {
     expect(dockerfile).toContain('CMD ["node", "dist/index.js"]');
     expect(dockerfile).not.toContain("pnpm add --global drizzle-kit");
   });
+
+  it("installs Vite in the production runtime because the server bundle imports it", () => {
+    expect(packageJson.dependencies.vite).toBeTruthy();
+    expect(packageJson.devDependencies?.vite).toBeUndefined();
+  });
 });
