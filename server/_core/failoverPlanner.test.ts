@@ -107,7 +107,7 @@ describe("D-011C.2 failover planner", () => {
     });
   });
 
-  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+  it.each([0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY])(
     "rejects invalid planner ttl %s at construction",
     planTtlMs => {
       expect(() => createFailoverPlanner({ planTtlMs })).toThrow();
@@ -186,6 +186,20 @@ describe("D-011C.2 failover planner", () => {
     if (result.planned) {
       expect(result.plan.topologyGeneration).toBe(7);
       expect(result.plan.fencingToken).toBe(11);
+    }
+  });
+
+  it("returns an immutable plan and immutable evidence references", () => {
+    const planner = createFailoverPlanner({
+      planTtlMs: 60_000,
+      createId: () => "plan-001",
+    });
+    const result = planner.plan(makeValidInput(), now);
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(Object.isFrozen(result.plan)).toBe(true);
+      expect(Object.isFrozen(result.plan.healthEvidenceRefs)).toBe(true);
     }
   });
 });
