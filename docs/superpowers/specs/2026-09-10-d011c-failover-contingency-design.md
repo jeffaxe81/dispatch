@@ -82,9 +82,10 @@ Não deve, nesta fase:
 - alterar `recoveryAction.ts`;
 - alterar `recoveryExecutionBoundary.ts`;
 - adicionar ações reais ao executor existente;
-- reutilizar o namespace de lease `d011b3-v1` como se fosse lease de failover.
+- reutilizar o namespace de lease `d011b3-v1` como se fosse lease de failover;
+- disparar automaticamente failover a partir de uma decisão `escalate` da D-011B.
 
-D-011C terá contratos/versionamento próprios.
+D-011C terá contratos/versionamento próprios. A integração futura entre uma escalada D-011B e um pedido D-011C exigirá um contrato/orquestrador separado e não faz parte desta iniciativa inicial.
 
 ## Modelo de domínio
 
@@ -100,7 +101,7 @@ Campos mínimos:
 - `generation: number`;
 - `enabled: boolean`.
 
-`generation` deve ser inteiro positivo e representa uma geração lógica monotônica da topologia conhecida, não um contador operacional controlado por este módulo.
+`generation` deve ser inteiro positivo e representa uma geração lógica monotônica da topologia conhecida, não um contador operacional controlado por este módulo. Todos os nós do snapshot devem usar a mesma geração de `FailoverTopology`.
 
 ### FailoverTopology
 
@@ -120,13 +121,15 @@ A topologia é um snapshot somente leitura. O planner não persiste nem modifica
 
 Evidência mínima por nó:
 
+- `evidenceId: string`;
+- `tenantId: string`;
 - `nodeId: string`;
 - `componentId: string`;
 - `state: "healthy" | "degraded" | "unhealthy" | "unknown"`;
 - `checkedAt: string`;
 - `validUntil: string`.
 
-A fonte de saúde pode ser adaptada a partir do `HealthRegistry`, mas D-011C não altera o registry para executar failover.
+`checkedAt` e `validUntil` precisam ser parseáveis e `validUntil` deve ser posterior a `checkedAt`. A fonte de saúde pode ser adaptada a partir do `HealthRegistry`, mas D-011C não altera o registry para executar failover.
 
 ### FailoverCoordinationContext
 
@@ -160,27 +163,36 @@ Plano somente leitura produzido apenas após todas as validações:
 - `expiresAt: string`;
 - `mode: "simulation"`.
 
-O plano não contém comandos executáveis, credenciais, URLs de gestão, shell commands ou instruções de infraestrutura.
+`healthEvidenceRefs` contém `evidenceId` das evidências efetivamente usadas na decisão. O plano não contém comandos executáveis, credenciais, URLs de gestão, shell commands ou instruções de infraestrutura.
+
+O planner recebe `planTtlMs` configurado, que deve ser inteiro positivo e finito. `expiresAt` é derivado de `createdAt + planTtlMs` e nunca pode ultrapassar `FailoverCoordinationContext.expiresAt`.
 
 ## Elegibilidade
 
 Um plano só pode ser criado quando todas as condições abaixo forem verdadeiras:
 
-- tenant não vazio e igual em todos os contratos;
+- tenant não vazio e igual em topologia, saúde e coordenação;
 - `componentId` igual em topologia, saúde e coordenação;
+- `topologyId` não vazio;
+- geração da topologia é inteiro positivo;
+- todos os nós têm geração igual à geração da topologia;
 - exatamente um nó marcado `active` e habilitado;
 - origem corresponde ao único ativo;
+- existe evidência válida para a origem;
+- estado da origem é `degraded` ou `unhealthy`;
+- origem `healthy` não é elegível para failover automático nesta versão;
+- origem `unknown` não é elegível porque a ausência de evidência confiável fecha em falha;
 - existe pelo menos um standby habilitado;
 - destino é diferente da origem;
 - destino está `healthy`;
 - evidência do destino ainda está válida;
-- evidência do source existe e não está temporalmente inválida;
 - geração da coordenação corresponde à geração da topologia;
 - fencing token é inteiro positivo;
 - contexto de coordenação não expirou;
-- nenhum nó duplicado ou identidade conflitante existe;
+- nenhum `nodeId` duplicado ou identidade conflitante existe;
 - todos os timestamps críticos são parseáveis;
-- o plano terá prazo de validade finito e futuro.
+- `planTtlMs` é válido;
+- o plano terá prazo de validade finito, futuro e contido na janela de coordenação.
 
 `degraded`, `unhealthy` e `unknown` não são elegíveis como destino na primeira versão.
 
@@ -190,16 +202,18 @@ Estas invariantes são obrigatórias e fail-closed:
 
 1. **Single Active:** exatamente um nó ativo habilitado por topologia.
 2. **Source Binding:** `sourceNodeId` deve ser o único ativo observado.
-3. **Distinct Target:** target nunca pode ser igual ao source.
-4. **Healthy Target:** target precisa estar `healthy` com evidência não expirada.
-5. **Generation Binding:** planner só aceita coordenação e topologia da mesma geração.
-6. **Fencing Required:** ausência, zero, negativo ou valor não inteiro invalida a decisão.
-7. **Tenant Isolation:** qualquer divergência de tenant rejeita a cadeia.
-8. **Component Isolation:** qualquer divergência de componente rejeita a cadeia.
-9. **No Ambiguous Active Set:** zero ou múltiplos ativos rejeitam a topologia.
-10. **No Hidden Mutation:** planner, adapter e verifier não podem modificar topologia, saúde, lease, ledger ou infraestrutura.
-11. **No Implicit Fallback:** se nenhum candidato seguro existir, não escolher “o menos ruim”.
-12. **Deterministic Selection:** candidatos equivalentes devem usar ordenação determinística explícita, nunca ordem incidental de coleção.
+3. **Source Incident Evidence:** a origem deve ter evidência válida `degraded` ou `unhealthy`; `healthy` ou `unknown` rejeitam o planejamento inicial.
+4. **Distinct Target:** target nunca pode ser igual ao source.
+5. **Healthy Target:** target precisa estar `healthy` com evidência não expirada.
+6. **Generation Binding:** planner só aceita nós, coordenação e topologia da mesma geração.
+7. **Fencing Required:** ausência, zero, negativo ou valor não inteiro invalida a decisão.
+8. **Tenant Isolation:** qualquer divergência de tenant rejeita a cadeia.
+9. **Component Isolation:** qualquer divergência de componente rejeita a cadeia.
+10. **No Ambiguous Active Set:** zero ou múltiplos ativos rejeitam a topologia.
+11. **No Hidden Mutation:** planner, adapter e verifier não podem modificar topologia, saúde, lease, ledger ou infraestrutura.
+12. **No Implicit Fallback:** se nenhum candidato seguro existir, não escolher “o menos ruim”.
+13. **Deterministic Selection:** candidatos equivalentes devem usar ordenação determinística explícita, nunca ordem incidental de coleção.
+14. **Bounded Plan Lifetime:** nenhum plano sobrevive ao contexto de coordenação que o autorizou.
 
 ## Seleção de candidato
 
@@ -217,6 +231,7 @@ Se houver necessidade futura de ranking, será uma evolução versionada do plan
 - `TOPOLOGY_INVALID`
 - `MULTIPLE_ACTIVE_NODES`
 - `ACTIVE_NODE_MISSING`
+- `SOURCE_NOT_FAILOVER_ELIGIBLE`
 - `NO_SAFE_CANDIDATE`
 - `SOURCE_TARGET_CONFLICT`
 - `TARGET_NOT_HEALTHY`
@@ -275,17 +290,18 @@ A D-011C.4 produzirá receipt determinístico com versão própria, contendo pel
 - `evidenceVersion: "d011c4-v1"`;
 - `evidenceId`;
 - `planId`;
-- `tenantIdHashContext` apenas no cálculo de integridade, não necessariamente exposto em claro no receipt;
 - `componentId`;
 - `sourceNodeId`;
 - `targetNodeId`;
 - `topologyId`;
 - `topologyGeneration`;
 - `fencingToken`;
-- referências de saúde;
+- referências `healthEvidenceRefs`;
 - status e reason code da simulação;
 - `recordedAt`;
 - digest SHA-256 canônico.
+
+`tenantId` participa do contexto canônico usado para calcular/verificar o digest, mas não precisa ser exposto em claro no receipt. O verifier recebe o tenant esperado externamente, seguindo o padrão de isolamento já utilizado nas evidências de recovery.
 
 O digest serve como identificador determinístico de integridade; não deve ser descrito como assinatura digital ou prova autônoma de origem.
 
@@ -303,6 +319,7 @@ Deve verificar:
 - component;
 - geração;
 - fencing;
+- `healthEvidenceRefs`;
 - timeline;
 - coerência entre status e reason code;
 - vínculo com o plano simulado.
@@ -342,7 +359,7 @@ Entrega:
 - tipos de topologia, saúde e coordenação;
 - validação estrutural;
 - reason codes de elegibilidade;
-- regras single-active, tenant/component/generation/fencing;
+- regras single-active, source-state, tenant/component/generation/fencing;
 - nenhum planner ainda.
 
 TDD principal:
@@ -352,8 +369,11 @@ TDD principal:
 - múltiplos ativos;
 - nó duplicado;
 - tenant/component divergentes;
+- geração dos nós divergente da topologia;
 - fencing/generation inválidos;
-- evidência stale/missing.
+- evidência stale/missing;
+- origem healthy/unknown rejeitada;
+- target degraded/unhealthy/unknown rejeitado.
 
 ### D-011C.2 — Failover Planner & Anti-Split-Brain
 
@@ -363,6 +383,7 @@ Entrega:
 - criação de `FailoverPlan` imutável;
 - validade temporal do plano;
 - source/target binding;
+- `healthEvidenceRefs` exatos;
 - sem side effects.
 
 TDD principal:
@@ -373,7 +394,9 @@ TDD principal:
 - nenhum candidato seguro;
 - candidatos múltiplos com escolha determinística;
 - contexto expirado;
-- mismatch de geração/fencing.
+- mismatch de geração/fencing;
+- TTL inválido;
+- plano não ultrapassa expiração da coordenação.
 
 ### D-011C.3 — Simulated Failover Adapter
 
@@ -410,6 +433,7 @@ TDD principal:
 - tenant incorreto;
 - source/target divergentes;
 - generation/fencing divergentes;
+- health evidence refs divergentes;
 - timeline inválida;
 - combinação status/reason code inválida.
 
@@ -462,7 +486,8 @@ A D-011C estará concluída quando:
 - multi-site active-active;
 - persistência histórica de receipts;
 - UI operacional de failover;
-- aprovação automática humana ou workflow de change management.
+- aprovação automática humana ou workflow de change management;
+- disparo automático da D-011C a partir de D-011B.
 
 ## Gate para uma futura execução real
 
