@@ -3,7 +3,6 @@ name: dispatch
 services:
   mysql:
     image: mysql:8.4
-    container_name: dispatch-mysql
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-dispatch}
@@ -15,26 +14,57 @@ services:
     networks:
       - dispatch-net
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" --silent"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-dispatch}:${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}@mysql:3306/${MYSQL_DATABASE:-dispatch}
+    networks:
+      - dispatch-net
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: dispatch-app
+      target: runtime
     restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
-    env_file:
-      - .env
+      migrate:
+        condition: service_completed_successfully
     environment:
-      DATABASE_URL: mysql://${MYSQL_USER:-dispatch}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-dispatch}
       NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: mysql://${MYSQL_USER:-dispatch}:${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}@mysql:3306/${MYSQL_DATABASE:-dispatch}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      LOCAL_AUTH_BOOTSTRAP_USERNAME: ${LOCAL_AUTH_BOOTSTRAP_USERNAME:?LOCAL_AUTH_BOOTSTRAP_USERNAME must be set}
+      LOCAL_AUTH_BOOTSTRAP_PASSWORD: ${LOCAL_AUTH_BOOTSTRAP_PASSWORD:?LOCAL_AUTH_BOOTSTRAP_PASSWORD must be set}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      ALRT_INGRESS_MODE: ${ALRT_INGRESS_MODE:-desativado}
+      ALRT_INGRESS_API_KEY: ${ALRT_INGRESS_API_KEY:-}
+      ALRT_INGRESS_HMAC_SECRET: ${ALRT_INGRESS_HMAC_SECRET:-}
+      ALRT_TIMESTAMP_TOLERANCE_SECONDS: ${ALRT_TIMESTAMP_TOLERANCE_SECONDS:-300}
+      ALRT_RATE_LIMIT: ${ALRT_RATE_LIMIT:-60}
+      VITE_APP_ID: ${VITE_APP_ID:-}
+      OAUTH_SERVER_URL: ${OAUTH_SERVER_URL:-}
+      VITE_OAUTH_PORTAL_URL: ${VITE_OAUTH_PORTAL_URL:-}
+      OWNER_OPEN_ID: ${OWNER_OPEN_ID:-}
+      BUILT_IN_FORGE_API_URL: ${BUILT_IN_FORGE_API_URL:-}
+      BUILT_IN_FORGE_API_KEY: ${BUILT_IN_FORGE_API_KEY:-}
+      STORAGE_HEALTHCHECK_KEY: ${STORAGE_HEALTHCHECK_KEY:-}
     ports:
       - "${APP_PORT:-3000}:3000"
     networks:

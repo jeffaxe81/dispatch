@@ -17,7 +17,7 @@ import {
   mapHealthTransitionToRecoveryInput,
 } from "./recoveryBootstrap";
 import { parseServerPort, selectServerPort } from "./serverPort";
-import { serveStatic, setupVite } from "./vite";
+import { serveStatic } from "./static";
 
 const HEALTH_WATCHDOG_INTERVAL_MS = 5_000;
 const HEALTH_WATCHDOG_POLICY = {
@@ -69,10 +69,12 @@ async function startServer() {
     createExpressMiddleware({
       router: rootRouter,
       createContext,
-    })
+    }),
   );
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
+    const viteModulePath = "./vite";
+    const { setupVite } = await import(viteModulePath);
     await setupVite(app, server);
   } else {
     serveStatic(app);

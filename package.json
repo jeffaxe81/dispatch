@@ -22,7 +22,9 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:recovery": "vitest run --config vitest.recovery.config.ts",
     "test:all": "vitest run --config vitest.config.ts && vitest run --config vitest.integration.config.ts",
-    "db:push": "drizzle-kit generate && drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate-production.mjs",
+    "db:push": "drizzle-kit generate && node scripts/migrate-production.mjs",
     "test:gis-visual": "node scripts/gis-visual-homologation.mjs",
     "test:neo-visual": "node scripts/neo-workspace-visual-homologation.mjs"
   },

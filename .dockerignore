@@ -1,0 +1,15 @@
+.git
+.github
+.superpowers
+node_modules
+dist
+coverage
+.vite
+*.log
+.env
+.env.*
+!.env.example
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+docs
