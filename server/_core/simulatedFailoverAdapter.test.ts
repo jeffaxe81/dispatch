@@ -49,6 +49,12 @@ describe("D-011C.3 simulated failover adapter", () => {
     expect(Object.isFrozen(adapter.capability)).toBe(true);
   });
 
+  it("rejects any adapter mode outside success/failure at construction", () => {
+    expect(() =>
+      createSimulatedFailoverAdapter({ mode: "live" as never }),
+    ).toThrow("simulated failover mode must be success or failure");
+  });
+
   it("rejects an expired plan without simulating success", async () => {
     const adapter = createSimulatedFailoverAdapter({
       mode: "success",
