@@ -27,9 +27,11 @@ describe("Docker production startup contract", () => {
     expect(dockerfile).not.toContain("pnpm add --global drizzle-kit");
   });
 
-  it("does not statically load Vite from the production server entrypoint", () => {
+  it("keeps the Vite development graph out of the production bundle", () => {
     expect(serverEntry).not.toContain('import { serveStatic, setupVite } from "./vite"');
-    expect(serverEntry).toContain('await import("./vite")');
+    expect(serverEntry).not.toContain('await import("./vite")');
+    expect(serverEntry).toContain('const viteModulePath = "./vite"');
+    expect(serverEntry).toContain("await import(viteModulePath)");
     expect(serverEntry).toContain('import { serveStatic } from "./static"');
   });
 });
