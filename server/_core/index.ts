@@ -53,9 +53,10 @@ async function startServer() {
       createContext,
     })
   );
-  // Development loads Vite on demand; production has no runtime Vite dependency.
+  // Keep the development-only Vite module outside the production esbuild graph.
   if (process.env.NODE_ENV === "development") {
-    const { setupVite } = await import("./vite");
+    const viteModulePath = "./vite";
+    const { setupVite } = await import(viteModulePath);
     await setupVite(app, server);
   } else {
     serveStatic(app);
