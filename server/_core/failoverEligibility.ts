@@ -34,6 +34,12 @@ const reject = (
   reasonCode: Exclude<FailoverEligibilityReasonCode, "FAILOVER_ELIGIBLE">,
 ): FailoverEligibilityResult => ({ eligible: false, reasonCode });
 
+const compareNodeIds = (left: SafeFailoverCandidate, right: SafeFailoverCandidate): number => {
+  if (left.nodeId < right.nodeId) return -1;
+  if (left.nodeId > right.nodeId) return 1;
+  return 0;
+};
+
 export function evaluateFailoverEligibility(
   input: FailoverEligibilityInput,
   now = new Date(),
@@ -80,7 +86,7 @@ export function evaluateFailoverEligibility(
 
       return [{ nodeId: node.nodeId, evidenceId: evidence.evidenceId }];
     })
-    .sort((a, b) => a.nodeId.localeCompare(b.nodeId));
+    .sort(compareNodeIds);
 
   if (candidates.length === 0) {
     return reject("NO_SAFE_CANDIDATE");
