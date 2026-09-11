@@ -93,6 +93,31 @@ describe("D-011C.1 failover eligibility", () => {
     });
   });
 
+  it("uses code-point lexical ordering rather than host locale collation", () => {
+    const input = makeValidInput();
+    input.topology.nodes[1] = { ...input.topology.nodes[1], nodeId: "a-node" };
+    input.topology.nodes[2] = { ...input.topology.nodes[2], nodeId: "Z-node" };
+    input.healthEvidence[1] = {
+      ...input.healthEvidence[1],
+      nodeId: "a-node",
+      evidenceId: "health-lowercase",
+    };
+    input.healthEvidence[2] = {
+      ...input.healthEvidence[2],
+      nodeId: "Z-node",
+      evidenceId: "health-uppercase",
+    };
+
+    const result = evaluateFailoverEligibility(input, now);
+    expect(result).toMatchObject({ eligible: true, reasonCode: "FAILOVER_ELIGIBLE" });
+    if (result.eligible) {
+      expect(result.candidates).toEqual([
+        { nodeId: "Z-node", evidenceId: "health-uppercase" },
+        { nodeId: "a-node", evidenceId: "health-lowercase" },
+      ]);
+    }
+  });
+
   it.each(["healthy", "unknown"] as const)(
     "rejects source state %s",
     sourceState => {
