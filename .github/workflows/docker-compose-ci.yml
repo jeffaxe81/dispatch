@@ -1,0 +1,105 @@
+name: Docker Compose CI
+
+on:
+  push:
+    branches:
+      - build/docker-compose
+  pull_request:
+    paths:
+      - Dockerfile
+      - docker-compose.yml
+      - .dockerignore
+      - .env.example
+      - package.json
+      - pnpm-lock.yaml
+      - drizzle.config.ts
+      - drizzle/**
+      - scripts/docker-config.test.ts
+      - .github/workflows/docker-compose-ci.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MYSQL_DATABASE: central_alertas
+      MYSQL_USER: alertas
+      MYSQL_PASSWORD: ci_mysql_password_2026
+      MYSQL_ROOT_PASSWORD: ci_root_password_2026
+      JWT_SECRET: ci_only_jwt_secret_32_bytes_minimum_2026
+      LOCAL_AUTH_BOOTSTRAP_USERNAME: admin
+      LOCAL_AUTH_BOOTSTRAP_PASSWORD: ci_bootstrap_password_2026
+      APP_PORT: 3000
+      TRUST_PROXY: "false"
+      ALRT_INGRESS_MODE: desativado
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Docker startup contract
+        run: pnpm vitest run scripts/docker-config.test.ts
+
+      - name: TypeScript check
+        run: pnpm check
+
+      - name: Security regression check
+        run: pnpm security:check
+
+      - name: Validate Compose configuration
+        run: docker compose config
+
+      - name: Build Docker image
+        run: docker compose build dispatch
+
+      - name: Start stack
+        run: docker compose up -d
+
+      - name: Wait for application
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ >/dev/null; then
+              docker compose ps
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "AXE Dispatch did not become reachable in time" >&2
+          docker compose ps >&2 || true
+          docker compose logs --tail=200 mysql >&2 || true
+          docker compose logs --tail=200 dispatch >&2 || true
+          exit 1
+
+      - name: Show final container state
+        if: always()
+        run: docker compose ps || true
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose logs --tail=200 mysql || true
+          docker compose logs --tail=200 dispatch || true
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down
