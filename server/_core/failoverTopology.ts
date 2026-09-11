@@ -130,6 +130,7 @@ export function validateFailoverTopologyInput(
   if (!Number.isFinite(nowMs)) return invalid("TOPOLOGY_INVALID");
 
   const evidenceIds = new Set<string>();
+  const evidenceNodeIds = new Set<string>();
   for (const evidence of healthEvidence) {
     if (
       typeof evidence !== "object"
@@ -140,14 +141,21 @@ export function validateFailoverTopologyInput(
       || !isNonEmptyString(evidence.componentId)
       || !HEALTH_STATES.has(evidence.state)
       || evidenceIds.has(evidence.evidenceId)
+      || evidenceNodeIds.has(evidence.nodeId)
     ) {
       return invalid("TOPOLOGY_INVALID");
     }
     evidenceIds.add(evidence.evidenceId);
+    evidenceNodeIds.add(evidence.nodeId);
 
     const checkedAtMs = parseFiniteTimestamp(evidence.checkedAt);
     const validUntilMs = parseFiniteTimestamp(evidence.validUntil);
-    if (checkedAtMs === null || validUntilMs === null || validUntilMs <= checkedAtMs) {
+    if (
+      checkedAtMs === null
+      || validUntilMs === null
+      || validUntilMs <= checkedAtMs
+      || checkedAtMs > nowMs
+    ) {
       return invalid("TOPOLOGY_INVALID");
     }
   }
@@ -162,6 +170,7 @@ export function validateFailoverTopologyInput(
     || issuedAtMs === null
     || expiresAtMs === null
     || expiresAtMs <= issuedAtMs
+    || issuedAtMs > nowMs
   ) {
     return invalid("TOPOLOGY_INVALID");
   }
