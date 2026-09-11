@@ -1,0 +1,125 @@
+name: Docker Compose CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - docker-compose.yml
+      - .dockerignore
+      - .env.example
+      - package.json
+      - pnpm-lock.yaml
+      - drizzle.config.ts
+      - drizzle/**
+      - server/_core/index.ts
+      - server/_core/static.ts
+      - server/docker-config.test.ts
+      - .github/workflows/docker-compose-ci.yml
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - docker-compose.yml
+      - .dockerignore
+      - .env.example
+      - package.json
+      - pnpm-lock.yaml
+      - drizzle.config.ts
+      - drizzle/**
+      - server/_core/index.ts
+      - server/_core/static.ts
+      - server/docker-config.test.ts
+      - .github/workflows/docker-compose-ci.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-compose-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MYSQL_DATABASE: dispatch
+      MYSQL_USER: dispatch
+      MYSQL_PASSWORD: ci_mysql_password_2026
+      MYSQL_ROOT_PASSWORD: ci_root_password_2026
+      JWT_SECRET: ci_only_jwt_secret_32_bytes_minimum_2026
+      LOCAL_AUTH_BOOTSTRAP_USERNAME: admin
+      LOCAL_AUTH_BOOTSTRAP_PASSWORD: ci_bootstrap_password_2026
+      APP_PORT: 3000
+      TRUST_PROXY: "false"
+      ALRT_INGRESS_MODE: desativado
+
+    steps:
+      - name: Obter código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Habilitar Corepack
+        run: corepack enable
+
+      - name: Instalar dependências congeladas
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Validar contrato Docker
+        run: corepack pnpm vitest run --config vitest.config.ts server/docker-config.test.ts
+
+      - name: Verificar TypeScript
+        run: corepack pnpm check
+
+      - name: Verificar segurança
+        run: corepack pnpm security:check
+
+      - name: Validar Compose
+        run: docker compose config
+
+      - name: Construir imagens
+        run: docker compose build
+
+      - name: Iniciar stack
+        run: docker compose up -d
+
+      - name: Aguardar aplicação
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ >/dev/null; then
+              docker compose ps
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "AXE Dispatch did not become reachable in time" >&2
+          docker compose ps >&2 || true
+          docker compose logs --tail=200 mysql >&2 || true
+          docker compose logs --tail=200 migrate >&2 || true
+          docker compose logs --tail=200 app >&2 || true
+          exit 1
+
+      - name: Mostrar estado final
+        if: always()
+        run: docker compose ps || true
+
+      - name: Mostrar logs em falha
+        if: failure()
+        run: |
+          docker compose logs --tail=200 mysql || true
+          docker compose logs --tail=200 migrate || true
+          docker compose logs --tail=200 app || true
+
+      - name: Encerrar stack de CI
+        if: always()
+        run: docker compose down -v

@@ -1,29 +1,29 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS base
+FROM node:24-bookworm-slim AS deps
 WORKDIR /app
-ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
-
-FROM base AS dependencies
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-FROM dependencies AS build
+FROM deps AS build
+WORKDIR /app
 COPY . .
 RUN pnpm build
 
-FROM base AS production-dependencies
-ENV NODE_ENV=production
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --prod --frozen-lockfile
-
-FROM node:22-bookworm-slim AS runtime
+FROM deps AS migrate
 WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=production-dependencies /app/node_modules ./node_modules
+COPY . .
+CMD ["pnpm", "db:migrate"]
+
+FROM node:24-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=3000
+RUN corepack enable
+COPY --from=build /app/package.json /app/pnpm-lock.yaml ./
+RUN pnpm install --prod --frozen-lockfile
 COPY --from=build /app/dist ./dist
-COPY package.json ./package.json
 EXPOSE 3000
+USER node
 CMD ["node", "dist/index.js"]
