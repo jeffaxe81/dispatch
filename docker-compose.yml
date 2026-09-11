@@ -1,0 +1,48 @@
+name: dispatch
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: dispatch-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-dispatch}
+      MYSQL_USER: ${MYSQL_USER:-dispatch}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+    volumes:
+      - dispatch_mysql_data:/var/lib/mysql
+    networks:
+      - dispatch-net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dispatch-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-dispatch}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-dispatch}
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    networks:
+      - dispatch-net
+
+volumes:
+  dispatch_mysql_data:
+
+networks:
+  dispatch-net:
+    driver: bridge
