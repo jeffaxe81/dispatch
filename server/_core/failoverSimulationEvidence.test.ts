@@ -189,6 +189,26 @@ describe("D-011C.4 failover simulation evidence", () => {
     ).toEqual({ valid: false, reasonCode: "EVIDENCE_MISMATCH" });
   });
 
+  it("rejects a receipt built for a different tenant than the supplied plan", () => {
+    const foreignPlan = makePlan({ tenantId: "tenant-b" });
+    const built = buildFailoverSimulationEvidence({
+      tenantId: "tenant-b",
+      plan: foreignPlan,
+      result: makeResult(),
+      recordedAt: "2026-09-10T20:00:12.000Z",
+    });
+    expect(built.built).toBe(true);
+    if (!built.built) throw new Error("expected foreign-tenant evidence receipt");
+
+    expect(
+      verifyFailoverSimulationEvidence({
+        tenantId: "tenant-b",
+        plan: makePlan({ tenantId: "tenant-a" }),
+        receipt: built.receipt,
+      }),
+    ).toEqual({ valid: false, reasonCode: "EVIDENCE_LINK_MISMATCH" });
+  });
+
   it("rejects digest tampering", () => {
     const { plan, receipt } = buildValidReceipt();
     const replacement = receipt.digest.endsWith("0") ? "1" : "0";
