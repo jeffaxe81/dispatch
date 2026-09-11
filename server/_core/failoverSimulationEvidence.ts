@@ -237,6 +237,13 @@ export function verifyFailoverSimulationEvidence(input: {
 }): FailoverSimulationEvidenceVerificationResult {
   const { tenantId, plan, receipt } = input;
 
+  if (tenantId !== plan.tenantId) {
+    return Object.freeze({
+      valid: false,
+      reasonCode: "EVIDENCE_LINK_MISMATCH",
+    });
+  }
+
   if (!isValidSemanticPair(receipt.status, receipt.reasonCode)) {
     return Object.freeze({
       valid: false,
