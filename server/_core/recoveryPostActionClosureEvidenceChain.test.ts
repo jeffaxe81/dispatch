@@ -23,7 +23,12 @@ const request = {
   deadlineAt: "2026-09-10T12:05:00.000Z",
 };
 
-function buildChain() {
+function buildChain(input: {
+  verified?: boolean;
+  reconciliationRecordedAt?: string;
+  closureRecordedAt?: string;
+} = {}) {
+  const verified = input.verified ?? true;
   const executionEvent = buildRecoveryExecutionAuditEvent({
     request,
     startedAt: "2026-09-10T12:00:10.000Z",
@@ -35,7 +40,9 @@ function buildChain() {
   const verificationReceipt = buildRecoveryPostActionVerificationReceipt({
     tenantId: request.tenantId,
     executionEvent,
-    verification: { verified: true },
+    verification: verified
+      ? { verified: true as const }
+      : { verified: false as const, reasonCode: "HEALTH_NOT_HEALTHY" as const },
     healthCheckedAt: "2026-09-10T12:00:21.000Z",
     recordedAt: "2026-09-10T12:00:22.000Z",
   });
@@ -57,13 +64,13 @@ function buildChain() {
     executionEvent,
     verificationReceipt,
     record,
-    recordedAt: "2026-09-10T12:00:23.000Z",
+    recordedAt: input.reconciliationRecordedAt ?? "2026-09-10T12:00:23.000Z",
   });
 
   const closure = buildRecoveryPostActionClosureReceipt({
     tenantId: request.tenantId,
     reconciliationReceipt,
-    recordedAt: "2026-09-10T12:00:24.000Z",
+    recordedAt: input.closureRecordedAt ?? "2026-09-10T12:00:24.000Z",
   });
 
   if (!closure.built) throw new Error("expected closure receipt");
@@ -72,7 +79,7 @@ function buildChain() {
 }
 
 describe("D-011B.13 post-action closure evidence chain", () => {
-  it("accepts a valid B11 to B12 closure chain", () => {
+  it("accepts a valid B11 to B12 verified closure chain", () => {
     const { reconciliationReceipt, closureReceipt } = buildChain();
 
     expect(verifyRecoveryPostActionClosureEvidenceChain({
@@ -80,5 +87,68 @@ describe("D-011B.13 post-action closure evidence chain", () => {
       reconciliationReceipt,
       closureReceipt,
     })).toEqual({ valid: true });
+  });
+
+  it("accepts a valid B11 to B12 rejected closure chain", () => {
+    const { reconciliationReceipt, closureReceipt } = buildChain({ verified: false });
+
+    expect(verifyRecoveryPostActionClosureEvidenceChain({
+      tenantId: request.tenantId,
+      reconciliationReceipt,
+      closureReceipt,
+    })).toEqual({ valid: true });
+  });
+
+  it("rejects two individually valid receipts that belong to different reconciliation evidence", () => {
+    const chainA = buildChain();
+    const chainB = buildChain({
+      reconciliationRecordedAt: "2026-09-10T12:00:23.500Z",
+      closureRecordedAt: "2026-09-10T12:00:24.500Z",
+    });
+
+    expect(verifyRecoveryPostActionClosureEvidenceChain({
+      tenantId: request.tenantId,
+      reconciliationReceipt: chainA.reconciliationReceipt,
+      closureReceipt: chainB.closureReceipt,
+    })).toEqual({ valid: false, reasonCode: "EVIDENCE_LINK_MISMATCH" });
+  });
+
+  it("rejects a valid reconciliation paired with a semantically opposite valid closure", () => {
+    const verifiedChain = buildChain({ verified: true });
+    const rejectedChain = buildChain({ verified: false });
+
+    expect(verifyRecoveryPostActionClosureEvidenceChain({
+      tenantId: request.tenantId,
+      reconciliationReceipt: verifiedChain.reconciliationReceipt,
+      closureReceipt: rejectedChain.closureReceipt,
+    })).toEqual({ valid: false, reasonCode: "CLOSURE_SEMANTICS_MISMATCH" });
+  });
+
+  it("rejects tampered B11 evidence before evaluating links", () => {
+    const { reconciliationReceipt, closureReceipt } = buildChain();
+    const tamperedReconciliation = {
+      ...reconciliationReceipt,
+      actionId: "action-tampered",
+    };
+
+    expect(verifyRecoveryPostActionClosureEvidenceChain({
+      tenantId: request.tenantId,
+      reconciliationReceipt: tamperedReconciliation,
+      closureReceipt,
+    })).toEqual({ valid: false, reasonCode: "RECONCILIATION_EVIDENCE_MISMATCH" });
+  });
+
+  it("rejects tampered B12 evidence before evaluating links", () => {
+    const { reconciliationReceipt, closureReceipt } = buildChain();
+    const tamperedClosure = {
+      ...closureReceipt,
+      fencingToken: closureReceipt.fencingToken + 1,
+    };
+
+    expect(verifyRecoveryPostActionClosureEvidenceChain({
+      tenantId: request.tenantId,
+      reconciliationReceipt,
+      closureReceipt: tamperedClosure,
+    })).toEqual({ valid: false, reasonCode: "CLOSURE_EVIDENCE_MISMATCH" });
   });
 });
