@@ -20,6 +20,8 @@ export type FailoverSimulationEvidenceReceipt = Readonly<{
   healthEvidenceRefs: readonly string[];
   status: FailoverSimulationResult["status"];
   reasonCode: FailoverSimulationResult["reasonCode"];
+  startedAt: string;
+  finishedAt: string;
   recordedAt: string;
   digest: string;
 }>;
@@ -97,6 +99,8 @@ function canonicalContent(input: {
   healthEvidenceRefs: readonly string[];
   status: FailoverSimulationStatus;
   reasonCode: FailoverSimulationReasonCode;
+  startedAt: string;
+  finishedAt: string;
   recordedAt: string;
 }) {
   return {
@@ -113,6 +117,8 @@ function canonicalContent(input: {
     healthEvidenceRefs: [...input.healthEvidenceRefs],
     status: input.status,
     reasonCode: input.reasonCode,
+    startedAt: input.startedAt,
+    finishedAt: input.finishedAt,
     recordedAt: input.recordedAt,
   };
 }
@@ -157,10 +163,23 @@ function validResultTimeline(result: FailoverSimulationResult, recordedAt: strin
   );
 }
 
-function validReceiptTimeline(plan: FailoverPlan, recordedAt: string): boolean {
+function validReceiptTimeline(
+  plan: FailoverPlan,
+  receipt: Pick<FailoverSimulationEvidenceReceipt, "startedAt" | "finishedAt" | "recordedAt">,
+): boolean {
   const createdAtMs = parseFiniteTimestamp(plan.createdAt);
-  const recordedAtMs = parseFiniteTimestamp(recordedAt);
-  return createdAtMs !== null && recordedAtMs !== null && recordedAtMs > createdAtMs;
+  const startedAtMs = parseFiniteTimestamp(receipt.startedAt);
+  const finishedAtMs = parseFiniteTimestamp(receipt.finishedAt);
+  const recordedAtMs = parseFiniteTimestamp(receipt.recordedAt);
+  return (
+    createdAtMs !== null &&
+    startedAtMs !== null &&
+    finishedAtMs !== null &&
+    recordedAtMs !== null &&
+    finishedAtMs >= startedAtMs &&
+    recordedAtMs >= finishedAtMs &&
+    recordedAtMs > createdAtMs
+  );
 }
 
 export function buildFailoverSimulationEvidence(input: {
@@ -205,6 +224,8 @@ export function buildFailoverSimulationEvidence(input: {
     healthEvidenceRefs,
     status: result.status,
     reasonCode: result.reasonCode,
+    startedAt: result.startedAt,
+    finishedAt: result.finishedAt,
     recordedAt,
   });
   const digest = digestCanonical(content);
@@ -223,6 +244,8 @@ export function buildFailoverSimulationEvidence(input: {
     healthEvidenceRefs,
     status: result.status,
     reasonCode: result.reasonCode,
+    startedAt: result.startedAt,
+    finishedAt: result.finishedAt,
     recordedAt,
     digest,
   });
@@ -258,7 +281,7 @@ export function verifyFailoverSimulationEvidence(input: {
     });
   }
 
-  if (!validReceiptTimeline(plan, receipt.recordedAt)) {
+  if (!validReceiptTimeline(plan, receipt)) {
     return Object.freeze({
       valid: false,
       reasonCode: "EVIDENCE_TIMELINE_INVALID",
@@ -278,6 +301,8 @@ export function verifyFailoverSimulationEvidence(input: {
       healthEvidenceRefs: receipt.healthEvidenceRefs,
       status: receipt.status,
       reasonCode: receipt.reasonCode,
+      startedAt: receipt.startedAt,
+      finishedAt: receipt.finishedAt,
       recordedAt: receipt.recordedAt,
     }),
   );
