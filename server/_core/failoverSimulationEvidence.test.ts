@@ -191,8 +191,9 @@ describe("D-011C.4 failover simulation evidence", () => {
 
   it("rejects digest tampering", () => {
     const { plan, receipt } = buildValidReceipt();
+    const replacement = receipt.digest.endsWith("0") ? "1" : "0";
     const tampered = cloneReceipt(receipt, {
-      digest: `${receipt.digest.slice(0, -1)}0`,
+      digest: `${receipt.digest.slice(0, -1)}${replacement}`,
     });
 
     expect(
