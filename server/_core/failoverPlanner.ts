@@ -41,8 +41,8 @@ export function createFailoverPlanner(options: {
   createId?: () => string;
 }): FailoverPlanner {
   const { planTtlMs, createId = randomUUID } = options;
-  if (!Number.isFinite(planTtlMs) || planTtlMs <= 0) {
-    throw new Error("planTtlMs must be a positive finite number");
+  if (!Number.isFinite(planTtlMs) || !Number.isInteger(planTtlMs) || planTtlMs <= 0) {
+    throw new Error("planTtlMs must be a positive finite integer");
   }
 
   return Object.freeze({
