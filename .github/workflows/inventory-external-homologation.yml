@@ -1,0 +1,81 @@
+name: Inventory external homologation
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inventory-external-homologation
+  cancel-in-progress: false
+
+jobs:
+  homologation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: homologation
+    env:
+      ASSET_MOTOR_BASE_URL: ${{ vars.ASSET_MOTOR_BASE_URL }}
+      DISPATCH_BASE_URL: ${{ vars.DISPATCH_BASE_URL }}
+      TENANT_A: ${{ vars.HOMOLOGATION_TENANT_A }}
+      TENANT_B: ${{ vars.HOMOLOGATION_TENANT_B }}
+      HOMOLOGATION_USER_ID: ${{ vars.HOMOLOGATION_USER_ID }}
+      HOMOLOGATION_INCIDENT_REFERENCE: ${{ vars.HOMOLOGATION_INCIDENT_REFERENCE }}
+      HOMOLOGATION_TIMEOUT_MS: ${{ vars.HOMOLOGATION_TIMEOUT_MS }}
+      HOMOLOGATION_AUTH_TOKEN: ${{ secrets.HOMOLOGATION_AUTH_TOKEN }}
+      HOMOLOGATION_REPORT_DIR: artifacts/homologation
+
+    steps:
+      - name: Obter código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Habilitar Corepack
+        run: corepack enable
+
+      - name: Instalar dependências congeladas
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Validar configuração de homologação
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            ASSET_MOTOR_BASE_URL
+            DISPATCH_BASE_URL
+            TENANT_A
+            TENANT_B
+            HOMOLOGATION_USER_ID
+            HOMOLOGATION_INCIDENT_REFERENCE
+            HOMOLOGATION_AUTH_TOKEN
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Configuração obrigatória ausente: ${name}" >&2
+              exit 1
+            fi
+          done
+          case "$ASSET_MOTOR_BASE_URL $DISPATCH_BASE_URL" in
+            *localhost*|*127.0.0.1*)
+              echo "Endpoints locais não são válidos para a sessão externa." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Executar homologação externa
+        run: corepack pnpm homologation:inventory
+
+      - name: Publicar evidências
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: inventory-external-homologation-${{ github.run_id }}
+          path: artifacts/homologation
+          if-no-files-found: warn
+          retention-days: 30
