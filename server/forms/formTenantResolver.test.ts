@@ -13,7 +13,7 @@ describe("D-008 authenticated tenant resolution", () => {
     const findAuthorizedOrganizationIds = vi.fn(async () => [77]);
     await expect(resolveFormTenantId(
       { userId: 9, teamId: null },
-      { findTeamOrganizationId, findAuthorizedOrganizationIds } as any,
+      { findTeamOrganizationId, findAuthorizedOrganizationIds },
     )).resolves.toBe(77);
     expect(findTeamOrganizationId).not.toHaveBeenCalled();
     expect(findAuthorizedOrganizationIds).toHaveBeenCalledWith(9);
@@ -23,17 +23,27 @@ describe("D-008 authenticated tenant resolution", () => {
     const findTeamOrganizationId = vi.fn(async () => null);
     const findAuthorizedOrganizationIds = vi.fn(async () => [77, 88]);
     await expect(resolveFormTenantId(
-      { userId: 9, teamId: null, selectedTenantId: 88 } as any,
-      { findTeamOrganizationId, findAuthorizedOrganizationIds } as any,
+      { userId: 9, teamId: null, selectedTenantId: 88 },
+      { findTeamOrganizationId, findAuthorizedOrganizationIds },
     )).resolves.toBe(88);
+  });
+
+  it("mantém a empresa ativa autorizada mesmo quando o usuário possui equipe em outra empresa", async () => {
+    const findTeamOrganizationId = vi.fn(async () => 77);
+    const findAuthorizedOrganizationIds = vi.fn(async () => [77, 88]);
+    await expect(resolveFormTenantId(
+      { userId: 9, teamId: 3, selectedTenantId: 88 },
+      { findTeamOrganizationId, findAuthorizedOrganizationIds },
+    )).resolves.toBe(88);
+    expect(findTeamOrganizationId).not.toHaveBeenCalled();
   });
 
   it("rejeita seleção explícita de organização fora do escopo autorizado", async () => {
     const findTeamOrganizationId = vi.fn(async () => null);
     const findAuthorizedOrganizationIds = vi.fn(async () => [77, 88]);
     await expect(resolveFormTenantId(
-      { userId: 9, teamId: null, selectedTenantId: 99 } as any,
-      { findTeamOrganizationId, findAuthorizedOrganizationIds } as any,
+      { userId: 9, teamId: null, selectedTenantId: 99 },
+      { findTeamOrganizationId, findAuthorizedOrganizationIds },
     )).rejects.toBeInstanceOf(FormTenantResolutionError);
   });
 
@@ -42,7 +52,7 @@ describe("D-008 authenticated tenant resolution", () => {
     const findAuthorizedOrganizationIds = vi.fn(async () => []);
     await expect(resolveFormTenantId(
       { userId: 9, teamId: null },
-      { findTeamOrganizationId, findAuthorizedOrganizationIds } as any,
+      { findTeamOrganizationId, findAuthorizedOrganizationIds },
     )).rejects.toBeInstanceOf(FormTenantResolutionError);
   });
 
@@ -51,7 +61,7 @@ describe("D-008 authenticated tenant resolution", () => {
     const findAuthorizedOrganizationIds = vi.fn(async () => [77, 88]);
     await expect(resolveFormTenantId(
       { userId: 9, teamId: null },
-      { findTeamOrganizationId, findAuthorizedOrganizationIds } as any,
+      { findTeamOrganizationId, findAuthorizedOrganizationIds },
     )).rejects.toThrow(/selecion|organiza|tenant/i);
   });
 
