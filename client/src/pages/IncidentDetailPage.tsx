@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import IncidentAssetContext from "@/components/IncidentAssetContext";
 import LeafletOperationalMap from "@/components/LeafletOperationalMap";
 import NeoOperationalWorkspace from "@/components/NeoOperationalWorkspace";
 import { QueryState } from "@/components/QueryState";
@@ -69,16 +70,10 @@ function IncidentDetailContent() {
       position: { latitude: Number(row.team.lastLatitude), longitude: Number(row.team.lastLongitude) },
     }));
   const rankedTeams = trpc.gis.rankCandidates.useQuery({
-    incident: {
-      latitude: Number(incident?.latitude ?? 0),
-      longitude: Number(incident?.longitude ?? 0),
-    },
+    incident: { latitude: Number(incident?.latitude ?? 0), longitude: Number(incident?.longitude ?? 0) },
     candidates: availablePositionedTeams,
     maxRouteCandidates: 3,
-  }, {
-    enabled: assignOpen && Boolean(incident) && availablePositionedTeams.length > 0,
-    retry: false,
-  });
+  }, { enabled: assignOpen && Boolean(incident) && availablePositionedTeams.length > 0, retry: false });
   const canDispatch = ["despachador", "supervisor", "administrador"].includes(user?.operationalRole ?? "");
   const canAudit = ["supervisor", "administrador"].includes(user?.operationalRole ?? "");
   const audit = trpc.incidents.audit.useQuery({ incidentId }, { enabled: canAudit && Number.isInteger(incidentId) });
@@ -107,39 +102,15 @@ function IncidentDetailContent() {
           <Card className="border-slate-200 shadow-sm"><CardContent className="p-0"><div className="border-b border-slate-100 px-6 py-4"><h2 className="font-semibold text-slate-950">Cronologia</h2></div><ol className="divide-y divide-slate-100">{(timeline.data ?? []).map(({ event, actorName, teamCode }) => <li key={event.id} className="flex gap-4 px-6 py-4"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-600" /><div><p className="text-sm text-slate-800">{event.message}</p><p className="mt-1 text-xs text-slate-500">{formatDateTime(event.createdAt)} · {actorName ?? "Sistema"}{teamCode ? ` · ${teamCode}` : ""}</p></div></li>)}{!timeline.isLoading && (timeline.data?.length ?? 0) === 0 && <li className="px-6 py-10 text-center text-sm text-slate-500">Ainda não há eventos para esta ocorrência.</li>}</ol></CardContent></Card>
         </div>
         <aside className="space-y-5"><Card className="border-slate-200 shadow-sm"><CardContent className="p-5"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-700" /><h2 className="font-semibold text-slate-950">Despacho atual</h2></div><dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">Equipe</dt><dd className="font-medium text-slate-800">{detail.data?.teamCode ?? "Não atribuída"}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Viatura</dt><dd className="font-medium text-slate-800">{detail.data?.vehiclePrefix ?? "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Despachada</dt><dd className="font-medium text-slate-800">{formatDateTime(incident.dispatchedAt)}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Aceita</dt><dd className="font-medium text-slate-800">{formatDateTime(incident.acceptedAt)}</dd></div></dl></CardContent></Card>
+          <IncidentAssetContext incident={{ code: incident.code, category: incident.category, priority: incident.priority, latitude: incident.latitude, longitude: incident.longitude }} />
           {canAudit && <Card className="border-slate-200 shadow-sm"><CardContent className="p-0"><div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><ClipboardList className="h-4 w-4 text-sky-700" /><h2 className="font-semibold text-slate-950">Auditoria</h2></div><div className="divide-y divide-slate-100">{(audit.data ?? []).map(({ audit: row, actorName }) => <div key={row.id} className="px-5 py-3"><p className="text-xs font-medium text-slate-800">{row.action}</p><p className="mt-1 text-[11px] text-slate-500">{actorName ?? "Sistema"} · {formatDateTime(row.createdAt)}</p></div>)}{!audit.isLoading && (audit.data?.length ?? 0) === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">Sem registros de auditoria.</p>}</div></CardContent></Card>}
         </aside>
       </div>
-      <NeoOperationalWorkspace
-        open={neoOpen}
-        onOpenChange={setNeoOpen}
-        application={embeddedApplications.data?.find(application => application.id === "neo-interact") ?? null}
-        incident={{
-          code: incident.code,
-          category: incident.category,
-          priorityLabel: priorityLabels[incident.priority],
-          statusLabel: statusLabels[incident.status],
-          address: incident.address,
-          requesterName: incident.requesterName,
-          requesterContact: incident.requesterContact,
-          description: incident.description,
-        }}
-        teamCode={detail.data?.teamCode}
-        vehiclePrefix={detail.data?.vehiclePrefix}
-      />
+      <NeoOperationalWorkspace open={neoOpen} onOpenChange={setNeoOpen} application={embeddedApplications.data?.find(application => application.id === "neo-interact") ?? null} incident={{ code: incident.code, category: incident.category, priorityLabel: priorityLabels[incident.priority], statusLabel: statusLabels[incident.status], address: incident.address, requesterName: incident.requesterName, requesterContact: incident.requesterContact, description: incident.description }} teamCode={detail.data?.teamCode} vehiclePrefix={detail.data?.vehiclePrefix} />
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}><DialogContent><DialogHeader><DialogTitle>Despachar equipe</DialogTitle><DialogDescription>O despacho criará um evento, uma atribuição pendente e uma auditoria da operação.</DialogDescription></DialogHeader><div className="grid gap-4 py-2">
         {rankedTeams.isLoading && <div className="rounded-lg border border-sky-100 bg-sky-50 p-3 text-sm text-sky-900">Calculando proximidade e ETA das equipes posicionadas...</div>}
         {rankedTeams.data?.[0] && <button type="button" onClick={() => setTeamId(String(rankedTeams.data![0].teamId))} className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left transition-colors hover:bg-emerald-100"><div className="flex items-start gap-3"><Navigation className="mt-0.5 h-5 w-5 text-emerald-700" /><div><p className="text-xs font-semibold uppercase tracking-[.12em] text-emerald-700">Sugestão por proximidade</p><p className="mt-1 font-semibold text-emerald-950">{rankedTeams.data[0].code} · {rankedTeams.data[0].name}</p><p className="mt-1 text-xs text-emerald-900">{rankedTeams.data[0].route ? `${Math.round(rankedTeams.data[0].route!.distanceMeters / 100) / 10} km · ETA aproximado ${Math.max(1, Math.round(rankedTeams.data[0].route!.durationSeconds / 60))} min` : `${Math.round(rankedTeams.data[0].straightLineDistanceMeters / 100) / 10} km em linha reta · ETA indisponível`}</p></div></div></button>}
-        {rankedTeams.data?.[0]?.route && <div className="overflow-hidden rounded-xl border border-slate-200">
-          <LeafletOperationalMap
-            center={{ lat: Number(incident.latitude), lng: Number(incident.longitude) }}
-            zoom={mapSettings.data?.defaultZoom ?? 13}
-            className="h-64 w-full"
-            incidents={[{ id: incident.id, code: incident.code, category: incident.category, priority: incident.priority, latitude: incident.latitude, longitude: incident.longitude }]}
-            teams={[{ id: rankedTeams.data[0].teamId, code: rankedTeams.data[0].code, name: rankedTeams.data[0].name, status: rankedTeams.data[0].status, latitude: rankedTeams.data[0].position.latitude, longitude: rankedTeams.data[0].position.longitude }]}
-            route={rankedTeams.data[0].route.geometry}
-          />
-        </div>}
+        {rankedTeams.data?.[0]?.route && <div className="overflow-hidden rounded-xl border border-slate-200"><LeafletOperationalMap center={{ lat: Number(incident.latitude), lng: Number(incident.longitude) }} zoom={mapSettings.data?.defaultZoom ?? 13} className="h-64 w-full" incidents={[{ id: incident.id, code: incident.code, category: incident.category, priority: incident.priority, latitude: incident.latitude, longitude: incident.longitude }]} teams={[{ id: rankedTeams.data[0].teamId, code: rankedTeams.data[0].code, name: rankedTeams.data[0].name, status: rankedTeams.data[0].status, latitude: rankedTeams.data[0].position.latitude, longitude: rankedTeams.data[0].position.longitude }]} route={rankedTeams.data[0].route.geometry} /></div>}
         {rankedTeams.error && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Não foi possível calcular ETA agora. O despacho manual continua disponível.</div>}
         <div className="grid gap-2"><Label>Equipe disponível</Label><Select value={teamId} onValueChange={setTeamId}><SelectTrigger><SelectValue placeholder="Selecione uma equipe" /></SelectTrigger><SelectContent>{(rankedTeams.data?.length ? rankedTeams.data.map(candidate => ({ id: candidate.teamId, code: candidate.code, name: candidate.name, eta: candidate.route?.durationSeconds })) : (teams.data ?? []).filter(row => row.team.status === "disponivel").map(row => ({ id: row.team.id, code: row.team.code, name: row.team.name, eta: undefined }))).map(candidate => <SelectItem key={candidate.id} value={String(candidate.id)}>{candidate.code} · {candidate.name}{candidate.eta ? ` · ~${Math.max(1, Math.round(candidate.eta / 60))} min` : ""}</SelectItem>)}</SelectContent></Select></div>{assign.error && <p className="text-sm text-rose-700">{assign.error.message}</p>}<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setAssignOpen(false)}>Cancelar</Button><Button disabled={!teamId || assign.isPending} onClick={() => assign.mutate({ incidentId, teamId: Number(teamId) })}>Confirmar despacho</Button></div></div></DialogContent></Dialog>
       <Dialog open={editOpen} onOpenChange={setEditOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Editar dados da ocorrência</DialogTitle><DialogDescription>As alterações autorizadas serão incluídas na cronologia e na trilha de auditoria.</DialogDescription></DialogHeader><form className="grid gap-4 py-2" onSubmit={event => { event.preventDefault(); update.mutate({ incidentId, category: edit.category, priority: edit.priority as "baixa" | "media" | "alta" | "critica", requesterName: edit.requesterName || null, requesterContact: edit.requesterContact || null, description: edit.description, address: edit.address, latitude: Number(edit.latitude), longitude: Number(edit.longitude) }); }}><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label>Tipificação</Label><Input value={edit.category} onChange={event => setEdit(current => ({ ...current, category: event.target.value }))} required /></div><div className="grid gap-2"><Label>Prioridade</Label><Select value={edit.priority} onValueChange={priority => setEdit(current => ({ ...current, priority }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(priorityLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div></div><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label>Solicitante</Label><Input value={edit.requesterName} onChange={event => setEdit(current => ({ ...current, requesterName: event.target.value }))} /></div><div className="grid gap-2"><Label>Contato</Label><Input value={edit.requesterContact} onChange={event => setEdit(current => ({ ...current, requesterContact: event.target.value }))} /></div></div><div className="grid gap-2"><Label>Endereço</Label><Input value={edit.address} onChange={event => setEdit(current => ({ ...current, address: event.target.value }))} required /></div><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label>Latitude</Label><Input type="number" step="0.0000001" value={edit.latitude} onChange={event => setEdit(current => ({ ...current, latitude: event.target.value }))} required /></div><div className="grid gap-2"><Label>Longitude</Label><Input type="number" step="0.0000001" value={edit.longitude} onChange={event => setEdit(current => ({ ...current, longitude: event.target.value }))} required /></div></div><div className="grid gap-2"><Label>Descrição</Label><Textarea rows={4} value={edit.description} onChange={event => setEdit(current => ({ ...current, description: event.target.value }))} required /></div>{update.error && <p className="text-sm text-rose-700">{update.error.message}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button><Button disabled={update.isPending}>Salvar alterações</Button></div></form></DialogContent></Dialog>
