@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "./_core/trpc";
+import { requireActiveTenant } from "./tenantOperational";
 import { resolveWorkShiftOperationsManageScope, resolveWorkShiftOperationsViewScope } from "./workShiftOperationsAccess";
 
 const pendingStatus = z.enum(["open", "in_review", "waiting_information", "resolved", "no_adjustment_required"]);
@@ -17,27 +18,42 @@ export type WorkShiftOperationsRouterDependencies = {
 
 export function createWorkShiftOperationsRouter(deps: WorkShiftOperationsRouterDependencies) {
   return router({
-    list: protectedProcedure.input(z.object({ teamId:z.number().int().positive().optional(), status:pendingStatus.optional() })).query(async ({ctx,input}) => {
-      const scope=await resolveWorkShiftOperationsViewScope(ctx.user,input.teamId);return deps.list({...scope,status:input.status});
+    list: protectedProcedure.input(z.object({ teamId: z.number().int().positive().optional(), status: pendingStatus.optional() })).query(async ({ ctx, input }) => {
+      const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
+      const scope = await resolveWorkShiftOperationsViewScope(ctx.user, input.teamId, activeTenantId);
+      return deps.list({ ...scope, status: input.status });
     }),
-    summary: protectedProcedure.input(z.object({ teamId:z.number().int().positive().optional() })).query(async ({ctx,input}) => {
-      const scope=await resolveWorkShiftOperationsViewScope(ctx.user,input.teamId);return deps.summary(scope);
+    summary: protectedProcedure.input(z.object({ teamId: z.number().int().positive().optional() })).query(async ({ ctx, input }) => {
+      const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
+      const scope = await resolveWorkShiftOperationsViewScope(ctx.user, input.teamId, activeTenantId);
+      return deps.summary(scope);
     }),
-    claim: protectedProcedure.input(z.object({ pendingId:z.number().int().positive(), teamId:z.number().int().positive().optional(), expectedVersion:z.number().int().positive() })).mutation(async ({ctx,input}) => {
-      const scope=await resolveWorkShiftOperationsManageScope(ctx.user,input.teamId);return deps.claim({tenantId:scope.tenantId,pendingId:input.pendingId,actorUserId:ctx.user.id,expectedVersion:input.expectedVersion});
+    claim: protectedProcedure.input(z.object({ pendingId: z.number().int().positive(), teamId: z.number().int().positive().optional(), expectedVersion: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
+      const scope = await resolveWorkShiftOperationsManageScope(ctx.user, input.teamId, activeTenantId);
+      return deps.claim({ tenantId: scope.tenantId, pendingId: input.pendingId, actorUserId: ctx.user.id, expectedVersion: input.expectedVersion });
     }),
-    setStatus: protectedProcedure.input(z.object({ pendingId:z.number().int().positive(), teamId:z.number().int().positive().optional(), expectedVersion:z.number().int().positive(), status:pendingStatus, justification:z.string().trim().min(3).max(2000).optional() })).mutation(async ({ctx,input}) => {
-      const scope=await resolveWorkShiftOperationsManageScope(ctx.user,input.teamId);return deps.setStatus({tenantId:scope.tenantId,pendingId:input.pendingId,actorUserId:ctx.user.id,expectedVersion:input.expectedVersion,status:input.status,justification:input.justification});
+    setStatus: protectedProcedure.input(z.object({ pendingId: z.number().int().positive(), teamId: z.number().int().positive().optional(), expectedVersion: z.number().int().positive(), status: pendingStatus, justification: z.string().trim().min(3).max(2000).optional() })).mutation(async ({ ctx, input }) => {
+      const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
+      const scope = await resolveWorkShiftOperationsManageScope(ctx.user, input.teamId, activeTenantId);
+      return deps.setStatus({ tenantId: scope.tenantId, pendingId: input.pendingId, actorUserId: ctx.user.id, expectedVersion: input.expectedVersion, status: input.status, justification: input.justification });
     }),
-    resolve: protectedProcedure.input(z.object({ pendingId:z.number().int().positive(), teamId:z.number().int().positive().optional(), expectedVersion:z.number().int().positive(), resolution:z.enum(["resolved","no_adjustment_required"]), justification:z.string().trim().min(3).max(2000), adjustment:z.unknown().optional() })).mutation(async ({ctx,input}) => {
-      const scope=await resolveWorkShiftOperationsManageScope(ctx.user,input.teamId);return deps.resolve({tenantId:scope.tenantId,pendingId:input.pendingId,actorUserId:ctx.user.id,expectedVersion:input.expectedVersion,resolution:input.resolution,justification:input.justification,adjustment:input.adjustment});
+    resolve: protectedProcedure.input(z.object({ pendingId: z.number().int().positive(), teamId: z.number().int().positive().optional(), expectedVersion: z.number().int().positive(), resolution: z.enum(["resolved", "no_adjustment_required"]), justification: z.string().trim().min(3).max(2000), adjustment: z.unknown().optional() })).mutation(async ({ ctx, input }) => {
+      const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
+      const scope = await resolveWorkShiftOperationsManageScope(ctx.user, input.teamId, activeTenantId);
+      return deps.resolve({ tenantId: scope.tenantId, pendingId: input.pendingId, actorUserId: ctx.user.id, expectedVersion: input.expectedVersion, resolution: input.resolution, justification: input.justification, adjustment: input.adjustment });
     }),
     slaPolicies: router({
-      list: protectedProcedure.input(z.object({ teamId:z.number().int().positive().optional() })).query(async ({ctx,input}) => {
-        const scope=await resolveWorkShiftOperationsViewScope(ctx.user,input.teamId);return deps.listSlaPolicies({tenantId:scope.tenantId});
+      list: protectedProcedure.input(z.object({ teamId: z.number().int().positive().optional() })).query(async ({ ctx, input }) => {
+        const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
+        const scope = await resolveWorkShiftOperationsViewScope(ctx.user, input.teamId, activeTenantId);
+        return deps.listSlaPolicies({ tenantId: scope.tenantId });
       }),
-      upsert: protectedProcedure.input(z.object({ teamId:z.number().int().positive().optional(), anomalyType:z.string().trim().min(2).max(48).optional(), severity:anomalySeverity.optional(), warningAfterMinutes:z.number().int().nonnegative().optional(), criticalAfterMinutes:z.number().int().positive(), escalationAfterMinutes:z.number().int().nonnegative().optional() })).mutation(async ({ctx,input}) => {
-        const scope=await resolveWorkShiftOperationsManageScope(ctx.user,input.teamId);const {teamId: _teamId,...policy}=input;return deps.upsertSlaPolicy({tenantId:scope.tenantId,actorUserId:ctx.user.id,...policy});
+      upsert: protectedProcedure.input(z.object({ teamId: z.number().int().positive().optional(), anomalyType: z.string().trim().min(2).max(48).optional(), severity: anomalySeverity.optional(), warningAfterMinutes: z.number().int().nonnegative().optional(), criticalAfterMinutes: z.number().int().positive(), escalationAfterMinutes: z.number().int().nonnegative().optional() })).mutation(async ({ ctx, input }) => {
+        const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
+        const scope = await resolveWorkShiftOperationsManageScope(ctx.user, input.teamId, activeTenantId);
+        const { teamId: _teamId, ...policy } = input;
+        return deps.upsertSlaPolicy({ tenantId: scope.tenantId, actorUserId: ctx.user.id, ...policy });
       }),
     }),
   });
