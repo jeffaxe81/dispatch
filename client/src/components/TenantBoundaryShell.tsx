@@ -1,3 +1,4 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Building2 } from "lucide-react";
 import { useEffect } from "react";
@@ -5,7 +6,12 @@ import { useEffect } from "react";
 const ACTIVE_ORGANIZATION_STORAGE_KEY = "dispatch.activeOrganizationId";
 
 export function TenantBoundaryShell({ children }: { children: React.ReactNode }) {
-  const selection = trpc.tenant.selection.useQuery(undefined, { retry: false, staleTime: 30_000 });
+  const { user, loading: authLoading } = useAuth();
+  const selection = trpc.tenant.selection.useQuery(undefined, {
+    enabled: Boolean(user),
+    retry: false,
+    staleTime: 30_000,
+  });
   const data = selection.data;
 
   useEffect(() => {
@@ -21,7 +27,30 @@ export function TenantBoundaryShell({ children }: { children: React.ReactNode })
     window.location.reload();
   };
 
-  if (selection.isLoading) return <>{children}</>;
+  if (authLoading || !user) return <>{children}</>;
+
+  if (selection.isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600 shadow-sm">
+          <Building2 className="h-5 w-5 text-sky-700" aria-hidden="true" />
+          Validando empresa ativa…
+        </div>
+      </div>
+    );
+  }
+
+  if (selection.isError) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-lg">
+          <h1 className="text-lg font-semibold text-slate-950">Não foi possível validar a empresa ativa</h1>
+          <p className="mt-2 text-sm text-slate-600">{selection.error.message}</p>
+          <button type="button" className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white" onClick={() => selection.refetch()}>Tentar novamente</button>
+        </div>
+      </div>
+    );
+  }
 
   if (data?.requiresSelection && data.organizations.length > 1) {
     return (
