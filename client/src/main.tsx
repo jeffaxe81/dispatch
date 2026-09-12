@@ -8,6 +8,7 @@ import App from "./App";
 import "./index.css";
 
 const queryClient = new QueryClient();
+export const ACTIVE_ORGANIZATION_STORAGE_KEY = "dispatch.activeOrganizationId";
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
@@ -41,6 +42,11 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      headers() {
+        if (typeof window === "undefined") return {};
+        const activeOrganizationId = window.localStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+        return activeOrganizationId ? { "x-organization-id": activeOrganizationId } : {};
+      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),
