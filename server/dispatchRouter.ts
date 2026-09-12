@@ -1,10 +1,10 @@
 import type { RouteProvider } from "@shared/gis";
 import { z } from "zod";
 import type { DispatchTeamEligibility } from "../shared/dispatchEligibility";
+import type { TrpcContext } from "./_core/context";
 import { protectedProcedure, router } from "./_core/trpc";
 import { assertPermission, assertTeamScope } from "./accessControl";
 import { rankTeamCandidates, type CandidateTeamPoint } from "./gisService";
-import { assertTeamTenant, requireActiveTenant } from "./tenantOperational";
 
 const geoPointInput = z.object({
   latitude: z.number().finite().min(-90).max(90),
@@ -27,6 +27,8 @@ const rankEligibleCandidatesInput = z.object({
 export type DispatchRouterDependencies = {
   now(): Date;
   routeProvider: RouteProvider;
+  resolveActiveTenant(user: TrpcContext["user"], req: TrpcContext["req"]): Promise<number>;
+  assertTeamTenant(tenantId: number, teamId: number): Promise<unknown>;
   evaluateCandidates(
     candidates: CandidateTeamPoint[],
     instant: Date,
@@ -43,10 +45,10 @@ export function createDispatchRouter(deps: DispatchRouterDependencies) {
       .input(rankEligibleCandidatesInput)
       .query(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "dispatch.view");
-        const tenantId = await requireActiveTenant(ctx.user, ctx.req);
+        const tenantId = await deps.resolveActiveTenant(ctx.user, ctx.req);
 
         for (const candidate of input.candidates) {
-          await assertTeamTenant(tenantId, candidate.teamId);
+          await deps.assertTeamTenant(tenantId, candidate.teamId);
           await assertTeamScope(ctx.user, candidate.teamId, "dispatch.view", tenantId);
         }
 
