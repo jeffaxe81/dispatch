@@ -5,6 +5,7 @@ import { teams } from "../../drizzle/schema";
 import { workspaceWidgetTypes, type WorkspaceWidgetType } from "@shared/workspaceLayout";
 import { getEffectiveAccess } from "../accessControl";
 import { getDb } from "../db";
+import { requireActiveTenant } from "../tenantOperational";
 import type { WorkspaceAccessContext } from "./workspaceLayoutService";
 
 type WorkspaceUser = NonNullable<TrpcContext["user"]>;
@@ -21,6 +22,7 @@ type WorkspaceEffectiveAccess = {
 export type WorkspaceAccessContextDependencies = {
   findTeamOrganizationId(teamId: number): Promise<number | null | undefined>;
   getEffectiveAccess(user: WorkspaceUser): Promise<WorkspaceEffectiveAccess>;
+  resolveActiveTenant?(user: WorkspaceUser, req: TrpcContext["req"]): Promise<number>;
 };
 
 const requiredPermissionByWidget: Record<WorkspaceWidgetType, string> = {
@@ -69,13 +71,14 @@ function authorizedOrganizationIds(assignments: WorkspaceAssignment[]) {
 const defaultDependencies: WorkspaceAccessContextDependencies = {
   findTeamOrganizationId,
   getEffectiveAccess: user => getEffectiveAccess(user),
+  resolveActiveTenant: requireActiveTenant,
 };
 
 export function createWorkspaceAccessContextResolver(
   dependencies: WorkspaceAccessContextDependencies = defaultDependencies,
 ) {
   return async function resolveWorkspaceAccessContext(
-    ctx: Pick<TrpcContext, "user">,
+    ctx: Pick<TrpcContext, "user"> & Partial<Pick<TrpcContext, "req">>,
   ): Promise<WorkspaceAccessContext> {
     const user = ctx.user;
     if (!user) throw new TRPCError({ code: "UNAUTHORIZED", message: "Autenticação obrigatória para acessar o workspace." });
@@ -84,7 +87,9 @@ export function createWorkspaceAccessContextResolver(
     const access = await dependencies.getEffectiveAccess(user);
     let tenantId: number;
 
-    if (user.teamId) {
+    if (dependencies.resolveActiveTenant && ctx.req) {
+      tenantId = await dependencies.resolveActiveTenant(user, ctx.req);
+    } else if (user.teamId) {
       const organizationId = await dependencies.findTeamOrganizationId(user.teamId);
       if (!organizationId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "A equipe do usuário não possui organização/tenant válida para o workspace." });
