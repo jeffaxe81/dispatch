@@ -16,6 +16,7 @@
     "ui:coverage": "node scripts/generate-ui-route-matrix.mjs",
     "security:check": "node scripts/security-regression-check.mjs",
     "smoke:post-deploy": "node scripts/post-deploy-smoke.mjs",
+    "homologation:inventory": "node scripts/inventory-external-homologation.mjs",
     "format": "prettier --write .",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
