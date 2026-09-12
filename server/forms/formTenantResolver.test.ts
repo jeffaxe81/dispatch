@@ -19,6 +19,24 @@ describe("D-008 authenticated tenant resolution", () => {
     expect(findAuthorizedOrganizationIds).toHaveBeenCalledWith(9);
   });
 
+  it("resolve explicitamente uma organização autorizada quando o usuário possui mais de um tenant", async () => {
+    const findTeamOrganizationId = vi.fn(async () => null);
+    const findAuthorizedOrganizationIds = vi.fn(async () => [77, 88]);
+    await expect(resolveFormTenantId(
+      { userId: 9, teamId: null, selectedTenantId: 88 } as any,
+      { findTeamOrganizationId, findAuthorizedOrganizationIds } as any,
+    )).resolves.toBe(88);
+  });
+
+  it("rejeita seleção explícita de organização fora do escopo autorizado", async () => {
+    const findTeamOrganizationId = vi.fn(async () => null);
+    const findAuthorizedOrganizationIds = vi.fn(async () => [77, 88]);
+    await expect(resolveFormTenantId(
+      { userId: 9, teamId: null, selectedTenantId: 99 } as any,
+      { findTeamOrganizationId, findAuthorizedOrganizationIds } as any,
+    )).rejects.toBeInstanceOf(FormTenantResolutionError);
+  });
+
   it("falha fechado quando usuário sem equipe não possui organização autorizada", async () => {
     const findTeamOrganizationId = vi.fn(async () => null);
     const findAuthorizedOrganizationIds = vi.fn(async () => []);
