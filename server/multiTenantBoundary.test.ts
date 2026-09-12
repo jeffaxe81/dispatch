@@ -12,6 +12,7 @@ const dispatchRouter = read("server/dispatchRouter.ts");
 const dispatchRuntime = read("server/dispatchRuntime.ts");
 const formsRuntime = read("server/forms/formsRuntimeContext.ts");
 const tenantOperational = read("server/tenantOperational.ts");
+const tenantExternalReview = read("server/tenantExternalReview.ts");
 const tenantSchema = read("drizzle/tenantScopeSchema.ts");
 const tenantMigration = read("drizzle/0008_multi_tenant_operational_scope.sql");
 const clientMain = read("client/src/main.tsx");
@@ -41,6 +42,13 @@ describe("fronteira multi-tenant do núcleo operacional", () => {
     expect(dispatchRuntime).toContain("assertTeamTenant");
     expect(formsRuntime).toContain("getIncidentForTenant");
     expect(formsRuntime).toContain("x-organization-id");
+  });
+
+  it("vincula ocorrências confirmadas por integração à empresa ativa", () => {
+    expect(typedTenantRouter).toContain("confirmExternalIncidentReviewForTenant");
+    expect(typedTenantRouter).toContain("requireActiveTenant");
+    expect(tenantExternalReview).toContain("incidentTenantScopes");
+    expect(tenantExternalReview).toContain("organizationId: input.tenantId");
   });
 
   it("faz backfill apenas quando a organização pode ser determinada", () => {
