@@ -11,12 +11,13 @@ const job = workflow.jobs?.homologation;
 const steps = job?.steps ?? [];
 
 describe("workflow manual de homologação externa do Inventário", () => {
-  it("existe, é manual e usa o environment homologation", () => {
+  it("existe, é manual, usa homologation e só executa a partir da main", () => {
     expect(fs.existsSync(workflowPath), "Crie .github/workflows/inventory-external-homologation.yml").toBe(true);
     expect(workflow.name).toBe("Inventory external homologation");
     expect(workflow.on).toEqual({ workflow_dispatch: {} });
     expect(workflow.permissions).toEqual({ contents: "read" });
     expect(job?.environment).toBe("homologation");
+    expect(job?.if).toBe("github.ref == 'refs/heads/main'");
     expect(job?.["runs-on"]).toBe("ubuntu-latest");
     expect(job?.["timeout-minutes"]).toBe(15);
   });
