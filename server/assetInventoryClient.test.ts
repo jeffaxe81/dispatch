@@ -27,4 +27,12 @@ describe("M13 AssetInventoryClient",()=>{
     expect(linked.id).toBe("ref-1");
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it("queries the asset location through the versioned REST contract",async()=>{
+    const fetcher=vi.fn(async()=>new Response(JSON.stringify({tenantId:"tenant-a",assetId:"asset-1",latitude:-27.59,longitude:-48.55,source:"field"}),{status:200,headers:{"content-type":"application/json"}}));
+    const client=createAssetInventoryClient({baseUrl:"http://motor:3000",fetcher,timeoutMs:1000});
+    const location=await client.getLocation(identity,"asset-1");
+    expect(location).toMatchObject({assetId:"asset-1",latitude:-27.59,longitude:-48.55});
+    expect(String(fetcher.mock.calls[0]![0])).toBe("http://motor:3000/api/v1/assets/asset-1/location");
+  });
 });
