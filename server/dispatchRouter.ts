@@ -24,10 +24,12 @@ const rankEligibleCandidatesInput = z.object({
   candidates: z.array(candidateInput).max(500),
 });
 
+type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
+
 export type DispatchRouterDependencies = {
   now(): Date;
   routeProvider: RouteProvider;
-  resolveActiveTenant(user: TrpcContext["user"], req: TrpcContext["req"]): Promise<number>;
+  resolveActiveTenant(user: AuthenticatedUser, req: TrpcContext["req"]): Promise<number>;
   assertTeamTenant(tenantId: number, teamId: number): Promise<unknown>;
   evaluateCandidates(
     candidates: CandidateTeamPoint[],
