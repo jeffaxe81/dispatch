@@ -47,7 +47,8 @@ export function resolveEffectivePermissions(input: { active: boolean; operationa
   return Array.from(legacyPermissions[input.operationalRole] ?? []);
 }
 
-export function evaluateTeamScope(assignments: AccessAssignment[], team: { organizationId: number | null; organizationalUnitId: number | null; id: number }) {
+export function evaluateTeamScope(assignments: AccessAssignment[], team: { organizationId: number | null; organizationalUnitId: number | null; id: number }, activeOrganizationId?: number | null) {
+  if (activeOrganizationId !== undefined && activeOrganizationId !== null && team.organizationId !== activeOrganizationId) return false;
   return assignments.some(assignment => {
     if (assignment.defaultScope === "global") return true;
     if (assignment.teamId === team.id) return true;
@@ -110,10 +111,10 @@ export async function assertPermission(user: CurrentUser, permission: Permission
   }
 }
 
-export async function assertTeamScope(user: CurrentUser, teamId: number, permission: PermissionCode) {
+export async function assertTeamScope(user: CurrentUser, teamId: number, permission: PermissionCode, activeOrganizationId?: number | null) {
   await assertPermission(user, permission);
   const snapshot = await getAccessSnapshot(user.id);
-  if (snapshot.assignments.length === 0) {
+  if (snapshot.assignments.length === 0 && activeOrganizationId === undefined) {
     if (user.operationalRole === "agente" && user.teamId !== teamId) throw new TRPCError({ code: "FORBIDDEN", message: "Ação permitida apenas no escopo da equipe vinculada." });
     return;
   }
@@ -121,7 +122,14 @@ export async function assertTeamScope(user: CurrentUser, teamId: number, permiss
   if (!db) throw new Error("Banco de dados indisponível.");
   const team = (await db.select({ id: teams.id, organizationId: teams.organizationId, organizationalUnitId: teams.organizationalUnitId }).from(teams).where(eq(teams.id, teamId)).limit(1))[0];
   if (!team) throw new TRPCError({ code: "NOT_FOUND", message: "Equipe não encontrada." });
-  if (evaluateTeamScope(snapshot.assignments, team)) return;
+  if (activeOrganizationId !== undefined && activeOrganizationId !== null && team.organizationId !== activeOrganizationId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A equipe selecionada pertence a outra organização/tenant." });
+  }
+  if (snapshot.assignments.length === 0) {
+    if (user.operationalRole === "agente" && user.teamId !== teamId) throw new TRPCError({ code: "FORBIDDEN", message: "Ação permitida apenas no escopo da equipe vinculada." });
+    return;
+  }
+  if (evaluateTeamScope(snapshot.assignments, team, activeOrganizationId)) return;
   throw new TRPCError({ code: "FORBIDDEN", message: "O papel não possui escopo para a equipe selecionada." });
 }
 
