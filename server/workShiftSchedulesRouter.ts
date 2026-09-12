@@ -12,9 +12,11 @@ const exceptionInput = z.object({ assignmentId: z.number().int().positive(), exc
 const resolveForUserInput = z.object({ userId: z.number().int().positive(), instant: z.date() });
 const coverageInput = z.object({ from: z.date(), until: z.date(), organizationId: z.number().int().positive().optional(), organizationalUnitId: z.number().int().positive().optional(), teamId: z.number().int().positive().optional() });
 
+type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
+
 export type WorkShiftSchedulesRouterDependencies = {
-  resolveActiveTenant(user: TrpcContext["user"], req: TrpcContext["req"]): Promise<number>;
-  resolveActor(user: NonNullable<Parameters<typeof assertPermission>[0]>): Promise<WorkShiftScheduleActor>;
+  resolveActiveTenant(user: AuthenticatedUser, req: TrpcContext["req"]): Promise<number>;
+  resolveActor(user: AuthenticatedUser): Promise<WorkShiftScheduleActor>;
   listSchedules(input: z.infer<typeof scheduleScopeInput>, actor: WorkShiftScheduleActor): Promise<unknown>;
   createSchedule(input: z.infer<typeof createScheduleInput>, actor: WorkShiftScheduleActor): Promise<unknown>;
   assignSchedule(input: z.infer<typeof assignmentInput>, actor: WorkShiftScheduleActor): Promise<unknown>;
@@ -24,7 +26,7 @@ export type WorkShiftSchedulesRouterDependencies = {
 };
 
 export function createWorkShiftSchedulesRouter(deps: WorkShiftSchedulesRouterDependencies) {
-  async function actorFor(ctx: { user: TrpcContext["user"]; req: TrpcContext["req"] }, permission: "work_shift_schedules.view" | "work_shift_schedules.manage") {
+  async function actorFor(ctx: { user: AuthenticatedUser; req: TrpcContext["req"] }, permission: "work_shift_schedules.view" | "work_shift_schedules.manage") {
     await assertPermission(ctx.user, permission);
     const activeTenantId = await deps.resolveActiveTenant(ctx.user, ctx.req);
     const actor = await deps.resolveActor(ctx.user);
