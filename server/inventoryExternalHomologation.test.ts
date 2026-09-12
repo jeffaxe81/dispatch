@@ -25,6 +25,7 @@ describe("inventory external homologation harness", () => {
   it("valida fluxo feliz, tenant isolation, replay e fail-closed", async () => {
     const { runInventoryExternalHomologation } = await loadHarness();
     const calls: Array<{ url?: string; tenant?: string | string[]; correlation?: string | string[] }> = [];
+    const seenEventIds = new Set<string>();
 
     await withServer((req, res) => {
       calls.push({ url: req.url, tenant: req.headers["x-tenant-id"], correlation: req.headers["x-correlation-id"] });
@@ -36,11 +37,11 @@ describe("inventory external homologation harness", () => {
       }
       if (req.url === "/api/v1/assets/asset-1" && req.method === "GET") {
         if (req.headers["x-tenant-id"] === "tenant-b") {
-          res.statusCode = 404;
-          res.end(JSON.stringify({ code: "not_found" }));
+          res.statusCode = 401;
+          res.end(JSON.stringify({ code: "unauthorized" }));
           return;
         }
-        res.end(JSON.stringify({ id: "asset-1", code: "PST-001", status: "ativo" }));
+        res.end(JSON.stringify({ id: "asset-1", code: "PST-001", status: "ativo", version: 7 }));
         return;
       }
       if (req.url === "/api/v1/assets/asset-1/location" && req.method === "GET") {
@@ -61,7 +62,9 @@ describe("inventory external homologation harness", () => {
             res.end(JSON.stringify({ code: "asset_event.unsupported_version" }));
             return;
           }
-          res.end(JSON.stringify({ status: event.replay ? "duplicate" : "processed", eventId: event.eventId }));
+          const duplicate = seenEventIds.has(event.eventId);
+          seenEventIds.add(event.eventId);
+          res.end(JSON.stringify({ status: duplicate ? "duplicate" : "processed", eventId: event.eventId }));
         });
         return;
       }
