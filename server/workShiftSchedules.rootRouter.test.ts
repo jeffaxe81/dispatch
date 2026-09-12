@@ -3,12 +3,8 @@ import type { TrpcContext } from "./_core/context";
 
 const mocks = vi.hoisted(() => ({
   assertPermission: vi.fn(async () => undefined),
-  resolveActor: vi.fn(async () => ({
-    userId: 7,
-    organizationId: 10,
-    organizationalUnitId: 20,
-    permissions: ["work_shift_schedules.view", "work_shift_schedules.manage"],
-  })),
+  resolveActiveTenant: vi.fn(async () => 10),
+  resolveActor: vi.fn(async () => ({ userId: 7, organizationId: 10, organizationalUnitId: 20, permissions: ["work_shift_schedules.view", "work_shift_schedules.manage"] })),
   listSchedules: vi.fn(async () => [{ id: 100, code: "12X36-CENTRAL" }]),
   createSchedule: vi.fn(),
   assignSchedule: vi.fn(),
@@ -24,6 +20,7 @@ vi.mock("./accessControl", async importOriginal => ({
 
 vi.mock("./workShiftSchedulesRuntime", () => ({
   workShiftSchedulesRouterDependencies: {
+    resolveActiveTenant: mocks.resolveActiveTenant,
     resolveActor: mocks.resolveActor,
     listSchedules: mocks.listSchedules,
     createSchedule: mocks.createSchedule,
@@ -52,7 +49,7 @@ function context(): TrpcContext {
       updatedAt: new Date(),
       lastSignedIn: new Date(),
     },
-    req: { headers: {}, protocol: "https" } as TrpcContext["req"],
+    req: { headers: { "x-organization-id": "10" }, protocol: "https" } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };
 }
@@ -60,10 +57,9 @@ function context(): TrpcContext {
 describe("application root router with D-007B", () => {
   it("expõe workShiftSchedules sem remover as rotas existentes", async () => {
     const caller = rootRouter.createCaller(context());
-
     const schedules = await caller.workShiftSchedules.list({ organizationId: 10, organizationalUnitId: 20 });
-
     expect(schedules).toEqual([{ id: 100, code: "12X36-CENTRAL" }]);
+    expect(mocks.resolveActiveTenant).toHaveBeenCalled();
     expect(mocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shift_schedules.view");
     expect(caller.workShifts).toBeDefined();
     expect(caller.dashboard).toBeDefined();

@@ -33,7 +33,7 @@ function context(active = true): TrpcContext {
       updatedAt: new Date(),
       lastSignedIn: new Date(),
     },
-    req: { headers: {}, protocol: "https" } as TrpcContext["req"],
+    req: { headers: { "x-organization-id": "10" }, protocol: "https" } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };
 }
@@ -61,6 +61,8 @@ function makeDeps() {
   return {
     now: vi.fn(() => instant),
     routeProvider,
+    resolveActiveTenant: vi.fn(async () => 10),
+    assertTeamTenant: vi.fn(async () => undefined),
     evaluateCandidates: vi.fn(async (candidates: CandidateTeamPoint[], evaluatedAt: Date) => ({
       eligibleCandidates: candidates.filter(item => item.teamId === 10),
       ineligibleCandidates: candidates.filter(item => item.teamId !== 10).map(item => ({
@@ -87,6 +89,8 @@ describe("D-007C dispatch router", () => {
     await caller.rankEligibleCandidates({ incident, candidates });
 
     expect(accessMocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7, active: true }), "dispatch.view");
+    expect(deps.resolveActiveTenant).toHaveBeenCalled();
+    expect(deps.assertTeamTenant).toHaveBeenCalledWith(10, 10);
   });
 
   it("rejeita equipe fora do escopo antes da elegibilidade e do GIS", async () => {
@@ -108,6 +112,7 @@ describe("D-007C dispatch router", () => {
     const result = await caller.rankEligibleCandidates({ incident, candidates });
 
     expect(accessMocks.assertTeamScope).toHaveBeenCalledTimes(2);
+    expect(deps.assertTeamTenant).toHaveBeenCalledTimes(2);
     expect(deps.evaluateCandidates).toHaveBeenCalledWith(candidates, instant);
     expect(deps.routeProvider.calculateRoute).toHaveBeenCalledTimes(1);
     expect(deps.routeProvider.calculateRoute).toHaveBeenCalledWith(expect.objectContaining({ origin: candidates[0].position, destination: incident }));

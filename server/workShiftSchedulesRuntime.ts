@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { workShiftSchedules } from "../drizzle/workShiftSchema";
 import { getEffectiveAccess } from "./accessControl";
 import { getDb } from "./db";
+import { requireActiveTenant } from "./tenantOperational";
 import { loadWorkShiftCoverageData } from "./workShiftCoverageDb";
 import { listWorkShiftCoverage } from "./workShiftCoverageService";
 import { createWorkShiftScheduleDbStore } from "./workShiftScheduleDbStore";
@@ -57,6 +58,7 @@ async function resolveActor(user: Parameters<typeof getEffectiveAccess>[0]): Pro
 }
 
 export const workShiftSchedulesRouterDependencies: WorkShiftSchedulesRouterDependencies = {
+  resolveActiveTenant: requireActiveTenant,
   resolveActor,
 
   async listSchedules(input, actor) {

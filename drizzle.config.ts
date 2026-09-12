@@ -6,7 +6,7 @@ if (!connectionString) {
 }
 
 export default defineConfig({
-  schema: ["./drizzle/schema.ts", "./drizzle/workShiftSchema.ts", "./drizzle/workspaceLayoutSchema.ts"],
+  schema: ["./drizzle/schema.ts", "./drizzle/tenantScopeSchema.ts", "./drizzle/workShiftSchema.ts", "./drizzle/workspaceLayoutSchema.ts"],
   out: "./drizzle",
   dialect: "mysql",
   dbCredentials: {

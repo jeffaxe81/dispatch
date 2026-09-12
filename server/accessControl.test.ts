@@ -56,6 +56,14 @@ describe("decisão de permissões RBAC", () => {
     expect(evaluateTeamScope([{ roleCode: "agente_campo", defaultScope: "equipe", organizationId: null, organizationalUnitId: null, teamId: 8 }], team)).toBe(false);
   });
 
+  it("não permite que escopo global atravesse a empresa ativa", () => {
+    const globalAssignment = [{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }] as const;
+    const sameTenantTeam = { id: 7, organizationId: 10, organizationalUnitId: 20 };
+    const otherTenantTeam = { id: 8, organizationId: 11, organizationalUnitId: 21 };
+    expect((evaluateTeamScope as any)(globalAssignment, sameTenantTeam, 10)).toBe(true);
+    expect((evaluateTeamScope as any)(globalAssignment, otherTenantTeam, 10)).toBe(false);
+  });
+
   it("exige filtro de equipe para papéis dinâmicos sem escopo global", () => {
     expect(requiresExplicitTeamSelection([{ roleCode: "gestor", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: null, teamId: null }])).toBe(true);
     expect(requiresExplicitTeamSelection([{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }])).toBe(false);

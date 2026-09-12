@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { TenantBoundaryShell } from "@/components/TenantBoundaryShell";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
@@ -8,6 +9,7 @@ import App from "./App";
 import "./index.css";
 
 const queryClient = new QueryClient();
+export const ACTIVE_ORGANIZATION_STORAGE_KEY = "dispatch.activeOrganizationId";
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
@@ -41,6 +43,11 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      headers() {
+        if (typeof window === "undefined") return {};
+        const activeOrganizationId = window.localStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+        return activeOrganizationId ? { "x-organization-id": activeOrganizationId } : {};
+      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),
@@ -54,7 +61,9 @@ const trpcClient = trpc.createClient({
 createRoot(document.getElementById("root")!).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <TenantBoundaryShell>
+        <App />
+      </TenantBoundaryShell>
     </QueryClientProvider>
   </trpc.Provider>
 );

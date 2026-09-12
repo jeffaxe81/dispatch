@@ -28,7 +28,7 @@ function context(): TrpcContext {
       updatedAt: new Date(),
       lastSignedIn: new Date(),
     },
-    req: { headers: {}, protocol: "https" } as TrpcContext["req"],
+    req: { headers: { "x-organization-id": "10" }, protocol: "https" } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };
 }
@@ -42,6 +42,7 @@ const actor = {
 
 function makeDeps() {
   return {
+    resolveActiveTenant: vi.fn(async () => 10),
     resolveActor: vi.fn(async () => actor),
     listSchedules: vi.fn(async () => []),
     createSchedule: vi.fn(async (input: unknown) => ({ id: 100, ...(input as object) })),
@@ -62,6 +63,7 @@ describe("workShiftSchedules router", () => {
     await caller.list({ organizationId: 10, organizationalUnitId: 20 });
 
     expect(accessMocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shift_schedules.view");
+    expect(deps.resolveActiveTenant).toHaveBeenCalled();
     expect(deps.resolveActor).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
     expect(deps.listSchedules).toHaveBeenCalledWith({ organizationId: 10, organizationalUnitId: 20 }, actor);
   });
@@ -69,26 +71,8 @@ describe("workShiftSchedules router", () => {
   it("protege create com work_shift_schedules.manage", async () => {
     const deps = makeDeps();
     const caller = createWorkShiftSchedulesRouter(deps).createCaller(context());
-    const input = {
-      code: "12X36-CENTRAL",
-      name: "12x36 Central",
-      organizationId: 10,
-      organizationalUnitId: 20,
-      scheduleType: "cyclic_12x36" as const,
-      timezone: "America/Sao_Paulo",
-      startTimeLocal: "08:00",
-      weekdays: null,
-      plannedDurationMinutes: 720,
-      breakPolicyMinutes: 60,
-      cycleAnchorAt: new Date("2026-09-04T11:00:00.000Z"),
-      cycleWorkMinutes: 720,
-      cycleRestMinutes: 2160,
-      effectiveFrom: new Date("2026-09-04T00:00:00.000Z"),
-      effectiveUntil: null,
-    };
-
+    const input = { code: "12X36-CENTRAL", name: "12x36 Central", organizationId: 10, organizationalUnitId: 20, scheduleType: "cyclic_12x36" as const, timezone: "America/Sao_Paulo", startTimeLocal: "08:00", weekdays: null, plannedDurationMinutes: 720, breakPolicyMinutes: 60, cycleAnchorAt: new Date("2026-09-04T11:00:00.000Z"), cycleWorkMinutes: 720, cycleRestMinutes: 2160, effectiveFrom: new Date("2026-09-04T00:00:00.000Z"), effectiveUntil: null };
     await caller.create(input);
-
     expect(accessMocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shift_schedules.manage");
     expect(deps.createSchedule).toHaveBeenCalledWith(input, actor);
   });
@@ -96,16 +80,8 @@ describe("workShiftSchedules router", () => {
   it("protege assign com manage e não aceita identidade do ator pelo payload", async () => {
     const deps = makeDeps();
     const caller = createWorkShiftSchedulesRouter(deps).createCaller(context());
-    const input = {
-      scheduleId: 100,
-      userId: 33,
-      teamId: 3,
-      effectiveFrom: new Date("2026-09-05T00:00:00.000Z"),
-      effectiveUntil: null,
-    };
-
+    const input = { scheduleId: 100, userId: 33, teamId: 3, effectiveFrom: new Date("2026-09-05T00:00:00.000Z"), effectiveUntil: null };
     await caller.assign(input);
-
     expect(accessMocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shift_schedules.manage");
     expect(deps.assignSchedule).toHaveBeenCalledWith(input, actor);
   });
@@ -113,16 +89,8 @@ describe("workShiftSchedules router", () => {
   it("protege addException com manage e usa o usuário autenticado como ator", async () => {
     const deps = makeDeps();
     const caller = createWorkShiftSchedulesRouter(deps).createCaller(context());
-    const input = {
-      assignmentId: 200,
-      exceptionType: "day_off" as const,
-      startsAt: new Date("2026-09-06T00:00:00.000Z"),
-      endsAt: new Date("2026-09-07T00:00:00.000Z"),
-      reason: "Folga excepcional",
-    };
-
+    const input = { assignmentId: 200, exceptionType: "day_off" as const, startsAt: new Date("2026-09-06T00:00:00.000Z"), endsAt: new Date("2026-09-07T00:00:00.000Z"), reason: "Folga excepcional" };
     await caller.addException(input);
-
     expect(accessMocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shift_schedules.manage");
     expect(deps.addException).toHaveBeenCalledWith(input, actor);
   });
@@ -131,9 +99,7 @@ describe("workShiftSchedules router", () => {
     const deps = makeDeps();
     const caller = createWorkShiftSchedulesRouter(deps).createCaller(context());
     const instant = new Date("2026-09-04T14:00:00.000Z");
-
     await caller.resolveForUser({ userId: 33, instant });
-
     expect(accessMocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shift_schedules.view");
     expect(deps.resolveForUser).toHaveBeenCalledWith({ userId: 33, instant }, actor);
   });
@@ -141,16 +107,8 @@ describe("workShiftSchedules router", () => {
   it("protege coverage com view e mantém filtros explícitos de escopo", async () => {
     const deps = makeDeps();
     const caller = createWorkShiftSchedulesRouter(deps).createCaller(context());
-    const input = {
-      from: new Date("2026-09-04T00:00:00.000Z"),
-      until: new Date("2026-09-05T00:00:00.000Z"),
-      organizationId: 10,
-      organizationalUnitId: 20,
-      teamId: 3,
-    };
-
+    const input = { from: new Date("2026-09-04T00:00:00.000Z"), until: new Date("2026-09-05T00:00:00.000Z"), organizationId: 10, organizationalUnitId: 20, teamId: 3 };
     await caller.coverage(input);
-
     expect(accessMocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "work_shift_schedules.view");
     expect(deps.coverage).toHaveBeenCalledWith(input, actor);
   });

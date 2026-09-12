@@ -3,7 +3,7 @@ import { createDispatchRouter } from "./dispatchRouter";
 import { dispatchRouterDependencies } from "./dispatchRuntime";
 import { createFormsTrpcRouter } from "./forms/formsTrpcRouter";
 import { formsRuntimeContextFactory } from "./forms/formsRuntimeContext";
-import { appRouter } from "./routers";
+import { typedTenantAwareAppRouter } from "./typedTenantAwareAppRouter";
 import { createWorkspaceRouter } from "./routers/workspace";
 import { createWorkShiftSchedulesRouter } from "./workShiftSchedulesRouter";
 import { workShiftSchedulesRouterDependencies } from "./workShiftSchedulesRuntime";
@@ -32,7 +32,7 @@ const workspaceRoot = router({
 });
 
 export const rootRouter = mergeRouters(
-  appRouter,
+  typedTenantAwareAppRouter,
   workShiftSchedulesRoot,
   dispatchRoot,
   workShiftOperationsRoot,
