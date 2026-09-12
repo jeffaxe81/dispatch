@@ -6,8 +6,10 @@ const root = path.resolve(import.meta.dirname, "..");
 const read = (file: string) => fs.existsSync(path.join(root, file)) ? fs.readFileSync(path.join(root, file), "utf8") : "";
 
 const rootRouter = read("server/rootRouter.ts");
+const typedTenantRouter = read("server/typedTenantAwareAppRouter.ts");
 const tenantRouter = read("server/tenantAwareAppRouter.ts");
 const dispatchRouter = read("server/dispatchRouter.ts");
+const dispatchRuntime = read("server/dispatchRuntime.ts");
 const formsRuntime = read("server/forms/formsRuntimeContext.ts");
 const tenantOperational = read("server/tenantOperational.ts");
 const tenantSchema = read("drizzle/tenantScopeSchema.ts");
@@ -26,14 +28,17 @@ describe("fronteira multi-tenant do núcleo operacional", () => {
   });
 
   it("ativa o router tenant-aware no root e protege os fluxos operacionais", () => {
-    expect(rootRouter).toContain("tenantAwareAppRouter");
+    expect(rootRouter).toContain("typedTenantAwareAppRouter");
+    expect(typedTenantRouter).toContain("runtimeTenantAwareAppRouter");
     expect(tenantRouter).toContain("requireActiveTenant");
     expect(tenantRouter).toContain("getDashboardDataForTenant");
     expect(tenantRouter).toContain("listIncidentsForTenant");
     expect(tenantRouter).toContain("listTeamsForTenant");
     expect(tenantRouter).toContain("listVehiclesForTenant");
-    expect(dispatchRouter).toContain("requireActiveTenant");
+    expect(dispatchRouter).toContain("resolveActiveTenant");
     expect(dispatchRouter).toContain("assertTeamTenant");
+    expect(dispatchRuntime).toContain("requireActiveTenant");
+    expect(dispatchRuntime).toContain("assertTeamTenant");
     expect(formsRuntime).toContain("getIncidentForTenant");
     expect(formsRuntime).toContain("x-organization-id");
   });
