@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { TrpcContext } from "./_core/context";
 import { assertPermission } from "./accessControl";
 import { protectedProcedure, router } from "./_core/trpc";
-import { requireActiveTenant } from "./tenantOperational";
 import type { WorkShiftScheduleActor } from "./workShiftScheduleService";
 
 const scheduleScopeInput = z.object({ organizationId: z.number().int().positive().optional(), organizationalUnitId: z.number().int().positive().optional() });
@@ -13,6 +13,7 @@ const resolveForUserInput = z.object({ userId: z.number().int().positive(), inst
 const coverageInput = z.object({ from: z.date(), until: z.date(), organizationId: z.number().int().positive().optional(), organizationalUnitId: z.number().int().positive().optional(), teamId: z.number().int().positive().optional() });
 
 export type WorkShiftSchedulesRouterDependencies = {
+  resolveActiveTenant(user: TrpcContext["user"], req: TrpcContext["req"]): Promise<number>;
   resolveActor(user: NonNullable<Parameters<typeof assertPermission>[0]>): Promise<WorkShiftScheduleActor>;
   listSchedules(input: z.infer<typeof scheduleScopeInput>, actor: WorkShiftScheduleActor): Promise<unknown>;
   createSchedule(input: z.infer<typeof createScheduleInput>, actor: WorkShiftScheduleActor): Promise<unknown>;
@@ -23,9 +24,9 @@ export type WorkShiftSchedulesRouterDependencies = {
 };
 
 export function createWorkShiftSchedulesRouter(deps: WorkShiftSchedulesRouterDependencies) {
-  async function actorFor(ctx: { user: Parameters<typeof assertPermission>[0]; req: Parameters<typeof requireActiveTenant>[1] }, permission: "work_shift_schedules.view" | "work_shift_schedules.manage") {
+  async function actorFor(ctx: { user: TrpcContext["user"]; req: TrpcContext["req"] }, permission: "work_shift_schedules.view" | "work_shift_schedules.manage") {
     await assertPermission(ctx.user, permission);
-    const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
+    const activeTenantId = await deps.resolveActiveTenant(ctx.user, ctx.req);
     const actor = await deps.resolveActor(ctx.user);
     return {
       ...actor,
