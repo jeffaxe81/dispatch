@@ -8,6 +8,7 @@ import { ensureLocalAdministrator } from "../localAuth";
 import { registerStorageProxy } from "./storageProxy";
 import { rootRouter } from "../rootRouter";
 import { alrtIngressJsonErrorHandler, registerAlrtIngressRoutes } from "../alrtIngress";
+import { registerAssetInventoryHomologationRoutes } from "../assetInventoryHomologation";
 import { createContext } from "./context";
 import { ENV, validateRuntimeEnv } from "./env";
 import { createOperationalHealthRegistry } from "./operationalHealth";
@@ -61,6 +62,11 @@ async function startServer() {
   registerAlrtIngressRoutes(app);
   app.use(express.json({ limit: "12mb" }));
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
+  registerAssetInventoryHomologationRoutes(app, {
+    enabled: ENV.assetInventoryHomologationEnabled,
+    isProduction: ENV.isProduction,
+    apiKey: ENV.assetInventoryHomologationApiKey,
+  });
   registerStorageProxy(app);
   app.use(alrtIngressJsonErrorHandler);
   // tRPC API

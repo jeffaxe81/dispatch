@@ -10,7 +10,7 @@ Executar, em ambiente de homologação, uma validação técnica reproduzível d
 corepack pnpm homologation:inventory
 ```
 
-## Variáveis obrigatórias
+## Variáveis obrigatórias do harness
 
 ```bash
 ASSET_MOTOR_BASE_URL=https://motor-hml.exemplo
@@ -21,7 +21,7 @@ HOMOLOGATION_USER_ID=usuario-hml
 HOMOLOGATION_INCIDENT_REFERENCE=INC-HML-001
 ```
 
-## Variáveis opcionais
+## Variáveis opcionais do harness
 
 ```bash
 HOMOLOGATION_AUTH_TOKEN=<token temporário de homologação>
@@ -30,6 +30,27 @@ HOMOLOGATION_REPORT_DIR=artifacts/homologation
 ```
 
 Nunca versionar tokens, segredos ou credenciais reais no repositório.
+
+## Ativação do adaptador no Despacho
+
+O endpoint `POST /homologation/events` existe somente quando o ambiente do Despacho não é produção e as duas variáveis abaixo estão configuradas:
+
+```bash
+ASSET_INVENTORY_HOMOLOGATION_ENABLED=true
+ASSET_INVENTORY_HOMOLOGATION_API_KEY=<chave temporária com pelo menos 24 bytes>
+```
+
+A mesma chave deve ser fornecida ao harness em `HOMOLOGATION_AUTH_TOKEN`. O harness envia essa credencial como `Authorization: Bearer <token>`.
+
+Regras de segurança do adaptador:
+
+- a rota não é registrada quando `ASSET_INVENTORY_HOMOLOGATION_ENABLED=false`;
+- a rota não é registrada quando `NODE_ENV=production`, mesmo que a flag seja ligada por engano;
+- `validateRuntimeEnv` rejeita explicitamente homologação habilitada em produção;
+- a chave de homologação deve possuir pelo menos 24 bytes;
+- a comparação da credencial usa comparação temporalmente segura;
+- o endpoint encaminha o envelope ao consumidor M15 existente e não cria regra de negócio paralela;
+- não existe alteração automática de estado crítico de ocorrência.
 
 ## Fluxos validados
 
@@ -57,15 +78,13 @@ O processo termina com código diferente de zero quando o relatório final for `
 
 ## Contrato do endpoint de eventos de homologação
 
-O `DISPATCH_BASE_URL` deve expor, somente no ambiente controlado de homologação, um adaptador em:
-
 ```text
 POST /homologation/events
+Authorization: Bearer <HOMOLOGATION_AUTH_TOKEN>
+Content-Type: application/json
 ```
 
-Esse adaptador deve encaminhar o envelope ao consumidor versionado já existente e devolver apenas o resultado de homologação (`processed`, `duplicate` ou erro fail-closed). Ele não deve criar regra de negócio paralela nem permitir alteração automática de estado crítico da ocorrência.
-
-Se esse endpoint não estiver disponível no ambiente alvo, a sessão externa real permanece bloqueada até que exista um adaptador seguro equivalente. O harness não deve ser apontado para produção.
+O adaptador devolve apenas o resultado do consumidor versionado (`processed`, `duplicate`, `ignored`) ou erro fail-closed. Para versão incompatível, retorna HTTP `422` com `asset_event.unsupported_version`.
 
 ## Critérios de aceite
 
@@ -84,6 +103,7 @@ A sessão pode ser considerada tecnicamente aprovada quando:
 
 - executar somente em homologação;
 - usar credenciais temporárias e de menor privilégio;
+- desabilitar `ASSET_INVENTORY_HOMOLOGATION_ENABLED` ao concluir a sessão;
 - não executar `db:migrate` ou `db:push` em produção;
 - não criar grants produtivos;
 - não usar tenant real sem autorização;
@@ -92,4 +112,4 @@ A sessão pode ser considerada tecnicamente aprovada quando:
 
 ## CI
 
-A suíte automatizada usa servidor HTTP local/mocks e valida apenas o comportamento do harness. O CI não realiza chamadas ao Motor real nem ao Despacho externo.
+A suíte automatizada usa servidor HTTP local/mocks e valida apenas o comportamento do harness e do adaptador. O CI não realiza chamadas ao Motor real nem ao Despacho externo.

@@ -15,6 +15,8 @@ export const ENV = {
   assetInventoryWebUrl: process.env.ASSET_INVENTORY_WEB_URL ?? "",
   assetInventoryTenantId: process.env.ASSET_INVENTORY_TENANT_ID ?? "",
   assetInventoryTimeoutMs: process.env.ASSET_INVENTORY_TIMEOUT_MS ?? "3000",
+  assetInventoryHomologationEnabled: process.env.ASSET_INVENTORY_HOMOLOGATION_ENABLED === "true",
+  assetInventoryHomologationApiKey: process.env.ASSET_INVENTORY_HOMOLOGATION_API_KEY ?? "",
   alrtIngressMode: process.env.ALRT_INGRESS_MODE ?? "desativado",
   alrtIngressApiKey: process.env.ALRT_INGRESS_API_KEY ?? "",
   alrtIngressHmacSecret: process.env.ALRT_INGRESS_HMAC_SECRET ?? "",
@@ -54,6 +56,11 @@ export function validateRuntimeEnv(env: RuntimeEnv = ENV) {
     if (!env.databaseUrl) errors.push("DATABASE_URL é obrigatória em produção.");
     if (!/^[a-z0-9._-]{3,64}$/i.test(env.localAdminUsername)) errors.push("LOCAL_AUTH_BOOTSTRAP_USERNAME deve ter entre 3 e 64 caracteres alfanuméricos, ponto, hífen ou sublinhado.");
     if (Buffer.byteLength(env.localAdminPassword, "utf8") < 12) errors.push("LOCAL_AUTH_BOOTSTRAP_PASSWORD deve ter ao menos 12 caracteres.");
+    if (env.assetInventoryHomologationEnabled) errors.push("ASSET_INVENTORY_HOMOLOGATION_ENABLED não pode ser true em produção.");
+  }
+
+  if (env.assetInventoryHomologationEnabled && Buffer.byteLength(env.assetInventoryHomologationApiKey, "utf8") < 24) {
+    errors.push("ASSET_INVENTORY_HOMOLOGATION_API_KEY deve ter ao menos 24 bytes quando a homologação estiver habilitada.");
   }
 
   if (env.assetInventoryTimeoutMs && (!Number.isFinite(Number(env.assetInventoryTimeoutMs)) || Number(env.assetInventoryTimeoutMs) < 100)) {
