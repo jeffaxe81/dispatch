@@ -31,6 +31,23 @@ describe("empacotamento Docker para produção", () => {
     expect(dockerfile).toContain('CMD ["pnpm", "db:migrate"]');
   });
 
+  it("mantém os nomes explícitos de constraints dentro do limite de 64 caracteres do MySQL", () => {
+    const migrationDir = path.join(root, "drizzle");
+    const offenders = fs
+      .readdirSync(migrationDir)
+      .filter(file => /^\d{4}_.+\.sql$/.test(file))
+      .flatMap(file => {
+        const sql = fs.readFileSync(path.join(migrationDir, file), "utf8");
+        return Array.from(sql.matchAll(/CONSTRAINT\s+`([^`]+)`/g), match => ({
+          file,
+          name: match[1],
+          length: match[1].length,
+        })).filter(item => item.length > 64);
+      });
+
+    expect(offenders).toEqual([]);
+  });
+
   it("executa migrações após o MySQL ficar saudável e antes de iniciar a aplicação", () => {
     expect(compose.services?.migrate?.build?.target).toBe("migration");
     expect(compose.services?.migrate?.depends_on?.mysql?.condition).toBe("service_healthy");
