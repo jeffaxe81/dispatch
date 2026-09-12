@@ -47,8 +47,11 @@ describe("empacotamento Docker para produção", () => {
     expect(healthcheck).toContain("/health/live");
   });
 
-  it("valida Docker Compose e as imagens no workflow de qualidade", () => {
+  it("valida configuração, imagens e subida real do Docker Compose na CI", () => {
     expect(qualityWorkflow).toContain("docker compose config");
     expect(qualityWorkflow).toContain("docker compose build app migrate");
+    expect(qualityWorkflow).toContain("docker compose up -d");
+    expect(qualityWorkflow).toContain("/health/live");
+    expect(qualityWorkflow).toContain("docker compose down -v --remove-orphans");
   });
 });
