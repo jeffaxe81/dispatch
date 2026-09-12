@@ -52,6 +52,22 @@ export function TenantBoundaryShell({ children }: { children: React.ReactNode })
     );
   }
 
+  if (data && data.organizations.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white p-6 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700"><Building2 className="h-5 w-5" /></div>
+            <div>
+              <h1 className="text-lg font-semibold text-slate-950">Nenhuma empresa autorizada</h1>
+              <p className="text-sm text-slate-600">Seu usuário está autenticado, mas não possui empresa liberada para o escopo operacional do AXE Dispatch.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (data?.requiresSelection && data.organizations.length > 1) {
     return (
       <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">
