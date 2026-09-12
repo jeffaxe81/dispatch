@@ -11,6 +11,10 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   storageHealthcheckKey: process.env.STORAGE_HEALTHCHECK_KEY ?? "",
+  assetInventoryBaseUrl: process.env.ASSET_INVENTORY_BASE_URL ?? "",
+  assetInventoryWebUrl: process.env.ASSET_INVENTORY_WEB_URL ?? "",
+  assetInventoryTenantId: process.env.ASSET_INVENTORY_TENANT_ID ?? "",
+  assetInventoryTimeoutMs: process.env.ASSET_INVENTORY_TIMEOUT_MS ?? "3000",
   alrtIngressMode: process.env.ALRT_INGRESS_MODE ?? "desativado",
   alrtIngressApiKey: process.env.ALRT_INGRESS_API_KEY ?? "",
   alrtIngressHmacSecret: process.env.ALRT_INGRESS_HMAC_SECRET ?? "",
@@ -50,6 +54,10 @@ export function validateRuntimeEnv(env: RuntimeEnv = ENV) {
     if (!env.databaseUrl) errors.push("DATABASE_URL é obrigatória em produção.");
     if (!/^[a-z0-9._-]{3,64}$/i.test(env.localAdminUsername)) errors.push("LOCAL_AUTH_BOOTSTRAP_USERNAME deve ter entre 3 e 64 caracteres alfanuméricos, ponto, hífen ou sublinhado.");
     if (Buffer.byteLength(env.localAdminPassword, "utf8") < 12) errors.push("LOCAL_AUTH_BOOTSTRAP_PASSWORD deve ter ao menos 12 caracteres.");
+  }
+
+  if (env.assetInventoryTimeoutMs && (!Number.isFinite(Number(env.assetInventoryTimeoutMs)) || Number(env.assetInventoryTimeoutMs) < 100)) {
+    errors.push("ASSET_INVENTORY_TIMEOUT_MS deve ser um número maior ou igual a 100.");
   }
 
   if (errors.length > 0) {

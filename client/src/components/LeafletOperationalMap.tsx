@@ -21,11 +21,19 @@ type LeafletTeam = GeoPoint & {
   status?: string;
 };
 
+type LeafletAsset = GeoPoint & {
+  id?: string;
+  code: string;
+  name: string;
+  status?: string;
+};
+
 type LeafletOperationalMapProps = {
   center: { lat: number; lng: number };
   zoom: number;
   incidents: LeafletIncident[];
   teams: LeafletTeam[];
+  assets?: LeafletAsset[];
   route?: GeoJsonLineString | null;
   className?: string;
 };
@@ -51,17 +59,8 @@ function asLatLng(point: GeoPoint): LatLngExpression | null {
   return [latitude, longitude];
 }
 
-function AutoFit({
-  center,
-  zoom,
-  points,
-}: {
-  center: { lat: number; lng: number };
-  zoom: number;
-  points: [number, number][];
-}) {
+function AutoFit({ center, zoom, points }: { center: { lat: number; lng: number }; zoom: number; points: [number, number][] }) {
   const map = useMap();
-
   useEffect(() => {
     if (points.length >= 2) {
       map.fitBounds(points as LatLngBoundsExpression, { padding: [28, 28], maxZoom: 16 });
@@ -69,86 +68,50 @@ function AutoFit({
     }
     map.setView([center.lat, center.lng], zoom);
   }, [center.lat, center.lng, map, points, zoom]);
-
   return null;
 }
 
-export default function LeafletOperationalMap({
-  center,
-  zoom,
-  incidents,
-  teams,
-  route,
-  className = "h-[430px] w-full",
-}: LeafletOperationalMapProps) {
+export default function LeafletOperationalMap({ center, zoom, incidents, teams, assets = [], route, className = "h-[430px] w-full" }: LeafletOperationalMapProps) {
   const incidentPoints = incidents
     .map(incident => ({ incident, position: asLatLng(incident) }))
     .filter((entry): entry is { incident: LeafletIncident; position: [number, number] } => Array.isArray(entry.position));
-
   const teamPoints = teams
     .map(team => ({ team, position: asLatLng(team) }))
     .filter((entry): entry is { team: LeafletTeam; position: [number, number] } => Array.isArray(entry.position));
-
+  const assetPoints = assets
+    .map(asset => ({ asset, position: asLatLng(asset) }))
+    .filter((entry): entry is { asset: LeafletAsset; position: [number, number] } => Array.isArray(entry.position));
   const routePositions = route ? geoJsonLineStringToLeafletPositions(route) : [];
   const allPoints = [
     ...incidentPoints.map(entry => entry.position),
     ...teamPoints.map(entry => entry.position),
+    ...assetPoints.map(entry => entry.position),
     ...routePositions,
   ];
 
   return (
     <div className={className}>
-      <MapContainer
-        center={[center.lat, center.lng]}
-        zoom={zoom}
-        className="h-full w-full"
-        zoomControl
-        attributionControl
-      >
-        <TileLayer
-          attribution="&copy; OpenStreetMap contributors"
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-
+      <MapContainer center={[center.lat, center.lng]} zoom={zoom} className="h-full w-full" zoomControl attributionControl>
+        <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         {incidentPoints.map(({ incident, position }) => {
           const style = priorityPathOptions[incident.priority] ?? priorityPathOptions.media;
           return (
-            <CircleMarker
-              key={`incident-${incident.id ?? incident.code}`}
-              center={position}
-              radius={10}
-              pathOptions={{ ...style, fillOpacity: 0.9, weight: 3 }}
-            >
-              <Popup>
-                <strong>{incident.code}</strong>
-                {incident.category ? <div>{incident.category}</div> : null}
-              </Popup>
+            <CircleMarker key={`incident-${incident.id ?? incident.code}`} center={position} radius={10} pathOptions={{ ...style, fillOpacity: 0.9, weight: 3 }}>
+              <Popup><strong>{incident.code}</strong>{incident.category ? <div>{incident.category}</div> : null}</Popup>
             </CircleMarker>
           );
         })}
-
         {teamPoints.map(({ team, position }) => (
-          <CircleMarker
-            key={`team-${team.id ?? team.code}`}
-            center={position}
-            radius={9}
-            pathOptions={{ color: "#147ab7", fillColor: "#147ab7", fillOpacity: 0.9, weight: 3 }}
-          >
-            <Popup>
-              <strong>{team.code}</strong>
-              <div>{team.name}</div>
-              {team.status ? <small>{team.status}</small> : null}
-            </Popup>
+          <CircleMarker key={`team-${team.id ?? team.code}`} center={position} radius={9} pathOptions={{ color: "#147ab7", fillColor: "#147ab7", fillOpacity: 0.9, weight: 3 }}>
+            <Popup><strong>{team.code}</strong><div>{team.name}</div>{team.status ? <small>{team.status}</small> : null}</Popup>
           </CircleMarker>
         ))}
-
-        {routePositions.length >= 2 && (
-          <Polyline
-            positions={routePositions}
-            pathOptions={{ weight: 5, opacity: 0.85 }}
-          />
-        )}
-
+        {assetPoints.map(({ asset, position }) => (
+          <CircleMarker key={`asset-${asset.id ?? asset.code}`} center={position} radius={9} pathOptions={{ color: "#4f46e5", fillColor: "#4f46e5", fillOpacity: 0.9, weight: 3 }}>
+            <Popup><strong>{asset.code}</strong><div>{asset.name}</div>{asset.status ? <small>{asset.status}</small> : null}</Popup>
+          </CircleMarker>
+        ))}
+        {routePositions.length >= 2 && <Polyline positions={routePositions} pathOptions={{ weight: 5, opacity: 0.85 }} />}
         <AutoFit center={center} zoom={zoom} points={allPoints} />
       </MapContainer>
     </div>
