@@ -3,10 +3,18 @@ import fs from "fs";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
 import path from "path";
-import { createServer as createViteServer } from "vite";
-import viteConfig from "../../vite.config";
+
+const importDevelopmentModule = (specifier: string) => import(specifier);
 
 export async function setupVite(app: Express, server: Server) {
+  // Vite e sua configuração são dependências exclusivas do ambiente de desenvolvimento.
+  // O import indireto impede que o bundle de produção promova essas dependências para
+  // imports ESM de topo, permitindo uma imagem runtime somente com dependências prod.
+  const [{ createServer: createViteServer }, { default: viteConfig }] = await Promise.all([
+    importDevelopmentModule("vite"),
+    importDevelopmentModule("../../vite.config"),
+  ]);
+
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
