@@ -1,4 +1,5 @@
 import { mergeRouters, router } from "./_core/trpc";
+import { assetInventoryRouter } from "./assetInventoryRouter";
 import { createDispatchRouter } from "./dispatchRouter";
 import { dispatchRouterDependencies } from "./dispatchRuntime";
 import { createFormsTrpcRouter } from "./forms/formsTrpcRouter";
@@ -11,25 +12,12 @@ import { createWorkShiftOperationsRouter } from "./workShiftOperationsRouter";
 import { workShiftOperationsRouterDependencies } from "./workShiftOperationsRuntime";
 import { workspaceRouterDependencies } from "./workspace/workspaceRuntime";
 
-const workShiftSchedulesRoot = router({
-  workShiftSchedules: createWorkShiftSchedulesRouter(workShiftSchedulesRouterDependencies),
-});
-
-const dispatchRoot = router({
-  dispatch: createDispatchRouter(dispatchRouterDependencies),
-});
-
-const workShiftOperationsRoot = router({
-  workShiftOperations: createWorkShiftOperationsRouter(workShiftOperationsRouterDependencies),
-});
-
-const formsRoot = router({
-  forms: createFormsTrpcRouter(formsRuntimeContextFactory),
-});
-
-const workspaceRoot = router({
-  workspace: createWorkspaceRouter(workspaceRouterDependencies),
-});
+const workShiftSchedulesRoot = router({ workShiftSchedules: createWorkShiftSchedulesRouter(workShiftSchedulesRouterDependencies) });
+const dispatchRoot = router({ dispatch: createDispatchRouter(dispatchRouterDependencies) });
+const workShiftOperationsRoot = router({ workShiftOperations: createWorkShiftOperationsRouter(workShiftOperationsRouterDependencies) });
+const formsRoot = router({ forms: createFormsTrpcRouter(formsRuntimeContextFactory) });
+const workspaceRoot = router({ workspace: createWorkspaceRouter(workspaceRouterDependencies) });
+const assetInventoryRoot = router({ assetInventory: assetInventoryRouter });
 
 export const rootRouter = mergeRouters(
   typedTenantAwareAppRouter,
@@ -38,5 +26,6 @@ export const rootRouter = mergeRouters(
   workShiftOperationsRoot,
   formsRoot,
   workspaceRoot,
+  assetInventoryRoot,
 );
 export type RootRouter = typeof rootRouter;
