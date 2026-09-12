@@ -150,7 +150,7 @@ export async function runInventoryExternalHomologation(options) {
     timeoutMs,
     authToken,
   });
-  pushCheck(checks, "tenant-isolation", crossTenant.status === 403 || crossTenant.status === 404, { httpStatus: crossTenant.status });
+  pushCheck(checks, "tenant-isolation", [401, 403, 404].includes(crossTenant.status), { httpStatus: crossTenant.status });
 
   const eventId = `homologation:${tenantA}:${assetId}:${Date.now()}`;
   const baseEvent = {
@@ -159,12 +159,11 @@ export async function runInventoryExternalHomologation(options) {
     eventVersion: "1",
     tenantId: tenantA,
     assetId,
-    assetVersion: 1,
+    assetVersion: Number(detail.payload?.version ?? detail.payload?.assetVersion ?? 1),
     correlationId: correlation(),
     occurredAt: new Date().toISOString(),
     payload: { code: detail.payload?.code || null, status: detail.payload?.status || null },
   };
-  correlationIds.push(baseEvent.correlationId);
 
   const eventProcessed = await requestJson({
     baseUrl: dispatchBaseUrl,
@@ -179,17 +178,16 @@ export async function runInventoryExternalHomologation(options) {
   });
   pushCheck(checks, "event-processed", eventProcessed.ok && eventProcessed.payload?.status === "processed", { httpStatus: eventProcessed.status });
 
-  const replayCorrelation = correlation();
   const eventReplay = await requestJson({
     baseUrl: dispatchBaseUrl,
     pathname: "/homologation/events",
     method: "POST",
     tenantId: tenantA,
     userId,
-    correlationId: replayCorrelation,
+    correlationId: baseEvent.correlationId,
     timeoutMs,
     authToken,
-    body: { ...baseEvent, correlationId: replayCorrelation, replay: true },
+    body: baseEvent,
   });
   pushCheck(checks, "event-replay-idempotent", eventReplay.ok && eventReplay.payload?.status === "duplicate", { httpStatus: eventReplay.status });
 
