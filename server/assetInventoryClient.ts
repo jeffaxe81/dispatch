@@ -13,6 +13,15 @@ export interface AssetInventorySummary {
   [key: string]: unknown;
 }
 
+export interface AssetInventoryLocation {
+  tenantId: string;
+  assetId: string;
+  latitude: number;
+  longitude: number;
+  source?: string;
+  [key: string]: unknown;
+}
+
 export interface AssetInventorySearchResult {
   items: AssetInventorySummary[];
   page: number;
@@ -36,6 +45,7 @@ export interface AssetInventoryClientError extends Error {
 export interface AssetInventoryClient {
   search(identity: AssetInventoryIdentity, query?: { query?: string; assetType?: string; status?: string; page?: number; pageSize?: number }): Promise<AssetInventorySearchResult>;
   getById(identity: AssetInventoryIdentity, assetId: string): Promise<AssetInventorySummary>;
+  getLocation(identity: AssetInventoryIdentity, assetId: string): Promise<AssetInventoryLocation>;
   linkDispatchReference(identity: AssetInventoryIdentity, assetId: string, input: DispatchReferenceInput): Promise<Record<string, unknown>>;
 }
 
@@ -57,14 +67,13 @@ function clientError(code: string, message: string, retryable: boolean, status?:
 }
 
 function headers(identity: AssetInventoryIdentity): Headers {
-  const result = new Headers({
+  return new Headers({
     accept: "application/json",
     "content-type": "application/json",
     "x-tenant-id": identity.tenantId,
     "x-user-id": identity.userId,
     "x-correlation-id": identity.correlationId,
   });
-  return result;
 }
 
 export function createAssetInventoryClient(options: CreateAssetInventoryClientOptions): AssetInventoryClient {
@@ -106,6 +115,9 @@ export function createAssetInventoryClient(options: CreateAssetInventoryClientOp
     },
     async getById(identity, assetId) {
       return request<AssetInventorySummary>(identity, `/api/v1/assets/${encodeURIComponent(assetId)}`);
+    },
+    async getLocation(identity, assetId) {
+      return request<AssetInventoryLocation>(identity, `/api/v1/assets/${encodeURIComponent(assetId)}/location`);
     },
     async linkDispatchReference(identity, assetId, input) {
       return request<Record<string, unknown>>(identity, `/api/v1/assets/${encodeURIComponent(assetId)}/dispatch-references`, {
