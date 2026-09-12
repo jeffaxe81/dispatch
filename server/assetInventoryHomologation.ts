@@ -25,8 +25,10 @@ function safeSecretEquals(expected: string, supplied: string) {
 }
 
 function homologationKey(req: Request) {
-  const value = req.header("x-homologation-key");
-  return typeof value === "string" ? value : "";
+  const dedicated = req.header("x-homologation-key");
+  if (dedicated) return dedicated;
+  const authorization = req.header("authorization") ?? "";
+  return authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
 }
 
 function errorCode(error: unknown) {
