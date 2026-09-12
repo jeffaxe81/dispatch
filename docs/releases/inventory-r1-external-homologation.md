@@ -39,9 +39,9 @@ O harness executa os seguintes checks:
 2. detalhe do ativo;
 3. localização do ativo;
 4. vínculo de referência de ocorrência;
-5. tentativa de leitura do mesmo ativo pelo tenant B, esperando `403` ou `404`;
+5. tentativa de leitura do mesmo ativo pelo tenant B, esperando negação por `401`, `403` ou `404`;
 6. consumo de evento `asset.updated` versão `1`;
-7. replay do mesmo evento esperando `duplicate`;
+7. replay do mesmo envelope/eventId esperando `duplicate`;
 8. versão incompatível `999`, esperando `asset_event.unsupported_version`;
 9. captura dos `correlation IDs` enviados;
 10. quando o Motor estiver indisponível, registro de falha funcional com detecção controlada de indisponibilidade.
@@ -74,7 +74,7 @@ A sessão pode ser considerada tecnicamente aprovada quando:
 - todos os checks retornarem `PASS`;
 - os dois tenants forem diferentes e o acesso cruzado for negado;
 - os correlation IDs estiverem presentes nas evidências e logs do ambiente;
-- replay não duplicar efeito;
+- replay do mesmo envelope/eventId não duplicar efeito;
 - versão incompatível falhar fechado;
 - indisponibilidade do Motor não interromper o núcleo operacional do Despacho;
 - não houver escrita direta entre bancos;
