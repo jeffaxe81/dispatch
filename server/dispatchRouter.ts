@@ -4,6 +4,7 @@ import type { DispatchTeamEligibility } from "../shared/dispatchEligibility";
 import { protectedProcedure, router } from "./_core/trpc";
 import { assertPermission, assertTeamScope } from "./accessControl";
 import { rankTeamCandidates, type CandidateTeamPoint } from "./gisService";
+import { assertTeamTenant, requireActiveTenant } from "./tenantOperational";
 
 const geoPointInput = z.object({
   latitude: z.number().finite().min(-90).max(90),
@@ -42,9 +43,11 @@ export function createDispatchRouter(deps: DispatchRouterDependencies) {
       .input(rankEligibleCandidatesInput)
       .query(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "dispatch.view");
+        const tenantId = await requireActiveTenant(ctx.user, ctx.req);
 
         for (const candidate of input.candidates) {
-          await assertTeamScope(ctx.user, candidate.teamId, "dispatch.view");
+          await assertTeamTenant(tenantId, candidate.teamId);
+          await assertTeamScope(ctx.user, candidate.teamId, "dispatch.view", tenantId);
         }
 
         const evaluatedAt = deps.now();
