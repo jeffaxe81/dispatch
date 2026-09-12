@@ -27,7 +27,11 @@ export function createWorkShiftSchedulesRouter(deps: WorkShiftSchedulesRouterDep
     await assertPermission(ctx.user, permission);
     const activeTenantId = await requireActiveTenant(ctx.user, ctx.req);
     const actor = await deps.resolveActor(ctx.user);
-    return { ...actor, organizationId: activeTenantId };
+    return {
+      ...actor,
+      organizationId: activeTenantId,
+      permissions: actor.permissions.includes("*") ? [permission] : actor.permissions,
+    };
   }
 
   function assertRequestedOrganization(activeTenantId: number | null, requested?: number) {
