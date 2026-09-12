@@ -52,3 +52,10 @@ jobs:
 
       - name: Gerar build
         run: corepack pnpm build
+
+      - name: Validar empacotamento Docker
+        run: |
+          cp .env.example .env
+          trap 'rm -f .env' EXIT
+          docker compose config > /dev/null
+          docker compose build app migrate
