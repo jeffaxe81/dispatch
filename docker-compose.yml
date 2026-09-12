@@ -21,12 +21,13 @@ services:
       retries: 10
       start_period: 30s
 
-  app:
+  migrate:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: dispatch-app
-    restart: unless-stopped
+      target: migration
+    container_name: dispatch-migrate
+    restart: "no"
     depends_on:
       mysql:
         condition: service_healthy
@@ -34,11 +35,38 @@ services:
       - .env
     environment:
       DATABASE_URL: mysql://${MYSQL_USER:-dispatch}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-dispatch}
+    networks:
+      - dispatch-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dispatch-app
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-dispatch}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-dispatch}
       NODE_ENV: production
+      PORT: 3000
     ports:
       - "${APP_PORT:-3000}:3000"
     networks:
       - dispatch-net
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
 volumes:
   dispatch_mysql_data:

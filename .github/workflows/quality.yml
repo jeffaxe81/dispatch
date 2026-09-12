@@ -52,3 +52,33 @@ jobs:
 
       - name: Gerar build
         run: corepack pnpm build
+
+      - name: Validar empacotamento Docker
+        run: |
+          cp .env.example .env
+          export APP_PORT=13082
+          cleanup() {
+            docker compose down -v --remove-orphans >/dev/null 2>&1 || true
+            rm -f .env
+          }
+          trap cleanup EXIT
+
+          docker compose config > /dev/null
+          docker compose build app migrate
+          if ! docker compose up -d; then
+            docker compose ps -a || true
+            docker compose logs --no-color app migrate mysql || true
+            exit 1
+          fi
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:${APP_PORT}/health/live > /dev/null; then
+              docker compose ps
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker compose ps -a || true
+          docker compose logs --no-color app migrate mysql || true
+          exit 1

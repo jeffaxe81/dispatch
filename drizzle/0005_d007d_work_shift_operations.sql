@@ -75,7 +75,7 @@ ALTER TABLE `work_shift_pending_items` ADD CONSTRAINT `work_shift_pending_items_
 --> statement-breakpoint
 ALTER TABLE `work_shift_pending_items` ADD CONSTRAINT `work_shift_pending_items_resolved_by_user_id_users_id_fk` FOREIGN KEY (`resolved_by_user_id`) REFERENCES `users`(`id`) ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE `work_shift_pending_history` ADD CONSTRAINT `work_shift_pending_history_pending_item_id_work_shift_pending_items_id_fk` FOREIGN KEY (`pending_item_id`) REFERENCES `work_shift_pending_items`(`id`) ON DELETE restrict ON UPDATE no action;
+ALTER TABLE `work_shift_pending_history` ADD CONSTRAINT `ws_pending_history_item_fk` FOREIGN KEY (`pending_item_id`) REFERENCES `work_shift_pending_items`(`id`) ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE `work_shift_pending_history` ADD CONSTRAINT `work_shift_pending_history_tenant_id_organizations_id_fk` FOREIGN KEY (`tenant_id`) REFERENCES `organizations`(`id`) ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint

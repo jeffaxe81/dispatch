@@ -68,7 +68,8 @@ describe("workflow de qualidade do GitHub", () => {
       .filter((step: { run?: string }) => step.run)
       .map((step: { run: string }) => step.run);
 
-    expect(commands).toEqual([
+    expect(commands).toHaveLength(7);
+    expect(commands.slice(0, 6)).toEqual([
       "corepack enable",
       "corepack pnpm install --frozen-lockfile",
       "corepack pnpm security:check",
@@ -76,6 +77,8 @@ describe("workflow de qualidade do GitHub", () => {
       "corepack pnpm test",
       "corepack pnpm build",
     ]);
+    expect(commands[6]).toContain("docker compose config");
+    expect(commands[6]).toContain("docker compose build app migrate");
   });
 
   it("não usa segredos, integração, escrita ou entrega", () => {
