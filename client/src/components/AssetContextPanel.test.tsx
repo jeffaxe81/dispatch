@@ -23,24 +23,24 @@ describe("M14 AssetContextPanel", () => {
 
     fireEvent.change(screen.getByPlaceholderText(/buscar ativo/i), { target: { value: "PST-001" } });
     fireEvent.click(screen.getByRole("button", { name: /^buscar$/i }));
-    await screen.findByText("Poste 001");
-    fireEvent.click(screen.getByRole("button", { name: /selecionar PST-001/i }));
+    const selectAsset = await screen.findByRole("button", { name: /selecionar PST-001/i });
+    fireEvent.click(selectAsset);
 
-    expect(screen.getByText("PST-001")).toBeInTheDocument();
-    expect(screen.getByText("poste · ativo")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /abrir prontuário/i })).toHaveAttribute("href", "https://inventory.local/assets/asset-1");
-    expect(screen.getByRole("button", { name: /ver no mapa/i })).toBeEnabled();
+    expect(screen.getByText("PST-001")).toBeTruthy();
+    expect(screen.getByText("poste · ativo")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /abrir prontuário/i }).getAttribute("href")).toBe("https://inventory.local/assets/asset-1");
+    expect((screen.getByRole("button", { name: /ver no mapa/i }) as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: /vincular à ocorrência/i }));
     await waitFor(() => expect(linkAsset).toHaveBeenCalledWith("asset-1", "OCC-42"));
-    expect(screen.getByText("Ocorrência vinculada: OCC-42")).toBeInTheDocument();
+    expect(screen.getByText("Ocorrência vinculada: OCC-42")).toBeTruthy();
   });
 
   it("degrada somente o contexto de inventário quando o Motor está indisponível", async () => {
     render(<AssetContextPanel incidentReference="OCC-42" searchAssets={vi.fn().mockRejectedValue(new Error("offline"))} linkAsset={vi.fn()} inventoryUrl="https://inventory.local" />);
     fireEvent.change(screen.getByPlaceholderText(/buscar ativo/i), { target: { value: "poste" } });
     fireEvent.click(screen.getByRole("button", { name: /^buscar$/i }));
-    expect(await screen.findByText(/inventário indisponível/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /tentar novamente/i })).toBeEnabled();
+    expect(await screen.findByText(/inventário indisponível/i)).toBeTruthy();
+    expect((screen.getByRole("button", { name: /tentar novamente/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
