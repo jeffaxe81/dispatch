@@ -71,5 +71,14 @@ export { executeSimulatedWorkflow, retrySimulatedWorkflowExecution } from "./wor
 export {
   advanceManualWorkflowInstance,
   cancelManualWorkflowInstance,
+  resumeManualWorkflowInstanceFromCompletedTask,
   startManualWorkflowInstance,
 } from "./workflow/workflowInstancePersistence";
+export {
+  assignWorkflowTask,
+  cancelWorkflowTask,
+  claimWorkflowTask,
+  completeWorkflowTask,
+  createWorkflowTask,
+  startWorkflowTask,
+} from "./workflow/workflowTaskPersistence";
