@@ -1,14 +1,14 @@
 import { and, desc, eq } from "drizzle-orm";
 import { users, workflowExecutions, workflows } from "../../drizzle/schema";
 import {
-  createSimulatedWorkflow,
   deleteSimulatedWorkflow,
   getDb,
   getSimulatedWorkflow,
   getSimulatedWorkflowExecution,
   updateSimulatedWorkflow,
 } from "../dbLegacy";
-import { assertWorkflowTenant, createWorkflowTenantScope } from "./workflowTenantAccess";
+import { assertWorkflowTenant } from "./workflowTenantAccess";
+import { createSimulatedWorkflowWithTenant } from "./workflowTenantCreationPersistence";
 import { workflowExecutionTenantScopes, workflowTenantScopes } from "./workflowTenantScopeSchema";
 
 async function requireDb() {
@@ -40,14 +40,7 @@ export async function createSimulatedWorkflowForTenant(input: {
   organizationId: number;
   actorUserId: number;
 }) {
-  const created = await createSimulatedWorkflow({
-    name: input.name,
-    description: input.description,
-    actorUserId: input.actorUserId,
-  });
-  const db = await requireDb();
-  await createWorkflowTenantScope(db as any, created.id, input.organizationId);
-  return created;
+  return createSimulatedWorkflowWithTenant(input);
 }
 
 export async function updateSimulatedWorkflowForTenant(input: {
