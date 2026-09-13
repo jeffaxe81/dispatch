@@ -67,3 +67,4 @@ export async function controlOwnWorkShift(input: {
 }
 
 export { setSimulatedWorkflowActive } from "./workflow/workflowPersistence";
+export { executeSimulatedWorkflow, retrySimulatedWorkflowExecution } from "./workflow/workflowExecutionPersistence";
