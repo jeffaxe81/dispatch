@@ -3,9 +3,12 @@ import { auditLogs, workflowExecutions } from "../../drizzle/schema";
 import { getDb } from "../dbLegacy";
 import { workflowTasks } from "./workflowTaskSchema";
 import {
+  assignWorkflowTaskState,
+  cancelWorkflowTaskState,
   claimWorkflowTaskState,
   completeWorkflowTaskState,
   createWorkflowTaskState,
+  startWorkflowTaskState,
   type WorkflowTaskState,
 } from "./workflowTaskStateMachine";
 
@@ -66,14 +69,13 @@ export async function createWorkflowTask(input: {
     if (!execution) throw new Error("Instancia de workflow nao encontrada.");
     if (execution.mode !== "simulacao") throw new Error("D-012D aceita somente workflow em simulacao.");
     if (!execution.workflowVersionId) throw new Error("Instancia sem workflowVersionId congelado.");
-
     const existing = (await tx.select().from(workflowTasks).where(and(
       eq(workflowTasks.executionId, input.executionId),
       eq(workflowTasks.nodeId, input.nodeId),
     )).limit(1))[0];
     if (existing) return existing;
-
     const now = new Date();
+    const occurredAt = now.toISOString();
     const change = createWorkflowTaskState({
       executionId: input.executionId,
       workflowVersionId: execution.workflowVersionId,
@@ -81,23 +83,25 @@ export async function createWorkflowTask(input: {
       assigneeUserId: input.assigneeUserId,
       actorUserId: input.actorUserId,
       correlationId: input.correlationId,
-      occurredAt: now.toISOString(),
+      occurredAt,
     });
-    const [created] = await tx.insert(workflowTasks).values({
-      ...change.state,
-      createdByUserId: input.actorUserId,
-    }).$returningId();
+    const [created] = await tx.insert(workflowTasks).values({ ...change.state, createdByUserId: input.actorUserId }).$returningId();
     if (!created?.id) throw new Error("Falha ao persistir tarefa de workflow.");
-    await auditTask(tx, {
-      taskId: created.id,
-      action: change.transition.action,
-      actorUserId: input.actorUserId,
-      correlationId: input.correlationId,
-      occurredAt: now.toISOString(),
-      before: null,
-      after: change.state,
-    });
+    await auditTask(tx, { taskId: created.id, action: "create", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before: null, after: change.state });
     return { id: created.id, ...change.state };
+  });
+}
+
+export async function assignWorkflowTask(input: { taskId: number; assigneeUserId: number; actorUserId: number; correlationId: string }) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const task = await loadTaskForUpdate(tx, input.taskId);
+    const before = toState(task);
+    const occurredAt = new Date().toISOString();
+    const change = assignWorkflowTaskState({ state: before, assigneeUserId: input.assigneeUserId, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt });
+    await tx.update(workflowTasks).set({ assigneeUserId: change.state.assigneeUserId }).where(eq(workflowTasks.id, input.taskId));
+    await auditTask(tx, { taskId: input.taskId, action: "assign", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before, after: change.state });
+    return { id: input.taskId, ...change.state };
   });
 }
 
@@ -107,9 +111,24 @@ export async function claimWorkflowTask(input: { taskId: number; actorUserId: nu
     const task = await loadTaskForUpdate(tx, input.taskId);
     const before = toState(task);
     const now = new Date();
-    const change = claimWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt: now.toISOString() });
+    const occurredAt = now.toISOString();
+    const change = claimWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt });
     await tx.update(workflowTasks).set({ status: change.state.status, assigneeUserId: change.state.assigneeUserId, claimedAt: now, startedAt: now }).where(eq(workflowTasks.id, input.taskId));
-    await auditTask(tx, { taskId: input.taskId, action: change.transition.action, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt: now.toISOString(), before, after: change.state });
+    await auditTask(tx, { taskId: input.taskId, action: "claim", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before, after: change.state });
+    return { id: input.taskId, ...change.state };
+  });
+}
+
+export async function startWorkflowTask(input: { taskId: number; actorUserId: number; correlationId: string }) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const task = await loadTaskForUpdate(tx, input.taskId);
+    const before = toState(task);
+    const now = new Date();
+    const occurredAt = now.toISOString();
+    const change = startWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt });
+    await tx.update(workflowTasks).set({ status: change.state.status, startedAt: now }).where(eq(workflowTasks.id, input.taskId));
+    await auditTask(tx, { taskId: input.taskId, action: "start", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before, after: change.state });
     return { id: input.taskId, ...change.state };
   });
 }
@@ -120,9 +139,24 @@ export async function completeWorkflowTask(input: { taskId: number; actorUserId:
     const task = await loadTaskForUpdate(tx, input.taskId);
     const before = toState(task);
     const now = new Date();
-    const change = completeWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt: now.toISOString() });
+    const occurredAt = now.toISOString();
+    const change = completeWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt });
     await tx.update(workflowTasks).set({ status: change.state.status, completedAt: now }).where(eq(workflowTasks.id, input.taskId));
-    await auditTask(tx, { taskId: input.taskId, action: change.transition.action, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt: now.toISOString(), before, after: change.state });
+    await auditTask(tx, { taskId: input.taskId, action: "complete", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before, after: change.state });
+    return { id: input.taskId, ...change.state };
+  });
+}
+
+export async function cancelWorkflowTask(input: { taskId: number; actorUserId: number; correlationId: string }) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const task = await loadTaskForUpdate(tx, input.taskId);
+    const before = toState(task);
+    const now = new Date();
+    const occurredAt = now.toISOString();
+    const change = cancelWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt });
+    await tx.update(workflowTasks).set({ status: change.state.status, cancelledAt: now }).where(eq(workflowTasks.id, input.taskId));
+    await auditTask(tx, { taskId: input.taskId, action: "cancel", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before, after: change.state });
     return { id: input.taskId, ...change.state };
   });
 }
