@@ -5,6 +5,8 @@ import {
   getWorkflowTenant,
 } from "./workflowTenantAccess";
 
+const loadWorkflowPersistence = () => import("./workflowPersistence.ts?raw");
+
 function txWithTenant(organizationId: number | null) {
   const limit = vi.fn(async () => organizationId === null ? [] : [{ organizationId }]);
   const where = vi.fn(() => ({ limit }));
@@ -41,5 +43,18 @@ describe("D-012E workflow tenant access", () => {
 
     await expect(createWorkflowTenantScope(tx, 7, 10)).resolves.toEqual({ workflowId: 7, organizationId: 10 });
     expect(values).toHaveBeenCalledWith({ workflowId: 7, organizationId: 10 });
+  });
+
+  it("exige organizationId e valida tenant antes de ler publicação/versão", async () => {
+    const { default: persistence } = await loadWorkflowPersistence();
+    const signature = persistence.indexOf("workflowId: number; organizationId: number; active: boolean; actorUserId: number");
+    const guard = persistence.indexOf("await assertWorkflowTenant(tx, input.workflowId, input.organizationId)");
+    const publicationRead = persistence.indexOf("const pointer =");
+
+    expect(signature).toBeGreaterThan(-1);
+    expect(persistence).toContain('import { assertWorkflowTenant } from "./workflowTenantAccess"');
+    expect(guard).toBeGreaterThan(-1);
+    expect(publicationRead).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(publicationRead);
   });
 });
