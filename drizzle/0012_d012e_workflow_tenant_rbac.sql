@@ -38,6 +38,8 @@ CREATE TABLE `rbac_assignment_sources` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `rbac_assignment_sources_external_unique` ON `rbac_assignment_sources` (`source_key`, `external_assignment_id`);
 --> statement-breakpoint
+CREATE INDEX `rbac_assignment_sources_subject_idx` ON `rbac_assignment_sources` (`source_key`, `external_subject_id`);
+--> statement-breakpoint
 INSERT IGNORE INTO `workflow_tenant_scopes` (`workflow_id`, `organization_id`)
 SELECT
   w.id,
