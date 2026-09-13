@@ -28,6 +28,10 @@ function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function hasMeaningfulValue(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "";
+}
+
 export function parseHumanTaskAssignment(input: Record<string, unknown>): WorkflowTaskAssignment {
   const assignmentType = input.assignmentType;
   if (!workflowTaskAssignmentTypes.includes(assignmentType as WorkflowTaskAssignmentType)) {
@@ -37,15 +41,11 @@ export function parseHumanTaskAssignment(input: Record<string, unknown>): Workfl
   const rawUserId = input.assigneeUserId;
   const rawTeamId = input.assigneeTeamId;
   const rawRole = input.assigneeRole;
-  const provided = [rawUserId, rawTeamId, rawRole].filter(value => value !== undefined && value !== null && value !== "");
-  if (provided.length !== 1) {
-    throw new Error("A tarefa humana deve possuir exatamente um responsável.");
-  }
 
   if (assignmentType === "user") {
     const userId = positiveInteger(rawUserId);
     if (!userId) throw new Error("assigneeUserId deve ser um inteiro positivo.");
-    if (rawTeamId !== undefined || rawRole !== undefined) {
+    if (hasMeaningfulValue(rawTeamId) || hasMeaningfulValue(rawRole)) {
       throw new Error("A tarefa humana deve possuir exatamente um responsável.");
     }
     return { type: "user", userId, teamId: null, role: null };
@@ -54,7 +54,7 @@ export function parseHumanTaskAssignment(input: Record<string, unknown>): Workfl
   if (assignmentType === "team") {
     const teamId = positiveInteger(rawTeamId);
     if (!teamId) throw new Error("assigneeTeamId deve ser um inteiro positivo.");
-    if (rawUserId !== undefined || rawRole !== undefined) {
+    if (hasMeaningfulValue(rawUserId) || hasMeaningfulValue(rawRole)) {
       throw new Error("A tarefa humana deve possuir exatamente um responsável.");
     }
     return { type: "team", userId: null, teamId, role: null };
@@ -65,7 +65,7 @@ export function parseHumanTaskAssignment(input: Record<string, unknown>): Workfl
   if (!workflowTaskOperationalRoles.includes(role as WorkflowTaskOperationalRole)) {
     throw new Error("assigneeRole não corresponde a um papel operacional suportado.");
   }
-  if (rawUserId !== undefined || rawTeamId !== undefined) {
+  if (hasMeaningfulValue(rawUserId) || hasMeaningfulValue(rawTeamId)) {
     throw new Error("A tarefa humana deve possuir exatamente um responsável.");
   }
   return { type: "role", userId: null, teamId: null, role: role as WorkflowTaskOperationalRole };
