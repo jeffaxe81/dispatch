@@ -18,6 +18,7 @@ import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, 
 import { systemRouter } from "./_core/systemRouter";
 import { getSimulatedIntegrationsOverview } from "./integrations";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { requireActiveTenant } from "./tenantOperational";
 import {
   assignTeamToIncident,
   addIncidentEvidence,
@@ -28,20 +29,20 @@ import {
   createAccessPermission,
   createOrganization,
   createOrganizationalUnit,
-  createSimulatedWorkflow,
+  createSimulatedWorkflowForTenant,
   confirmExternalIncidentReview,
   activateAlrtHomologationConnection,
   approveAlrtProductionReadiness,
   createSimulatedIntegrationConnection,
   createSimulatedIntegrationCredential,
   createSimulatedIntegrationWebhook,
-  deleteSimulatedWorkflow,
+  deleteSimulatedWorkflowForTenant,
   deleteSimulatedIntegrationConnection,
   deleteSimulatedIntegrationCredential,
   deleteSimulatedIntegrationWebhook,
   executeSimulatedWorkflow,
-  getSimulatedWorkflow,
-  getSimulatedWorkflowExecution,
+  getSimulatedWorkflowForTenant,
+  getSimulatedWorkflowExecutionForTenant,
   updateOrganization,
   updateOrganizationalUnit,
   createTeam,
@@ -86,9 +87,9 @@ import {
   listSimulatedIntegrationConnections,
   listSimulatedIntegrationCredentials,
   listSimulatedIntegrationWebhooks,
-  listSimulatedWorkflowExecutions,
+  listSimulatedWorkflowExecutionsForTenant,
   listOrganizationsAndUnits,
-  listSimulatedWorkflows,
+  listSimulatedWorkflowsForTenant,
   listTeams,
   listUsersWithAccess,
   listVehicles,
@@ -109,7 +110,7 @@ import {
   updateTeamStatus,
   updateGeneralMapSettings,
   resetSolutionOperationalData,
-  updateSimulatedWorkflow,
+  updateSimulatedWorkflowForTenant,
   updateSimulatedIntegrationConnection,
   updateVehicleStatus,
 } from "./db";
@@ -344,45 +345,55 @@ export const appRouter = router({
   workflows: router({
     list: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "workflow.view");
-      return listSimulatedWorkflows();
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      return listSimulatedWorkflowsForTenant(organizationId);
     }),
     get: operationalProcedure.input(z.object({ workflowId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "workflow.view");
-      return getSimulatedWorkflow(input.workflowId);
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      return getSimulatedWorkflowForTenant(input.workflowId, organizationId);
     }),
     create: operationalProcedure.input(z.object({ name: z.string().trim().min(3).max(180), description: z.string().trim().max(5000).nullable().optional() })).mutation(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "workflow.create");
-      return createSimulatedWorkflow({ ...input, actorUserId: ctx.user.id });
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      return createSimulatedWorkflowForTenant({ ...input, organizationId, actorUserId: ctx.user.id });
     }),
     update: operationalProcedure.input(z.object({ workflowId: z.number().int().positive(), name: z.string().trim().min(3).max(180), description: z.string().trim().max(5000).nullable().optional(), definition: z.unknown().optional(), changeSummary: z.string().trim().max(500).nullable().optional() })).mutation(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "workflow.edit");
-      return updateSimulatedWorkflow({ ...input, actorUserId: ctx.user.id });
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      return updateSimulatedWorkflowForTenant({ ...input, organizationId, actorUserId: ctx.user.id });
     }),
     setActive: operationalProcedure.input(z.object({ workflowId: z.number().int().positive(), active: z.boolean() })).mutation(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "workflow.activate");
-      await setSimulatedWorkflowActive({ ...input, actorUserId: ctx.user.id });
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      await setSimulatedWorkflowActive({ ...input, organizationId, actorUserId: ctx.user.id });
       return { success: true };
     }),
     delete: operationalProcedure.input(z.object({ workflowId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "workflow.delete");
-      await deleteSimulatedWorkflow({ ...input, actorUserId: ctx.user.id });
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      await deleteSimulatedWorkflowForTenant({ ...input, organizationId, actorUserId: ctx.user.id });
       return { success: true };
     }),
     executions: operationalProcedure.input(z.object({ workflowId: z.number().int().positive().optional(), limit: z.number().int().min(1).max(100).optional() }).optional()).query(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "logs.view");
-      return listSimulatedWorkflowExecutions(input ?? {});
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      return listSimulatedWorkflowExecutionsForTenant(organizationId, input ?? {});
     }),
     execution: operationalProcedure.input(z.object({ executionId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "logs.view");
-      return getSimulatedWorkflowExecution(input.executionId);
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      return getSimulatedWorkflowExecutionForTenant(input.executionId, organizationId);
     }),
     execute: operationalProcedure.input(z.object({ workflowId: z.number().int().positive(), simulateFailure: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "workflow.execute");
-      return executeSimulatedWorkflow({ workflowId: input.workflowId, actorUserId: ctx.user.id, inputData: input.simulateFailure ? { simulateFailure: true } : {} });
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      return executeSimulatedWorkflow({ workflowId: input.workflowId, organizationId, actorUserId: ctx.user.id, inputData: input.simulateFailure ? { simulateFailure: true } : {} });
     }),
     retryExecution: operationalProcedure.input(z.object({ executionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "workflow.execute");
-      return retrySimulatedWorkflowExecution({ ...input, actorUserId: ctx.user.id });
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      return retrySimulatedWorkflowExecution({ ...input, organizationId, actorUserId: ctx.user.id });
     }),
   }),
   incidents: router({

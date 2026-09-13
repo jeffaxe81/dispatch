@@ -1,13 +1,16 @@
 import { and, eq } from "drizzle-orm";
 import { auditLogs, workflowVersions, workflows } from "../../drizzle/schema";
 import { buildWorkflowAuditLog, getDb, validateWorkflowDefinition } from "../dbLegacy";
+import { assertWorkflowTenant } from "./workflowTenantAccess";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 
-export async function setSimulatedWorkflowActive(input: { workflowId: number; active: boolean; actorUserId: number }) {
+export async function setSimulatedWorkflowActive(input: { workflowId: number; organizationId: number; active: boolean; actorUserId: number }) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
 
   return db.transaction(async tx => {
+    await assertWorkflowTenant(tx, input.workflowId, input.organizationId);
+
     const before = (await tx.select().from(workflows).where(eq(workflows.id, input.workflowId)).limit(1))[0];
     if (!before) throw new Error("Workflow não encontrado.");
     if (!before.simulationOnly) throw new Error("Esta entrega permite alterar somente workflows em modo de simulação.");

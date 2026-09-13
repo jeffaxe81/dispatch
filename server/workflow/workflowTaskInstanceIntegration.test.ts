@@ -10,6 +10,7 @@ import {
 } from "./workflowInstancePersistence";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 import { workflowTasks } from "./workflowTaskSchema";
+import { workflowExecutionTenantScopes, workflowTenantScopes } from "./workflowTenantScopeSchema";
 
 const definition = {
   nodes: [
@@ -52,11 +53,16 @@ function createHarness(workflowDefinition: Record<string, unknown> = definition)
   const pointer = { id: 1, publishedVersion: 1 };
   const version = { id: 101, workflowId: 1, version: 1, definition: workflowDefinition };
   const executions: Array<Record<string, any>> = [];
+  const executionTenantScopes: Array<{ executionId: number; organizationId: number }> = [];
   const tasks: Array<Record<string, any>> = [];
   const audits: Array<Record<string, any>> = [];
 
   const rowsFor = (table: unknown, condition: unknown) => {
     if (table === workflows) return [workflow];
+    if (table === workflowTenantScopes) return [{ workflowId: 1, organizationId: 10 }];
+    if (table === workflowExecutionTenantScopes) {
+      return executionTenantScopes.filter(row => hasNumber(condition, row.executionId));
+    }
     if (table === workflowPublicationPointers) return [pointer];
     if (table === workflowVersions) return [version];
     if (table === workflowExecutions || table === workflowInstanceExecutions) {
@@ -78,6 +84,10 @@ function createHarness(workflowDefinition: Record<string, unknown> = definition)
             return [{ id }];
           } };
         }
+        if (table === workflowExecutionTenantScopes) {
+          executionTenantScopes.push(values as { executionId: number; organizationId: number });
+          return Promise.resolve();
+        }
         if (table === workflowTasks) {
           return { $returningId: async () => {
             const id = tasks.length + 1;
@@ -89,7 +99,7 @@ function createHarness(workflowDefinition: Record<string, unknown> = definition)
           audits.push({ id: audits.length + 1, ...values });
           return Promise.resolve();
         }
-        throw new Error("Tabela inesperada no teste D-012D.");
+        throw new Error("Tabela inesperada no teste D-012D/D-012E.");
       },
     }),
     select: () => ({
@@ -113,6 +123,7 @@ function createHarness(workflowDefinition: Record<string, unknown> = definition)
   return {
     db: { transaction: async (callback: (transaction: typeof tx) => unknown) => callback(tx) },
     executions,
+    executionTenantScopes,
     tasks,
     audits,
   };
@@ -133,17 +144,18 @@ describe("D-012D task and instance integration", () => {
     const harness = createHarness();
     setDbForTesting(harness.db as never);
 
-    await startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-start" });
-    const waiting = await advanceManualWorkflowInstance({ executionId: 1, targetNodeId: "human-1", actorUserId: 7, correlationId: "corr-wait" });
+    await startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-start" });
+    const waiting = await advanceManualWorkflowInstance({ executionId: 1, organizationId: 10, targetNodeId: "human-1", actorUserId: 7, correlationId: "corr-wait" });
 
     expect(waiting.status).toBe("pendente");
+    expect(harness.executionTenantScopes).toEqual([{ executionId: 1, organizationId: 10 }]);
     expect(harness.tasks).toHaveLength(1);
     expect(harness.tasks[0]).toMatchObject({ executionId: 1, workflowVersionId: 101, nodeId: "human-1", status: "open", assigneeUserId: 11 });
-    await expect(advanceManualWorkflowInstance({ executionId: 1, targetNodeId: "notify-2", actorUserId: 11, correlationId: "corr-blocked" })).rejects.toThrow("waiting");
+    await expect(advanceManualWorkflowInstance({ executionId: 1, organizationId: 10, targetNodeId: "notify-2", actorUserId: 11, correlationId: "corr-blocked" })).rejects.toThrow("waiting");
     expect(harness.tasks).toHaveLength(1);
 
     harness.tasks[0].status = "completed";
-    const resumed = await resumeManualWorkflowInstanceFromCompletedTask({ executionId: 1, taskId: 1, targetNodeId: "notify-2", actorUserId: 11, correlationId: "corr-resume" });
+    const resumed = await resumeManualWorkflowInstanceFromCompletedTask({ executionId: 1, organizationId: 10, taskId: 1, targetNodeId: "notify-2", actorUserId: 11, correlationId: "corr-resume" });
     expect(resumed.status).toBe("concluida");
     expect(resumed.currentNodeId).toBe("notify-2");
   });
@@ -152,12 +164,12 @@ describe("D-012D task and instance integration", () => {
     const harness = createHarness(terminalDefinition);
     setDbForTesting(harness.db as never);
 
-    await startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-terminal-start" });
-    const waiting = await advanceManualWorkflowInstance({ executionId: 1, targetNodeId: "human-end", actorUserId: 7, correlationId: "corr-terminal-wait" });
+    await startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-terminal-start" });
+    const waiting = await advanceManualWorkflowInstance({ executionId: 1, organizationId: 10, targetNodeId: "human-end", actorUserId: 7, correlationId: "corr-terminal-wait" });
     expect(waiting.status).toBe("pendente");
     harness.tasks[0].status = "completed";
 
-    const completed = await resumeManualWorkflowInstanceFromCompletedTask({ executionId: 1, taskId: 1, actorUserId: 11, correlationId: "corr-terminal-done" });
+    const completed = await resumeManualWorkflowInstanceFromCompletedTask({ executionId: 1, organizationId: 10, taskId: 1, actorUserId: 11, correlationId: "corr-terminal-done" });
     expect(completed.status).toBe("concluida");
     expect(completed.currentNodeId).toBe("human-end");
   });
@@ -166,9 +178,9 @@ describe("D-012D task and instance integration", () => {
     const harness = createHarness();
     setDbForTesting(harness.db as never);
 
-    await startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-start-2" });
-    await advanceManualWorkflowInstance({ executionId: 1, targetNodeId: "human-1", actorUserId: 7, correlationId: "corr-wait-2" });
-    const cancelled = await cancelManualWorkflowInstance({ executionId: 1, actorUserId: 9, correlationId: "corr-cancel" });
+    await startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-start-2" });
+    await advanceManualWorkflowInstance({ executionId: 1, organizationId: 10, targetNodeId: "human-1", actorUserId: 7, correlationId: "corr-wait-2" });
+    const cancelled = await cancelManualWorkflowInstance({ executionId: 1, organizationId: 10, actorUserId: 9, correlationId: "corr-cancel" });
 
     expect(cancelled.status).toBe("cancelada");
     expect(harness.tasks[0].status).toBe("cancelled");

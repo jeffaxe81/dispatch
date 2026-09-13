@@ -23,10 +23,10 @@ describe("D-012D workflow task migration contract", () => {
     expect(migration).not.toContain("ALTER TABLE `incidents`");
   });
 
-  it("registra 0011 no journal do Drizzle", async () => {
+  it("mantém 0011 registrada no journal do Drizzle mesmo com migrations posteriores", async () => {
     const { default: rawJournal } = await loadJournal();
     const journal = JSON.parse(rawJournal) as { entries: Array<{ idx: number; tag: string }> };
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 11, tag: "0011_d012d_workflow_tasks" });
+    expect(journal.entries).toContainEqual(expect.objectContaining({ idx: 11, tag: "0011_d012d_workflow_tasks" }));
   });
 
   it("mantem o schema D-012D visivel para o drizzle-kit", async () => {
