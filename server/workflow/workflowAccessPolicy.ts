@@ -1,10 +1,12 @@
 import { assertPermission, type AccessAssignment } from "../accessControl";
 
 export const WORKFLOW_PERMISSIONS = {
-  view: "workflows.view",
-  edit: "workflows.edit",
-  publish: "workflows.publish",
-  execute: "workflows.execute",
+  view: "workflow.view",
+  create: "workflow.create",
+  edit: "workflow.edit",
+  publish: "workflow.activate",
+  delete: "workflow.delete",
+  execute: "workflow.execute",
   taskView: "workflow_tasks.view",
   taskAssign: "workflow_tasks.assign",
   taskAct: "workflow_tasks.act",
