@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 const loadTaskPersistence = () => import("./workflowTaskPersistence.ts?raw");
 const loadInstancePersistence = () => import("./workflowInstancePersistence.ts?raw");
 const loadTaskSchema = () => import("./workflowTaskSchema.ts?raw");
+const loadFacade = () => import("../db.ts?raw");
 
 describe("D-012D architecture boundaries", () => {
   it("keeps tasks as children of workflow_executions and does not create a second engine", async () => {
@@ -42,5 +43,20 @@ describe("D-012D architecture boundaries", () => {
     expect(tasks).not.toContain("currentVersion");
     expect(instances).toContain("requiresHumanTask");
     expect(instances).toContain("resumeManualWorkflowInstanceFromCompletedTask");
+  });
+
+  it("exposes task lifecycle and waiting resume through the existing facade", async () => {
+    const { default: facade } = await loadFacade();
+    for (const operation of [
+      "createWorkflowTask",
+      "assignWorkflowTask",
+      "claimWorkflowTask",
+      "startWorkflowTask",
+      "completeWorkflowTask",
+      "cancelWorkflowTask",
+      "resumeManualWorkflowInstanceFromCompletedTask",
+    ]) {
+      expect(facade).toContain(operation);
+    }
   });
 });
