@@ -17,7 +17,7 @@ type Meta = {
 export type WorkflowTaskStateChange = {
   state: WorkflowTaskState;
   transition: {
-    action: "create" | "claim" | "start" | "complete";
+    action: "create" | "assign" | "claim" | "start" | "complete" | "cancel";
     fromStatus: WorkflowTaskStatus | null;
     toStatus: WorkflowTaskStatus;
     actorUserId: number;
@@ -77,6 +77,15 @@ export function createWorkflowTaskState(input: Meta & {
   return result(state, "create", null, input);
 }
 
+export function assignWorkflowTaskState(input: Meta & { state: WorkflowTaskState; assigneeUserId: number }): WorkflowTaskStateChange {
+  assertMeta(input);
+  assertMutable(input.state);
+  assertPositive(input.assigneeUserId, "assigneeUserId");
+  if (input.state.assigneeUserId === input.assigneeUserId) throw new Error("Tarefa ja atribuida a este responsavel.");
+  const state: WorkflowTaskState = { ...input.state, assigneeUserId: input.assigneeUserId };
+  return result(state, "assign", input.state.status, input);
+}
+
 export function claimWorkflowTaskState(input: Meta & { state: WorkflowTaskState }): WorkflowTaskStateChange {
   assertMeta(input);
   assertMutable(input.state);
@@ -103,4 +112,11 @@ export function completeWorkflowTaskState(input: Meta & { state: WorkflowTaskSta
   if (input.state.assigneeUserId !== input.actorUserId) throw new Error("Usuario nao e o responsavel atual.");
   const state: WorkflowTaskState = { ...input.state, status: "completed" };
   return result(state, "complete", input.state.status, input);
+}
+
+export function cancelWorkflowTaskState(input: Meta & { state: WorkflowTaskState }): WorkflowTaskStateChange {
+  assertMeta(input);
+  assertMutable(input.state);
+  const state: WorkflowTaskState = { ...input.state, status: "cancelled" };
+  return result(state, "cancel", input.state.status, input);
 }
