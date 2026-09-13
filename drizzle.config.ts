@@ -11,6 +11,7 @@ export default defineConfig({
     "./drizzle/tenantScopeSchema.ts",
     "./drizzle/workShiftSchema.ts",
     "./drizzle/workspaceLayoutSchema.ts",
+    "./server/rbac/rbacAssignmentSourceSchema.ts",
     "./server/workflow/workflowTaskSchema.ts",
     "./server/workflow/workflowTenantScopeSchema.ts",
   ],
