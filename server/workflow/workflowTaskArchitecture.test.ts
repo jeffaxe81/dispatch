@@ -45,7 +45,7 @@ describe("D-012D architecture boundaries", () => {
     expect(instances).toContain("resumeManualWorkflowInstanceFromCompletedTask");
   });
 
-  it("exposes task lifecycle and waiting resume through the existing facade", async () => {
+  it("exposes safe task lifecycle and waiting resume through the existing facade", async () => {
     const { default: facade } = await loadFacade();
     for (const operation of [
       "createWorkflowTask",
@@ -53,10 +53,10 @@ describe("D-012D architecture boundaries", () => {
       "claimWorkflowTask",
       "startWorkflowTask",
       "completeWorkflowTask",
-      "cancelWorkflowTask",
       "resumeManualWorkflowInstanceFromCompletedTask",
     ]) {
       expect(facade).toContain(operation);
     }
+    expect(facade).not.toContain("cancelWorkflowTask");
   });
 });
