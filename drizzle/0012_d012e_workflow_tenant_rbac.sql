@@ -22,6 +22,22 @@ CREATE TABLE `workflow_execution_tenant_scopes` (
 --> statement-breakpoint
 CREATE INDEX `workflow_execution_tenant_scopes_org_idx` ON `workflow_execution_tenant_scopes` (`organization_id`);
 --> statement-breakpoint
+CREATE TABLE `rbac_assignment_sources` (
+  `assignment_id` int NOT NULL,
+  `source_key` varchar(80) NOT NULL,
+  `external_assignment_id` varchar(200) NOT NULL,
+  `external_subject_id` varchar(200) NOT NULL,
+  `source_revision` varchar(160) NOT NULL,
+  `last_synchronized_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `revoked_at` timestamp NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `rbac_assignment_sources_assignment_pk` PRIMARY KEY(`assignment_id`),
+  CONSTRAINT `rbac_assignment_sources_assignment_fk` FOREIGN KEY (`assignment_id`) REFERENCES `user_role_assignments`(`id`) ON DELETE CASCADE
+);
+--> statement-breakpoint
+CREATE INDEX `rbac_assignment_sources_source_subject_idx` ON `rbac_assignment_sources` (`source_key`, `external_subject_id`);
+--> statement-breakpoint
 INSERT IGNORE INTO `workflow_tenant_scopes` (`workflow_id`, `organization_id`)
 SELECT
   w.id,
