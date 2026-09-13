@@ -1,12 +1,11 @@
-import { and, eq } from "drizzle-orm";
-import { auditLogs, workflowExecutions } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
+import { auditLogs } from "../../drizzle/schema";
 import { getDb } from "../dbLegacy";
 import { workflowTasks } from "./workflowTaskSchema";
 import {
   assignWorkflowTaskState,
   claimWorkflowTaskState,
   completeWorkflowTaskState,
-  createWorkflowTaskState,
   startWorkflowTaskState,
   type WorkflowTaskState,
 } from "./workflowTaskStateMachine";
@@ -52,42 +51,6 @@ async function auditTask(tx: Tx, input: {
     actorUserId: input.actorUserId,
     beforeData: input.before,
     afterData: { ...input.after, correlationId: input.correlationId, occurredAt: input.occurredAt },
-  });
-}
-
-export async function createWorkflowTask(input: {
-  executionId: number;
-  nodeId: string;
-  actorUserId: number;
-  assigneeUserId?: number | null;
-  correlationId: string;
-}) {
-  const db = await requireDb();
-  return db.transaction(async tx => {
-    const execution = (await tx.select().from(workflowExecutions).where(eq(workflowExecutions.id, input.executionId)).limit(1))[0];
-    if (!execution) throw new Error("Instancia de workflow nao encontrada.");
-    if (execution.mode !== "simulacao") throw new Error("D-012D aceita somente workflow em simulacao.");
-    if (!execution.workflowVersionId) throw new Error("Instancia sem workflowVersionId congelado.");
-    const existing = (await tx.select().from(workflowTasks).where(and(
-      eq(workflowTasks.executionId, input.executionId),
-      eq(workflowTasks.nodeId, input.nodeId),
-    )).limit(1))[0];
-    if (existing) return existing;
-    const now = new Date();
-    const occurredAt = now.toISOString();
-    const change = createWorkflowTaskState({
-      executionId: input.executionId,
-      workflowVersionId: execution.workflowVersionId,
-      nodeId: input.nodeId,
-      assigneeUserId: input.assigneeUserId,
-      actorUserId: input.actorUserId,
-      correlationId: input.correlationId,
-      occurredAt,
-    });
-    const [created] = await tx.insert(workflowTasks).values({ ...change.state, createdByUserId: input.actorUserId }).$returningId();
-    if (!created?.id) throw new Error("Falha ao persistir tarefa de workflow.");
-    await auditTask(tx, { taskId: created.id, action: "create", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before: null, after: change.state });
-    return { id: created.id, ...change.state };
   });
 }
 
