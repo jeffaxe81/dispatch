@@ -394,7 +394,7 @@ export const appRouter = router({
         await assertPermission(ctx.user, "occurrences.view");
         return listIncidents({ ...input, teamId: ctx.user.operationalRole === "agente" ? ctx.user.teamId ?? -1 : input.teamId });
       }),
-    get: operationalProcedure.input(z.object({ workflowId: z.never().optional(), incidentId: z.number().int().positive() }).omit({ workflowId: true })).query(async ({ ctx, input }) => {
+    get: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const result = await getIncidentById(input.incidentId);
       const incident = requireIncident(result);
       await assertPermission(ctx.user, "occurrences.view");
