@@ -1,4 +1,4 @@
-import { index, int, mysqlTable, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { index, int, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 import { userRoleAssignments } from "../../drizzle/schema";
 
 export const rbacAssignmentSources = mysqlTable(
@@ -17,7 +17,7 @@ export const rbacAssignmentSources = mysqlTable(
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   },
   table => [
-    index("rbac_assignment_sources_source_idx").on(table.sourceKey),
-    index("rbac_assignment_sources_subject_idx").on(table.externalSubjectId),
+    uniqueIndex("rbac_assignment_sources_external_unique").on(table.sourceKey, table.externalAssignmentId),
+    index("rbac_assignment_sources_subject_idx").on(table.sourceKey, table.externalSubjectId),
   ],
 );
