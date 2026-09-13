@@ -87,23 +87,51 @@ O enforcement continuará local ao Despacho para não acoplar a execução opera
 A arquitetura será preparada com uma fronteira de origem de autorização, separando três conceitos:
 
 - **enforcement local**: decisões de acesso continuam consultando o modelo materializado local (`access_roles`, permissões e assignments);
-- **proveniência**: assignments poderão registrar origem externa, identificador estável da fonte e versão/revisão de sincronização;
+- **proveniência**: assignments poderão registrar origem, identificador estável da fonte e versão/revisão de sincronização;
 - **ingestão futura**: um adaptador poderá receber snapshots ou deltas de um RBAC central e materializá-los localmente de forma idempotente.
 
 A engine de workflow não conhecerá REST, SCIM, OIDC, LDAP ou qualquer fornecedor específico. Protocolos concretos ficam atrás de um adaptador futuro, por exemplo `CentralRbacProvider`/`RbacAssignmentSource`.
 
-O contrato futuro de ingestão deverá suportar, no mínimo:
+### Contrato interno de origem
 
-- identificador externo estável do usuário/subject;
-- organização/tenant;
+A fronteira futura deverá normalizar qualquer fonte para um contrato interno equivalente a:
+
+- `sourceKind`: `local` ou `external`;
+- `sourceSystem`: identificador lógico do RBAC central quando externo;
+- `externalSubjectId`: identificador estável do usuário/subject na fonte;
+- `externalAssignmentId`: identificador estável do vínculo, quando fornecido;
+- `organizationId` ou chave externa de tenant resolvível localmente;
 - papéis e/ou permissões;
 - escopo organizacional;
-- versão ou cursor de origem;
+- `sourceRevision` ou cursor equivalente;
 - validade/expiração quando fornecida;
-- desativação/revogação explícita;
-- idempotência e auditoria de sincronização.
+- estado ativo/revogado;
+- instante da última sincronização validada.
 
-A D-012E não implementará integração externa nem polling. Ela apenas evitará decisões que tornem essa evolução incompatível.
+Esses campos representam o contrato arquitetural. A implementação física poderá usar colunas nullable em assignments existentes ou uma tabela de proveniência dedicada, escolhendo a alternativa de menor risco durante o plano técnico, sem alterar a semântica acima.
+
+### Autoridade e coexistência
+
+Assignments locais e externos poderão coexistir, mas não serão indistinguíveis.
+
+- Um assignment com `sourceKind=external` é administrado pela respectiva fonte externa e não deve ser editado manualmente como se fosse local.
+- Uma sincronização completa e validada de uma fonte é autoritativa somente sobre os assignments externos pertencentes àquela fonte/subject/tenant.
+- Em um snapshot completo, assignments externos anteriormente materializados e ausentes no novo snapshot são revogados/inativados atomicamente após a validação integral do snapshot.
+- Assignments locais não são apagados por uma sincronização externa.
+- A permissão efetiva continua sendo calculada sobre assignments ativos válidos, independentemente da origem, respeitando a política local de coexistência.
+- Revogação explícita recebida da fonte externa tem precedência sobre a cópia externa local correspondente.
+
+Isso evita que a indisponibilidade da fonte central transforme o sistema em fail-open e evita também que uma revogação central seja ignorada indefinidamente.
+
+### Indisponibilidade e consistência
+
+A D-012E não implementará integração externa nem polling. Quando a integração central existir:
+
+- perda temporária da fonte não apaga automaticamente o último snapshot validado;
+- expiração fornecida pela fonte continua sendo respeitada localmente;
+- snapshots/deltas inválidos não substituem o estado efetivo anterior;
+- atualização parcial não se torna efetiva como se fosse uma revisão completa;
+- a política operacional poderá definir TTL máximo para dados externos sem exigir mudança na engine de workflow.
 
 ## Segurança e fail-closed
 
@@ -113,7 +141,7 @@ A D-012E não implementará integração externa nem polling. Ela apenas evitar�
 - Assignee de outro tenant é rejeitado.
 - Execução sem `workflow_execution_tenant_scopes` não pode ser avançada por API tenant-aware.
 - Dados de RBAC central futuros não serão aplicados parcialmente: uma revisão de sincronização deve ser validada antes de se tornar efetiva.
-- Perda temporária da fonte RBAC central não apaga automaticamente o último estado local válido; políticas de expiração/revogação serão tratadas explicitamente pelo adaptador.
+- Perda temporária da fonte RBAC central não cria permissões novas nem altera o tenant ativo por conta própria.
 
 ## Auditoria
 
@@ -129,6 +157,8 @@ Ela criará as tabelas de escopo e índices necessários. O backfill de workflow
 
 Não haverá alteração destrutiva nas tabelas centrais de workflow nesta etapa.
 
+A preparação de proveniência do RBAC central também deverá ser aditiva. Nenhum assignment local existente será reinterpretado retroativamente como externo.
+
 ## Microentregas
 
 1. **D-012E1 — contrato RBAC/tenant**: testes de arquitetura, catálogo de permissões e helpers de autorização.
@@ -136,7 +166,7 @@ Não haverá alteração destrutiva nas tabelas centrais de workflow nesta etapa
 3. **D-012E3 — workflows tenant-aware**: criação, leitura, edição, publicação e ativação.
 4. **D-012E4 — execução congelada por tenant**: start/advance/resume/cancel/retry protegidos.
 5. **D-012E5 — tarefas e assignee**: listagem/mutação protegidas e bloqueio cross-tenant.
-6. **D-012E6 — preparação RBAC central**: metadados/proveniência e interface interna de origem sem integração externa.
+6. **D-012E6 — preparação RBAC central**: contrato interno de origem, metadados/proveniência e invariantes de autoridade, sem integração externa.
 7. **D-012E7 — hardening**: regressão, auditoria, documentação, CI e PR.
 
 ## Fora de escopo
@@ -157,6 +187,8 @@ Não haverá alteração destrutiva nas tabelas centrais de workflow nesta etapa
 - permissões são avaliadas pelo RBAC existente, não por um segundo mapa de papéis;
 - recursos sem tenant não ganham acesso implícito;
 - migration e backfill são aditivos e determinísticos;
+- assignments externos têm proveniência inequívoca e não são confundidos com assignments locais;
+- o contrato prevê revogação/snapshot central sem dependência online da engine;
 - arquitetura permite ingestão futura de RBAC central sem alterar a engine de workflow;
 - testes de regressão, TypeScript, build, Docker e gates de compatibilidade permanecem verdes;
 - merge continua sujeito a autorização explícita separada do proprietário do projeto.
