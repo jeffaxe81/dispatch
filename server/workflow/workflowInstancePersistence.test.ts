@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-const loadSchema = () => import("../../drizzle/schema.ts?raw");
+const loadSchema = () => import("./workflowInstanceSchema.ts?raw");
 const loadMigration = () => import("../../drizzle/0010_d012c_workflow_instance_state.sql?raw");
 const loadJournal = () => import("../../drizzle/meta/_journal.json?raw");
 
 describe("D-012C workflow instance persistence contract", () => {
-  it("reutiliza workflow_executions com posição atual e correlationId nullable", async () => {
+  it("reutiliza workflow_executions por projeção local com posição atual e correlationId nullable", async () => {
     const { default: schema } = await loadSchema();
 
+    expect(schema).toContain('mysqlTable("workflow_executions"');
     expect(schema).toContain('currentNodeId: varchar("current_node_id", { length: 120 })');
     expect(schema).toContain('correlationId: varchar("correlation_id", { length: 160 })');
     expect(schema).toContain('index("workflow_executions_correlation_idx").on(table.correlationId)');
