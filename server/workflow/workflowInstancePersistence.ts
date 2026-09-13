@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   auditLogs,
   workflowExecutions,
@@ -8,9 +8,16 @@ import {
 import { getDb, validateWorkflowDefinition } from "../dbLegacy";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
+import { workflowTasks } from "./workflowTaskSchema";
+import {
+  cancelWorkflowTaskState,
+  createWorkflowTaskState,
+  type WorkflowTaskState,
+} from "./workflowTaskStateMachine";
 import {
   advanceWorkflowInstanceState,
   cancelWorkflowInstanceState,
+  resumeWaitingWorkflowInstanceState,
   startManualWorkflowInstanceState,
   type WorkflowInstanceGraph,
   type WorkflowInstanceState,
@@ -33,11 +40,27 @@ async function requireDb() {
   return db;
 }
 
+type WorkflowTx = Parameters<Parameters<Awaited<ReturnType<typeof requireDb>>["transaction"]>[0]>[0];
+
 function requireNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`${field} inválido na definição do workflow.`);
   }
   return value.trim();
+}
+
+function taskConfiguration(raw: unknown) {
+  return raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+}
+
+function taskAssignee(configuration: Record<string, unknown>) {
+  const raw = configuration.assigneeUserId;
+  if (raw === undefined || raw === null || raw === "") return null;
+  const value = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error("assigneeUserId inválido na etapa humana do workflow.");
+  }
+  return value;
 }
 
 function toWorkflowInstanceGraph(definition: Record<string, unknown>): WorkflowInstanceGraph {
@@ -50,9 +73,15 @@ function toWorkflowInstanceGraph(definition: Record<string, unknown>): WorkflowI
       throw new Error(`Nó ${index + 1} inválido na definição do workflow.`);
     }
     const node = rawNode as Record<string, unknown>;
+    const configuration = taskConfiguration(node.configuration);
+    const requiresHumanTask = configuration.requiresHumanTask === true;
     return {
       id: requireNonEmptyString(node.id, "node.id"),
       type: requireNonEmptyString(node.type, "node.type"),
+      ...(requiresHumanTask ? {
+        requiresHumanTask: true,
+        assigneeUserId: taskAssignee(configuration),
+      } : {}),
     };
   });
 
@@ -149,8 +178,126 @@ function buildWorkflowInstanceAuditLog(input: {
   };
 }
 
+async function auditWorkflowTask(tx: WorkflowTx, input: {
+  taskId: number;
+  action: "create" | "cancel";
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+  before: WorkflowTaskState | null;
+  after: WorkflowTaskState;
+}) {
+  await tx.insert(auditLogs).values({
+    resourceType: "workflow_task",
+    resourceId: input.taskId,
+    action: `workflow_task.${input.action}`,
+    actorUserId: input.actorUserId,
+    beforeData: input.before,
+    afterData: {
+      ...input.after,
+      correlationId: input.correlationId,
+      occurredAt: input.occurredAt,
+    },
+  });
+}
+
+async function ensureWorkflowTaskForNode(tx: WorkflowTx, input: {
+  executionId: number;
+  workflowVersionId: number;
+  nodeId: string;
+  assigneeUserId: number | null;
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+}) {
+  const existing = (
+    await tx
+      .select()
+      .from(workflowTasks)
+      .where(and(eq(workflowTasks.executionId, input.executionId), eq(workflowTasks.nodeId, input.nodeId)))
+      .limit(1)
+  )[0];
+  if (existing) {
+    if (existing.workflowVersionId !== input.workflowVersionId) {
+      throw new Error("Tarefa existente não corresponde à versão congelada da instância.");
+    }
+    return existing;
+  }
+
+  const change = createWorkflowTaskState({
+    executionId: input.executionId,
+    workflowVersionId: input.workflowVersionId,
+    nodeId: input.nodeId,
+    assigneeUserId: input.assigneeUserId,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt: input.occurredAt,
+  });
+  const [created] = await tx
+    .insert(workflowTasks)
+    .values({ ...change.state, createdByUserId: input.actorUserId })
+    .$returningId();
+  if (!created?.id) throw new Error("Falha ao persistir tarefa da etapa humana.");
+  await auditWorkflowTask(tx, {
+    taskId: created.id,
+    action: "create",
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt: input.occurredAt,
+    before: null,
+    after: change.state,
+  });
+  return { id: created.id, ...change.state };
+}
+
+async function cancelOpenTasksForExecution(tx: WorkflowTx, input: {
+  executionId: number;
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+  cancelledAt: Date;
+}) {
+  const tasks = await tx
+    .select()
+    .from(workflowTasks)
+    .where(and(
+      eq(workflowTasks.executionId, input.executionId),
+      inArray(workflowTasks.status, ["open", "in_progress"]),
+    ))
+    .limit(1000);
+
+  for (const task of tasks) {
+    const before: WorkflowTaskState = {
+      executionId: task.executionId,
+      workflowVersionId: task.workflowVersionId,
+      nodeId: task.nodeId,
+      status: task.status,
+      assigneeUserId: task.assigneeUserId,
+    };
+    const change = cancelWorkflowTaskState({
+      state: before,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      occurredAt: input.occurredAt,
+    });
+    await tx
+      .update(workflowTasks)
+      .set({ status: "cancelled", cancelledAt: input.cancelledAt })
+      .where(eq(workflowTasks.id, task.id));
+    await auditWorkflowTask(tx, {
+      taskId: task.id,
+      action: "cancel",
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      occurredAt: input.occurredAt,
+      before,
+      after: change.state,
+    });
+  }
+}
+
 async function loadFrozenInstanceForTransition(
-  tx: Parameters<Parameters<Awaited<ReturnType<typeof requireDb>>["transaction"]>[0]>[0],
+  tx: WorkflowTx,
   executionId: number,
 ) {
   const execution = (
@@ -313,6 +460,20 @@ export async function advanceManualWorkflowInstance(input: {
     });
     const status = dbStatusFromState(advanced.state.status);
 
+    if (advanced.state.status === "waiting") {
+      const taskNode = frozen.graph.nodes.find(node => node.id === advanced.state.currentNodeId);
+      if (!taskNode?.requiresHumanTask) throw new Error("Estado waiting sem etapa humana válida.");
+      await ensureWorkflowTaskForNode(tx, {
+        executionId: input.executionId,
+        workflowVersionId: frozen.state.workflowVersionId,
+        nodeId: taskNode.id,
+        assigneeUserId: taskNode.assigneeUserId ?? null,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        occurredAt,
+      });
+    }
+
     await tx
       .update(workflowExecutions)
       .set({
@@ -355,6 +516,86 @@ export async function advanceManualWorkflowInstance(input: {
   });
 }
 
+export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
+  executionId: number;
+  taskId: number;
+  targetNodeId: string;
+  actorUserId: number;
+  correlationId: string;
+}): Promise<WorkflowInstanceResult> {
+  const db = await requireDb();
+
+  return db.transaction(async tx => {
+    const frozen = await loadFrozenInstanceForTransition(tx, input.executionId);
+    if (frozen.state.status !== "waiting") throw new Error("A instância não está aguardando tarefa.");
+    const task = (await tx.select().from(workflowTasks).where(eq(workflowTasks.id, input.taskId)).limit(1))[0];
+    if (!task) throw new Error("Tarefa de workflow não encontrada.");
+    if (task.executionId !== input.executionId || task.workflowVersionId !== frozen.state.workflowVersionId || task.nodeId !== frozen.state.currentNodeId) {
+      throw new Error("A tarefa não pertence ao nó atual da instância congelada.");
+    }
+    if (task.status !== "completed") throw new Error("A tarefa deve estar completed antes de retomar a instância.");
+
+    const beforeStatus = frozen.execution.status as WorkflowExecutionDbStatus;
+    const now = new Date();
+    const occurredAt = now.toISOString();
+    const resumed = resumeWaitingWorkflowInstanceState({
+      state: frozen.state,
+      graph: frozen.graph,
+      targetNodeId: input.targetNodeId,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      occurredAt,
+    });
+    const status = dbStatusFromState(resumed.state.status);
+
+    if (resumed.state.status === "waiting") {
+      const taskNode = frozen.graph.nodes.find(node => node.id === resumed.state.currentNodeId);
+      if (!taskNode?.requiresHumanTask) throw new Error("Estado waiting sem etapa humana válida.");
+      await ensureWorkflowTaskForNode(tx, {
+        executionId: input.executionId,
+        workflowVersionId: frozen.state.workflowVersionId,
+        nodeId: taskNode.id,
+        assigneeUserId: taskNode.assigneeUserId ?? null,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        occurredAt,
+      });
+    }
+
+    await tx
+      .update(workflowExecutions)
+      .set({ status, completedAt: resumed.state.status === "completed" ? now : null })
+      .where(eq(workflowExecutions.id, input.executionId));
+    await tx
+      .update(workflowInstanceExecutions)
+      .set({ currentNodeId: resumed.state.currentNodeId, correlationId: input.correlationId })
+      .where(eq(workflowInstanceExecutions.id, input.executionId));
+    await tx.insert(auditLogs).values(
+      buildWorkflowInstanceAuditLog({
+        executionId: input.executionId,
+        workflowId: frozen.state.workflowId,
+        workflowVersionId: frozen.state.workflowVersionId,
+        actorUserId: input.actorUserId,
+        action: resumed.transition.action === "complete" ? "complete" : "advance",
+        fromNodeId: resumed.transition.fromNodeId,
+        toNodeId: resumed.transition.toNodeId,
+        correlationId: input.correlationId,
+        occurredAt,
+        beforeStatus,
+        afterStatus: status,
+      }),
+    );
+
+    return {
+      executionId: input.executionId,
+      workflowId: frozen.state.workflowId,
+      workflowVersionId: frozen.state.workflowVersionId,
+      currentNodeId: resumed.state.currentNodeId,
+      status,
+    };
+  });
+}
+
 export async function cancelManualWorkflowInstance(input: {
   executionId: number;
   actorUserId: number;
@@ -375,6 +616,14 @@ export async function cancelManualWorkflowInstance(input: {
       occurredAt,
     });
     const status = dbStatusFromState(cancelled.state.status);
+
+    await cancelOpenTasksForExecution(tx, {
+      executionId: input.executionId,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      occurredAt,
+      cancelledAt: now,
+    });
 
     await tx
       .update(workflowExecutions)
