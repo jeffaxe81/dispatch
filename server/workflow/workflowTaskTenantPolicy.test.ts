@@ -5,6 +5,7 @@ import { workflowTasks } from "./workflowTaskSchema";
 import { workflowExecutionTenantScopes } from "./workflowTenantScopeSchema";
 
 const policyModule = "./workflowTaskTenantPolicy";
+const loadPolicySource = () => import("./workflowTaskTenantPolicy.ts?raw");
 
 type Policy = {
   assertTaskTenant: (tx: any, taskId: number, organizationId: number) => Promise<number>;
@@ -94,5 +95,12 @@ describe("D-012E tenant policy for workflow tasks", () => {
 
     setDbForTesting(assigneeDb({ active: false, assignments: [{ organizationId: 10, defaultScope: "organizacao" }] }) as never);
     await expect(assertAssigneeAuthorizedForTenant(42, 10)).rejects.toThrow(/inativ|não.*autorizad/i);
+  });
+
+  it("aplica a mesma regra de expiração usada pelo RBAC dinâmico", async () => {
+    const { default: source } = await loadPolicySource();
+    expect(source).toContain("userRoleAssignments.expiresAt");
+    expect(source).toContain("isNull(userRoleAssignments.expiresAt)");
+    expect(source).toContain("gt(userRoleAssignments.expiresAt, new Date())");
   });
 });
