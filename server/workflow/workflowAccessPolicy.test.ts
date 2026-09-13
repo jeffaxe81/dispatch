@@ -4,10 +4,18 @@ import { WORKFLOW_PERMISSIONS, isUserAuthorizedForOrganization } from "./workflo
 const loadPolicySource = () => import("./workflowAccessPolicy.ts?raw");
 
 describe("D-012E workflow RBAC policy", () => {
-  it("define permissões de workflow e tarefa", () => {
-    expect(WORKFLOW_PERMISSIONS.view).toBe("workflows.view");
-    expect(WORKFLOW_PERMISSIONS.publish).toBe("workflows.publish");
-    expect(WORKFLOW_PERMISSIONS.taskAct).toBe("workflow_tasks.act");
+  it("reutiliza permissões canônicas de workflow e adiciona apenas permissões de tarefa", () => {
+    expect(WORKFLOW_PERMISSIONS).toMatchObject({
+      view: "workflow.view",
+      create: "workflow.create",
+      edit: "workflow.edit",
+      publish: "workflow.activate",
+      delete: "workflow.delete",
+      execute: "workflow.execute",
+      taskView: "workflow_tasks.view",
+      taskAssign: "workflow_tasks.assign",
+      taskAct: "workflow_tasks.act",
+    });
   });
 
   it("autoriza apenas assignments globais ou da organização", () => {
