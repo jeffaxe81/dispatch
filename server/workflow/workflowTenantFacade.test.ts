@@ -14,7 +14,7 @@ describe("D-012E workflow tenant facade", () => {
     expect(source).toMatch(/eq\(workflowExecutionTenantScopes\.organizationId,\s*organizationId\)/);
   });
 
-  it("falha fechado em operações por id e cria o escopo junto da fachada tenant-aware", async () => {
+  it("falha fechado em operações por id e delega a criação para a persistência atômica tenant-aware", async () => {
     const { default: source } = await loadFacade();
 
     for (const operation of [
@@ -25,7 +25,8 @@ describe("D-012E workflow tenant facade", () => {
       expect(source).toContain(operation);
     }
     expect(source.match(/assertWorkflowTenant\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
-    expect(source).toContain("createWorkflowTenantScope");
+    expect(source).toContain("createSimulatedWorkflowWithTenant");
+    expect(source).not.toContain("createWorkflowTenantScope");
     expect(source).toContain("createSimulatedWorkflowForTenant");
     expect(source).toContain("getSimulatedWorkflowExecutionForTenant");
     expect(source).toContain("assertExecutionTenantForRead");
