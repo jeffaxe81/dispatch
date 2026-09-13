@@ -69,6 +69,9 @@ function assertGraph(graph: WorkflowInstanceGraph) {
     if (!node.id.trim() || !node.type.trim()) {
       throw new Error("Nós do workflow devem possuir id e type.");
     }
+    if (node.type.startsWith("trigger.") && node.requiresHumanTask) {
+      throw new Error("Nós trigger não podem declarar requiresHumanTask.");
+    }
     if (node.assigneeUserId != null) assertPositiveInteger(node.assigneeUserId, "assigneeUserId");
     if (nodeIds.has(node.id)) {
       throw new Error(`Nó duplicado no workflow: ${node.id}.`);
