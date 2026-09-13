@@ -78,6 +78,5 @@ export {
   assignWorkflowTask,
   claimWorkflowTask,
   completeWorkflowTask,
-  createWorkflowTask,
   startWorkflowTask,
 } from "./workflow/workflowTaskPersistence";
