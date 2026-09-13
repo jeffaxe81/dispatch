@@ -15,6 +15,8 @@ import {
 } from "../dbLegacy";
 import { assertLegacyExecutorSupportsDefinition } from "./workflowHumanTaskPolicy";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
+import { assertWorkflowTenant } from "./workflowTenantAccess";
+import { workflowExecutionTenantScopes } from "./workflowTenantScopeSchema";
 
 function buildWorkflowExecutionAuditLog(input: {
   executionId: number;
@@ -38,6 +40,21 @@ async function requireDb() {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   return db;
+}
+
+async function assertExecutionTenant(
+  tx: { select: (...args: any[]) => any },
+  executionId: number,
+  organizationId: number,
+) {
+  const scope = (await tx
+    .select({ organizationId: workflowExecutionTenantScopes.organizationId })
+    .from(workflowExecutionTenantScopes)
+    .where(eq(workflowExecutionTenantScopes.executionId, executionId))
+    .limit(1))[0] as { organizationId: number } | undefined;
+  if (!scope?.organizationId) throw new Error("Execução sem escopo de tenant mapeado.");
+  if (scope.organizationId !== organizationId) throw new Error("Execução pertence a outra organização.");
+  return scope.organizationId;
 }
 
 async function processSimulatedWorkflowExecution(executionId: number, actorUserId: number) {
@@ -128,6 +145,7 @@ async function processSimulatedWorkflowExecution(executionId: number, actorUserI
 
 export async function executeSimulatedWorkflow(input: {
   workflowId: number;
+  organizationId: number;
   actorUserId: number;
   inputData?: Record<string, unknown> | null;
   attemptsBefore?: number;
@@ -135,6 +153,7 @@ export async function executeSimulatedWorkflow(input: {
 }) {
   const db = await requireDb();
   const queued = await db.transaction(async tx => {
+    await assertWorkflowTenant(tx, input.workflowId, input.organizationId);
     const workflow = (await tx.select().from(workflows).where(eq(workflows.id, input.workflowId)).limit(1))[0];
     if (!workflow) throw new Error("Workflow não encontrado.");
     if (!workflow.simulationOnly) throw new Error("Esta entrega executa somente workflows em modo de simulação.");
@@ -172,6 +191,7 @@ export async function executeSimulatedWorkflow(input: {
       retryOfExecutionId: input.retrySourceExecutionId ?? null,
       initiatedByUserId: input.actorUserId,
     }).$returningId();
+    await tx.insert(workflowExecutionTenantScopes).values({ executionId: created.id, organizationId: input.organizationId });
 
     await tx.insert(integrationLogs).values({
       executionId: created.id,
@@ -200,6 +220,7 @@ export async function executeSimulatedWorkflow(input: {
         attemptsBefore,
         publishedVersion: pointer.publishedVersion,
         simulationOnly: true,
+        organizationId: input.organizationId,
       },
     }));
     return created.id;
@@ -208,9 +229,10 @@ export async function executeSimulatedWorkflow(input: {
   return processSimulatedWorkflowExecution(queued, input.actorUserId);
 }
 
-export async function retrySimulatedWorkflowExecution(input: { executionId: number; actorUserId: number }) {
+export async function retrySimulatedWorkflowExecution(input: { executionId: number; organizationId: number; actorUserId: number }) {
   const db = await requireDb();
   const source = await db.transaction(async tx => {
+    await assertExecutionTenant(tx, input.executionId, input.organizationId);
     const current = (await tx.select().from(workflowExecutions).where(eq(workflowExecutions.id, input.executionId)).limit(1))[0];
     if (!current) throw new Error("Execução não encontrada.");
     if (current.mode !== "simulacao" || current.status !== "falha") throw new Error("Somente execuções simuladas em falha podem ser reenfileiradas.");
@@ -223,6 +245,7 @@ export async function retrySimulatedWorkflowExecution(input: { executionId: numb
   try {
     result = await executeSimulatedWorkflow({
       workflowId: source.workflowId,
+      organizationId: input.organizationId,
       actorUserId: input.actorUserId,
       inputData: source.inputData,
       attemptsBefore: source.attempts,
@@ -251,7 +274,7 @@ export async function retrySimulatedWorkflowExecution(input: { executionId: numb
       actorUserId: input.actorUserId,
       action: "retry",
       beforeData: { status: source.status, attempts: source.attempts },
-      afterData: { newExecutionId: result.executionId, nextAttempt: source.attempts + 1, simulationOnly: true },
+      afterData: { newExecutionId: result.executionId, nextAttempt: source.attempts + 1, simulationOnly: true, organizationId: input.organizationId },
     }));
   });
 
