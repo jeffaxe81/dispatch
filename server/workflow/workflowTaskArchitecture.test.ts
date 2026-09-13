@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 const loadTaskPersistence = () => import("./workflowTaskPersistence.ts?raw");
 const loadInstancePersistence = () => import("./workflowInstancePersistence.ts?raw");
+const loadLegacyExecution = () => import("./workflowExecutionPersistence.ts?raw");
 const loadTaskSchema = () => import("./workflowTaskSchema.ts?raw");
 const loadFacade = () => import("../db.ts?raw");
 
@@ -15,7 +16,6 @@ describe("D-012D architecture boundaries", () => {
 
     expect(schema).toContain('mysqlTable("workflow_tasks"');
     expect(`${tasks}\n${instances}\n${schema}`).not.toContain('mysqlTable("workflow_instances"');
-    expect(tasks).toContain("workflowExecutions");
     expect(instances).toContain("workflowTasks");
   });
 
@@ -34,15 +34,21 @@ describe("D-012D architecture boundaries", () => {
   });
 
   it("preserves the frozen workflow version and explicit human-task marker", async () => {
-    const [{ default: tasks }, { default: instances }] = await Promise.all([
-      loadTaskPersistence(),
-      loadInstancePersistence(),
-    ]);
+    const { default: instances } = await loadInstancePersistence();
 
-    expect(tasks).toContain("execution.workflowVersionId");
-    expect(tasks).not.toContain("currentVersion");
+    expect(instances).toContain("workflowVersionId: frozen.state.workflowVersionId");
     expect(instances).toContain("requiresHumanTask");
     expect(instances).toContain("resumeManualWorkflowInstanceFromCompletedTask");
+    expect(instances).not.toContain("currentVersion");
+  });
+
+  it("forces human-task workflows away from the legacy simulator", async () => {
+    const { default: legacy } = await loadLegacyExecution();
+    expect(legacy).toContain("assertLegacyExecutorSupportsDefinition");
+    expect(legacy).toContain("buildSimulatedExecutionPlan");
+    expect(legacy.indexOf("assertLegacyExecutorSupportsDefinition(version.definition)")).toBeLessThan(
+      legacy.indexOf("buildSimulatedExecutionPlan(version.definition"),
+    );
   });
 
   it("exposes only safe task mutations and waiting resume through the existing facade", async () => {
