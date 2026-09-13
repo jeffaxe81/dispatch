@@ -19,6 +19,7 @@ describe("D-012E workflow tenant scope persistence", () => {
     expect(migration).toContain("CREATE TABLE `workflow_tenant_scopes`");
     expect(migration).toContain("CREATE TABLE `workflow_execution_tenant_scopes`");
     expect(migration).toContain("CREATE TABLE `rbac_assignment_sources`");
+    expect(migration).toContain("CREATE INDEX `rbac_assignment_sources_subject_idx`");
     expect(migration).toMatch(/HAVING\s+COUNT\s*\(\s*DISTINCT\s+[^)]*organization_id[^)]*\)\s*=\s*1/i);
     expect(migration).not.toMatch(/COALESCE\s*\([^)]*organization_id[^)]*,\s*1\s*\)/i);
     expect(migration).not.toMatch(/UPDATE\s+`?workflow_tasks`?/i);
@@ -27,7 +28,7 @@ describe("D-012E workflow tenant scope persistence", () => {
   it("separa todos os comandos SQL para execução segura pelo drizzle-kit migrate", async () => {
     const { default: migration } = await loadMigration();
     const statements = migration.split("--> statement-breakpoint").map(statement => statement.trim()).filter(Boolean);
-    expect(statements).toHaveLength(8);
+    expect(statements).toHaveLength(9);
   });
 
   it("registra schemas e migration no controle do Drizzle", async () => {
