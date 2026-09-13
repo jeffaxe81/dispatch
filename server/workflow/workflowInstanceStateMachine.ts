@@ -218,16 +218,47 @@ export function advanceWorkflowInstanceState(input: {
 export function resumeWaitingWorkflowInstanceState(input: {
   state: WorkflowInstanceState;
   graph: WorkflowInstanceGraph;
-  targetNodeId: string;
+  targetNodeId?: string;
   actorUserId: number;
   correlationId: string;
   occurredAt: string;
 }): WorkflowInstanceStateChange {
   assertMutableState(input.state);
+  assertTransitionMetadata(input);
+  assertGraph(input.graph);
   if (input.state.status !== "waiting") {
     throw new Error("Somente instância waiting pode ser retomada por conclusão de tarefa.");
   }
-  return moveToTarget(input);
+
+  const outgoing = input.graph.edges.filter(edge => edge.source === input.state.currentNodeId);
+  if (!outgoing.length) {
+    if (input.targetNodeId) {
+      throw new Error("Etapa humana terminal não possui nó de destino.");
+    }
+    return {
+      state: { ...input.state, status: "completed" },
+      transition: transition({
+        action: "complete",
+        fromNodeId: input.state.currentNodeId,
+        toNodeId: input.state.currentNodeId,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        occurredAt: input.occurredAt,
+      }),
+    };
+  }
+
+  if (!input.targetNodeId) {
+    throw new Error("targetNodeId é obrigatório para retomar etapa humana com saída.");
+  }
+  return moveToTarget({
+    state: input.state,
+    graph: input.graph,
+    targetNodeId: input.targetNodeId,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt: input.occurredAt,
+  });
 }
 
 export function cancelWorkflowInstanceState(input: {
