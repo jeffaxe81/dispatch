@@ -18,6 +18,10 @@ Nesta etapa não existe integração runtime do novo contrato com o executor sim
 
 A D-012A opera **sem migration**, **sem deploy** e **sem grant**. Não altera tabelas, procedures, páginas, estados de Ocorrência ou comportamento operacional existente.
 
+## Capacidades proibidas na D-012A
+
+A D-012A permanece **sem chamada HTTP**, **sem execução de processo** e **sem alteração de estado de ocorrência**. Também permanece sem escrita de banco, sem credenciais externas e sem ativação do executor legado fora do modo simulado.
+
 ## Evolução controlada
 
 - D-012B conecta o modelo de definição/versionamento aprovado à evolução do domínio existente.
