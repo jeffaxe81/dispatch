@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.19.0-rc.1] — 2026-09-12
+
+### Release candidate — Inventário / Motor de Ativos integrado
+
+Esta release candidate consolida a integração do Inventário/Motor de Ativos com o Sistema de Despacho e o pacote técnico do ciclo R1 de homologação.
+
+### Incluído
+- cliente REST do Inventário no Despacho com propagação de tenant, usuário e correlation ID;
+- busca, detalhe, localização e vínculo contextual de ativos dentro da operação;
+- consumo versionado de eventos, replay idempotente e fail-closed para versões incompatíveis;
+- isolamento multi-tenant, autorização negativa e fronteira arquitetural sem acesso cruzado a banco;
+- adaptador seguro `/homologation/events`, indisponível em produção e protegido por chave dedicada;
+- harness de homologação externa com relatórios JSON/Markdown e correlation IDs;
+- workflow manual protegido por GitHub Environment `homologation`;
+- runbook de homologação externa e rollback operacional.
+
+### Estado da homologação externa
+- tentativa real executada no workflow run `34726884023`;
+- resultado: FAIL no preflight por ausência das variáveis/segredo do environment `homologation`;
+- nenhuma chamada ao Motor/Despacho real ocorreu nessa tentativa;
+- produção permanece NO-GO;
+- promoção para release final depende do issue #97 e do fechamento do ciclo #89.
+
+### Controles de release
+- versão de pacote: `2.19.0-rc.1`;
+- migrations permanecem apenas versionadas; nenhuma aplicação automática em banco real;
+- nenhum grant produtivo é concedido automaticamente;
+- nenhum deploy produtivo é autorizado por esta RC.
+
 ## [2.18.0] — 2026-09-11
 
 ### Release final — Workspace Operacional + Observabilidade/Recovery seguro
