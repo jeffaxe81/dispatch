@@ -32,26 +32,20 @@ const humanTaskGraph: WorkflowInstanceGraph = {
   ],
 };
 
+const terminalHumanTaskGraph: WorkflowInstanceGraph = {
+  nodes: [
+    { id: "trigger-1", type: "trigger.manual" },
+    { id: "human-end", type: "notification.simulate", requiresHumanTask: true, assigneeUserId: 11 },
+  ],
+  edges: [{ id: "edge-1", source: "trigger-1", target: "human-end" }],
+};
+
 function start() {
-  return startManualWorkflowInstanceState({
-    workflowId: 10,
-    workflowVersionId: 101,
-    graph,
-    actorUserId,
-    correlationId,
-    occurredAt,
-  });
+  return startManualWorkflowInstanceState({ workflowId: 10, workflowVersionId: 101, graph, actorUserId, correlationId, occurredAt });
 }
 
 function startHumanTaskGraph() {
-  return startManualWorkflowInstanceState({
-    workflowId: 10,
-    workflowVersionId: 101,
-    graph: humanTaskGraph,
-    actorUserId,
-    correlationId,
-    occurredAt,
-  });
+  return startManualWorkflowInstanceState({ workflowId: 10, workflowVersionId: 101, graph: humanTaskGraph, actorUserId, correlationId, occurredAt });
 }
 
 describe("D-012C/D workflow instance state machine", () => {
@@ -97,41 +91,26 @@ describe("D-012C/D workflow instance state machine", () => {
 
   it("entra em waiting ao alcançar etapa marcada como humana e bloqueia avanço direto", () => {
     const initial = startHumanTaskGraph();
-    const waiting = advanceWorkflowInstanceState({
-      state: initial.state,
-      graph: humanTaskGraph,
-      targetNodeId: "human-1",
-      actorUserId,
-      correlationId: "corr-d012d-wait",
-      occurredAt,
-    });
-
+    const waiting = advanceWorkflowInstanceState({ state: initial.state, graph: humanTaskGraph, targetNodeId: "human-1", actorUserId, correlationId: "corr-d012d-wait", occurredAt });
     expect(waiting.state).toEqual({ ...initial.state, currentNodeId: "human-1", status: "waiting" });
     expect(waiting.transition.action).toBe("advance");
-    expect(() => advanceWorkflowInstanceState({
-      state: waiting.state,
-      graph: humanTaskGraph,
-      targetNodeId: "notify-2",
-      actorUserId,
-      correlationId: "corr-d012d-blocked",
-      occurredAt,
-    })).toThrow("waiting");
+    expect(() => advanceWorkflowInstanceState({ state: waiting.state, graph: humanTaskGraph, targetNodeId: "notify-2", actorUserId, correlationId: "corr-d012d-blocked", occurredAt })).toThrow("waiting");
   });
 
   it("retoma uma instância waiting somente pela aresta válida da versão congelada", () => {
     const initial = startHumanTaskGraph();
     const waiting = advanceWorkflowInstanceState({ state: initial.state, graph: humanTaskGraph, targetNodeId: "human-1", actorUserId, correlationId, occurredAt });
-    const resumed = resumeWaitingWorkflowInstanceState({
-      state: waiting.state,
-      graph: humanTaskGraph,
-      targetNodeId: "notify-2",
-      actorUserId: 11,
-      correlationId: "corr-d012d-resume",
-      occurredAt,
-    });
-
+    const resumed = resumeWaitingWorkflowInstanceState({ state: waiting.state, graph: humanTaskGraph, targetNodeId: "notify-2", actorUserId: 11, correlationId: "corr-d012d-resume", occurredAt });
     expect(resumed.state).toEqual({ ...waiting.state, currentNodeId: "notify-2", status: "completed" });
     expect(resumed.transition.action).toBe("complete");
+  });
+
+  it("conclui a instância ao completar uma etapa humana terminal", () => {
+    const initial = startManualWorkflowInstanceState({ workflowId: 10, workflowVersionId: 101, graph: terminalHumanTaskGraph, actorUserId, correlationId, occurredAt });
+    const waiting = advanceWorkflowInstanceState({ state: initial.state, graph: terminalHumanTaskGraph, targetNodeId: "human-end", actorUserId, correlationId, occurredAt });
+    const completed = resumeWaitingWorkflowInstanceState({ state: waiting.state, graph: terminalHumanTaskGraph, actorUserId: 11, correlationId: "corr-d012d-terminal", occurredAt });
+    expect(completed.state).toEqual({ ...waiting.state, status: "completed" });
+    expect(completed.transition).toMatchObject({ action: "complete", fromNodeId: "human-end", toNodeId: "human-end" });
   });
 
   it("rejeita alvo sem aresta a partir do nó corrente sem mutar o estado original", () => {
