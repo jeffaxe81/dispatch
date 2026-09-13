@@ -9,6 +9,7 @@ import {
   startWorkflowTaskState,
   type WorkflowTaskState,
 } from "./workflowTaskStateMachine";
+import { assertAssigneeAuthorizedForTenant, assertTaskTenant } from "./workflowTaskTenantPolicy";
 
 async function requireDb() {
   const db = await getDb();
@@ -54,9 +55,17 @@ async function auditTask(tx: Tx, input: {
   });
 }
 
-export async function assignWorkflowTask(input: { taskId: number; assigneeUserId: number; actorUserId: number; correlationId: string }) {
+export async function assignWorkflowTask(input: {
+  taskId: number;
+  organizationId: number;
+  assigneeUserId: number;
+  actorUserId: number;
+  correlationId: string;
+}) {
   const db = await requireDb();
+  await assertAssigneeAuthorizedForTenant(input.assigneeUserId, input.organizationId);
   return db.transaction(async tx => {
+    await assertTaskTenant(tx, input.taskId, input.organizationId);
     const task = await loadTaskForUpdate(tx, input.taskId);
     const before = toState(task);
     const occurredAt = new Date().toISOString();
@@ -67,9 +76,15 @@ export async function assignWorkflowTask(input: { taskId: number; assigneeUserId
   });
 }
 
-export async function claimWorkflowTask(input: { taskId: number; actorUserId: number; correlationId: string }) {
+export async function claimWorkflowTask(input: {
+  taskId: number;
+  organizationId: number;
+  actorUserId: number;
+  correlationId: string;
+}) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    await assertTaskTenant(tx, input.taskId, input.organizationId);
     const task = await loadTaskForUpdate(tx, input.taskId);
     const before = toState(task);
     const now = new Date();
@@ -81,9 +96,15 @@ export async function claimWorkflowTask(input: { taskId: number; actorUserId: nu
   });
 }
 
-export async function startWorkflowTask(input: { taskId: number; actorUserId: number; correlationId: string }) {
+export async function startWorkflowTask(input: {
+  taskId: number;
+  organizationId: number;
+  actorUserId: number;
+  correlationId: string;
+}) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    await assertTaskTenant(tx, input.taskId, input.organizationId);
     const task = await loadTaskForUpdate(tx, input.taskId);
     const before = toState(task);
     const now = new Date();
@@ -95,9 +116,15 @@ export async function startWorkflowTask(input: { taskId: number; actorUserId: nu
   });
 }
 
-export async function completeWorkflowTask(input: { taskId: number; actorUserId: number; correlationId: string }) {
+export async function completeWorkflowTask(input: {
+  taskId: number;
+  organizationId: number;
+  actorUserId: number;
+  correlationId: string;
+}) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    await assertTaskTenant(tx, input.taskId, input.organizationId);
     const task = await loadTaskForUpdate(tx, input.taskId);
     const before = toState(task);
     const now = new Date();
