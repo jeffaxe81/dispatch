@@ -5,6 +5,7 @@ import type { TrpcContext } from "./_core/context";
 const mocks = vi.hoisted(() => ({
   allowed: true,
   assertPermission: vi.fn(),
+  requireActiveTenant: vi.fn(),
   listIntegrationEventCatalog: vi.fn(),
   listSimulatedWorkflows: vi.fn(),
   createSimulatedWorkflow: vi.fn(),
@@ -20,6 +21,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./accessControl", async importOriginal => ({
   ...(await importOriginal<typeof import("./accessControl")>()),
   assertPermission: mocks.assertPermission,
+}));
+
+vi.mock("./tenantOperational", async importOriginal => ({
+  ...(await importOriginal<typeof import("./tenantOperational")>()),
+  requireActiveTenant: mocks.requireActiveTenant,
 }));
 
 vi.mock("./db", async importOriginal => ({
@@ -66,6 +72,7 @@ describe("procedures de Integrações & Workflows", () => {
     mocks.assertPermission.mockImplementation(async () => {
       if (!mocks.allowed) throw new TRPCError({ code: "FORBIDDEN" });
     });
+    mocks.requireActiveTenant.mockResolvedValue(10);
     mocks.listIntegrationEventCatalog.mockResolvedValue([]);
     mocks.listSimulatedWorkflows.mockResolvedValue([]);
     mocks.createSimulatedWorkflow.mockResolvedValue({ id: 1, versionId: 1 });
@@ -100,7 +107,8 @@ describe("procedures de Integrações & Workflows", () => {
   });
 
   it("aplica permissões específicas a cada ação de workflow", async () => {
-    const caller = appRouter.createCaller(context());
+    const ctx = context();
+    const caller = appRouter.createCaller(ctx);
 
     await caller.workflows.list();
     await caller.workflows.create({ name: "Fluxo de teste", description: null });
@@ -125,6 +133,8 @@ describe("procedures de Integrações & Workflows", () => {
     ]);
     expect(mocks.createSimulatedWorkflow).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 7 }));
     expect(mocks.updateSimulatedWorkflow).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 7 }));
+    expect(mocks.requireActiveTenant).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), ctx.req);
+    expect(mocks.setSimulatedWorkflowActive).toHaveBeenCalledWith({ workflowId: 1, active: true, organizationId: 10, actorUserId: 7 });
   });
 
   it("nega a consulta quando a autorização de integrações falha", async () => {
