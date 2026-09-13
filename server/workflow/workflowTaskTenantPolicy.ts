@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { accessRoles, userRoleAssignments, users } from "../../drizzle/schema";
 import { getDb } from "../dbLegacy";
 import { isUserAuthorizedForOrganization } from "./workflowAccessPolicy";
@@ -65,6 +65,7 @@ export async function assertAssigneeAuthorizedForTenant(userId: number, organiza
       eq(userRoleAssignments.userId, userId),
       eq(userRoleAssignments.active, true),
       eq(accessRoles.active, true),
+      or(isNull(userRoleAssignments.expiresAt), gt(userRoleAssignments.expiresAt, new Date())),
     ));
 
   if (!isUserAuthorizedForOrganization(assignments as any, organizationId)) {
