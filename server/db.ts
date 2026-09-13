@@ -76,7 +76,6 @@ export {
 } from "./workflow/workflowInstancePersistence";
 export {
   assignWorkflowTask,
-  cancelWorkflowTask,
   claimWorkflowTask,
   completeWorkflowTask,
   createWorkflowTask,
