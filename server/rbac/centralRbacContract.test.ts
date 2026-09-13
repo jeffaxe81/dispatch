@@ -16,7 +16,7 @@ describe("D-012E central RBAC provenance boundary", () => {
     expect(contract).not.toMatch(/SCIM|LDAP|OIDC|axios|fetch\s*\(|webhook|polling/i);
   });
 
-  it("keeps external provenance optional and separate from local role assignments", async () => {
+  it("keeps external provenance optional, unique and separate from local role assignments", async () => {
     const [{ default: schema }, { default: migration }, { default: config }] = await Promise.all([
       loadSchema(),
       loadMigration(),
@@ -26,9 +26,11 @@ describe("D-012E central RBAC provenance boundary", () => {
     expect(schema).toContain("rbacAssignmentSources");
     expect(schema).toContain('"rbac_assignment_sources"');
     expect(schema).toContain("userRoleAssignments.id");
+    expect(schema).toContain('uniqueIndex("rbac_assignment_sources_external_unique")');
     expect(schema).not.toContain("accessPermissions");
     expect(migration).toContain("CREATE TABLE `rbac_assignment_sources`");
     expect(migration).toContain("FOREIGN KEY (`assignment_id`) REFERENCES `user_role_assignments`(`id`) ON DELETE CASCADE");
+    expect(migration).toContain("CREATE UNIQUE INDEX `rbac_assignment_sources_external_unique` ON `rbac_assignment_sources` (`source_key`, `external_assignment_id`)");
     expect(config).toContain("./server/rbac/rbacAssignmentSourceSchema.ts");
   });
 });
