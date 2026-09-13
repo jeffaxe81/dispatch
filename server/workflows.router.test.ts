@@ -7,13 +7,14 @@ const mocks = vi.hoisted(() => ({
   assertPermission: vi.fn(),
   requireActiveTenant: vi.fn(),
   listIntegrationEventCatalog: vi.fn(),
-  listSimulatedWorkflows: vi.fn(),
-  createSimulatedWorkflow: vi.fn(),
-  updateSimulatedWorkflow: vi.fn(),
+  listSimulatedWorkflowsForTenant: vi.fn(),
+  getSimulatedWorkflowForTenant: vi.fn(),
+  createSimulatedWorkflowForTenant: vi.fn(),
+  updateSimulatedWorkflowForTenant: vi.fn(),
   setSimulatedWorkflowActive: vi.fn(),
-  deleteSimulatedWorkflow: vi.fn(),
-  listSimulatedWorkflowExecutions: vi.fn(),
-  getSimulatedWorkflowExecution: vi.fn(),
+  deleteSimulatedWorkflowForTenant: vi.fn(),
+  listSimulatedWorkflowExecutionsForTenant: vi.fn(),
+  getSimulatedWorkflowExecutionForTenant: vi.fn(),
   executeSimulatedWorkflow: vi.fn(),
   retrySimulatedWorkflowExecution: vi.fn(),
 }));
@@ -31,13 +32,14 @@ vi.mock("./tenantOperational", async importOriginal => ({
 vi.mock("./db", async importOriginal => ({
   ...(await importOriginal<typeof import("./db")>()),
   listIntegrationEventCatalog: mocks.listIntegrationEventCatalog,
-  listSimulatedWorkflows: mocks.listSimulatedWorkflows,
-  createSimulatedWorkflow: mocks.createSimulatedWorkflow,
-  updateSimulatedWorkflow: mocks.updateSimulatedWorkflow,
+  listSimulatedWorkflowsForTenant: mocks.listSimulatedWorkflowsForTenant,
+  getSimulatedWorkflowForTenant: mocks.getSimulatedWorkflowForTenant,
+  createSimulatedWorkflowForTenant: mocks.createSimulatedWorkflowForTenant,
+  updateSimulatedWorkflowForTenant: mocks.updateSimulatedWorkflowForTenant,
   setSimulatedWorkflowActive: mocks.setSimulatedWorkflowActive,
-  deleteSimulatedWorkflow: mocks.deleteSimulatedWorkflow,
-  listSimulatedWorkflowExecutions: mocks.listSimulatedWorkflowExecutions,
-  getSimulatedWorkflowExecution: mocks.getSimulatedWorkflowExecution,
+  deleteSimulatedWorkflowForTenant: mocks.deleteSimulatedWorkflowForTenant,
+  listSimulatedWorkflowExecutionsForTenant: mocks.listSimulatedWorkflowExecutionsForTenant,
+  getSimulatedWorkflowExecutionForTenant: mocks.getSimulatedWorkflowExecutionForTenant,
   executeSimulatedWorkflow: mocks.executeSimulatedWorkflow,
   retrySimulatedWorkflowExecution: mocks.retrySimulatedWorkflowExecution,
 }));
@@ -74,13 +76,14 @@ describe("procedures de Integrações & Workflows", () => {
     });
     mocks.requireActiveTenant.mockResolvedValue(10);
     mocks.listIntegrationEventCatalog.mockResolvedValue([]);
-    mocks.listSimulatedWorkflows.mockResolvedValue([]);
-    mocks.createSimulatedWorkflow.mockResolvedValue({ id: 1, versionId: 1 });
-    mocks.updateSimulatedWorkflow.mockResolvedValue({ id: 1, versionId: 2, version: 2 });
+    mocks.listSimulatedWorkflowsForTenant.mockResolvedValue([]);
+    mocks.getSimulatedWorkflowForTenant.mockResolvedValue({ workflow: { id: 1 }, versions: [] });
+    mocks.createSimulatedWorkflowForTenant.mockResolvedValue({ id: 1, versionId: 1 });
+    mocks.updateSimulatedWorkflowForTenant.mockResolvedValue({ id: 1, versionId: 2, version: 2 });
     mocks.setSimulatedWorkflowActive.mockResolvedValue(undefined);
-    mocks.deleteSimulatedWorkflow.mockResolvedValue(undefined);
-    mocks.listSimulatedWorkflowExecutions.mockResolvedValue([]);
-    mocks.getSimulatedWorkflowExecution.mockResolvedValue({ execution: { id: 9, mode: "simulacao" }, steps: [], logs: [] });
+    mocks.deleteSimulatedWorkflowForTenant.mockResolvedValue(undefined);
+    mocks.listSimulatedWorkflowExecutionsForTenant.mockResolvedValue([]);
+    mocks.getSimulatedWorkflowExecutionForTenant.mockResolvedValue({ execution: { id: 9, mode: "simulacao" }, steps: [], logs: [] });
     mocks.executeSimulatedWorkflow.mockResolvedValue({ executionId: 9, status: "concluida", attempts: 1 });
     mocks.retrySimulatedWorkflowExecution.mockResolvedValue({ executionId: 10, status: "concluida", attempts: 1 });
   });
@@ -106,11 +109,12 @@ describe("procedures de Integrações & Workflows", () => {
     expect(result).toEqual([expect.objectContaining({ code: "occurrence.created", source: "AXE Dispatch interno", version: "v1", payloadSchema: { type: "object", required: ["id", "code"] } })]);
   });
 
-  it("aplica permissões específicas a cada ação de workflow", async () => {
+  it("aplica permissão e tenant ativo a cada ação de workflow", async () => {
     const ctx = context();
     const caller = appRouter.createCaller(ctx);
 
     await caller.workflows.list();
+    await caller.workflows.get({ workflowId: 1 });
     await caller.workflows.create({ name: "Fluxo de teste", description: null });
     await caller.workflows.update({ workflowId: 1, name: "Fluxo revisado", description: null, changeSummary: null });
     await caller.workflows.setActive({ workflowId: 1, active: true });
@@ -122,6 +126,7 @@ describe("procedures de Integrações & Workflows", () => {
 
     expect(mocks.assertPermission.mock.calls.map(([, permission]) => permission)).toEqual([
       "workflow.view",
+      "workflow.view",
       "workflow.create",
       "workflow.edit",
       "workflow.activate",
@@ -131,10 +136,18 @@ describe("procedures de Integrações & Workflows", () => {
       "workflow.execute",
       "workflow.execute",
     ]);
-    expect(mocks.createSimulatedWorkflow).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 7 }));
-    expect(mocks.updateSimulatedWorkflow).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 7 }));
+    expect(mocks.requireActiveTenant).toHaveBeenCalledTimes(10);
     expect(mocks.requireActiveTenant).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), ctx.req);
+    expect(mocks.listSimulatedWorkflowsForTenant).toHaveBeenCalledWith(10);
+    expect(mocks.getSimulatedWorkflowForTenant).toHaveBeenCalledWith(1, 10);
+    expect(mocks.createSimulatedWorkflowForTenant).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 10, actorUserId: 7 }));
+    expect(mocks.updateSimulatedWorkflowForTenant).toHaveBeenCalledWith(expect.objectContaining({ workflowId: 1, organizationId: 10, actorUserId: 7 }));
     expect(mocks.setSimulatedWorkflowActive).toHaveBeenCalledWith({ workflowId: 1, active: true, organizationId: 10, actorUserId: 7 });
+    expect(mocks.deleteSimulatedWorkflowForTenant).toHaveBeenCalledWith({ workflowId: 1, organizationId: 10, actorUserId: 7 });
+    expect(mocks.listSimulatedWorkflowExecutionsForTenant).toHaveBeenCalledWith(10, { workflowId: 1 });
+    expect(mocks.getSimulatedWorkflowExecutionForTenant).toHaveBeenCalledWith(9, 10);
+    expect(mocks.executeSimulatedWorkflow).toHaveBeenCalledWith(expect.objectContaining({ workflowId: 1, organizationId: 10, actorUserId: 7 }));
+    expect(mocks.retrySimulatedWorkflowExecution).toHaveBeenCalledWith({ executionId: 9, organizationId: 10, actorUserId: 7 });
   });
 
   it("nega a consulta quando a autorização de integrações falha", async () => {
