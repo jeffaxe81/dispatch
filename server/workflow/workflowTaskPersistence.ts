@@ -4,7 +4,6 @@ import { getDb } from "../dbLegacy";
 import { workflowTasks } from "./workflowTaskSchema";
 import {
   assignWorkflowTaskState,
-  cancelWorkflowTaskState,
   claimWorkflowTaskState,
   completeWorkflowTaskState,
   createWorkflowTaskState,
@@ -143,20 +142,6 @@ export async function completeWorkflowTask(input: { taskId: number; actorUserId:
     const change = completeWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt });
     await tx.update(workflowTasks).set({ status: change.state.status, completedAt: now }).where(eq(workflowTasks.id, input.taskId));
     await auditTask(tx, { taskId: input.taskId, action: "complete", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before, after: change.state });
-    return { id: input.taskId, ...change.state };
-  });
-}
-
-export async function cancelWorkflowTask(input: { taskId: number; actorUserId: number; correlationId: string }) {
-  const db = await requireDb();
-  return db.transaction(async tx => {
-    const task = await loadTaskForUpdate(tx, input.taskId);
-    const before = toState(task);
-    const now = new Date();
-    const occurredAt = now.toISOString();
-    const change = cancelWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt });
-    await tx.update(workflowTasks).set({ status: change.state.status, cancelledAt: now }).where(eq(workflowTasks.id, input.taskId));
-    await auditTask(tx, { taskId: input.taskId, action: "cancel", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before, after: change.state });
     return { id: input.taskId, ...change.state };
   });
 }
