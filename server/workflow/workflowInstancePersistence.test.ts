@@ -32,9 +32,9 @@ describe("D-012C workflow instance persistence contract", () => {
   it("registra a migration no journal para impedir arquivo SQL fora do controle do Drizzle", async () => {
     const { default: rawJournal } = await loadJournal();
     const journal = JSON.parse(rawJournal) as { entries: Array<{ idx: number; tag: string }> };
-    const latest = journal.entries.at(-1);
+    const entry = journal.entries.find(item => item.tag === "0010_d012c_workflow_instance_state");
 
-    expect(latest).toMatchObject({
+    expect(entry).toMatchObject({
       idx: 10,
       tag: "0010_d012c_workflow_instance_state",
     });
