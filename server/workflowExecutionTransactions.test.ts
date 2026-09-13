@@ -39,6 +39,7 @@ function conditionContainsNumber(value: unknown, expected: number, visited = new
 
 function createExecutionHarness() {
   const workflow = { id: 1, active: true, simulationOnly: true, currentVersion: 1 };
+  const publishedPointer = { id: 1, publishedVersion: 1 };
   const version = { id: 1, workflowId: 1, version: 1, definition };
   const executions: Array<Record<string, unknown>> = [];
   const steps: Array<Record<string, unknown>> = [];
@@ -64,6 +65,7 @@ function createExecutionHarness() {
         where: (condition: unknown) => ({
           limit: async () => {
             if (table === workflows) return [workflow];
+            if (table === workflowPublicationPointers) return [publishedPointer];
             if (table === workflowVersions) return [version];
             if (table === workflowExecutions) {
               const requestedId = conditionNumber(condition);
