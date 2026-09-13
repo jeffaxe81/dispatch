@@ -36,7 +36,7 @@ CREATE TABLE `rbac_assignment_sources` (
   CONSTRAINT `rbac_assignment_sources_assignment_fk` FOREIGN KEY (`assignment_id`) REFERENCES `user_role_assignments`(`id`) ON DELETE CASCADE
 );
 --> statement-breakpoint
-CREATE INDEX `rbac_assignment_sources_source_subject_idx` ON `rbac_assignment_sources` (`source_key`, `external_subject_id`);
+CREATE UNIQUE INDEX `rbac_assignment_sources_external_unique` ON `rbac_assignment_sources` (`source_key`, `external_assignment_id`);
 --> statement-breakpoint
 INSERT IGNORE INTO `workflow_tenant_scopes` (`workflow_id`, `organization_id`)
 SELECT
