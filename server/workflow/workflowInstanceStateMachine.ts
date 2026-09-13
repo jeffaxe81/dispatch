@@ -161,8 +161,8 @@ export function advanceWorkflowInstanceState(input: {
     throw new Error("O nó atual da instância não existe na versão congelada do workflow.");
   }
 
-  const targetNodeExists = input.graph.nodes.some(node => node.id === input.targetNodeId);
-  if (!targetNodeExists) {
+  const targetNode = input.graph.nodes.find(node => node.id === input.targetNodeId);
+  if (!targetNode) {
     throw new Error("O nó de destino não existe na versão congelada do workflow.");
   }
 
@@ -173,8 +173,13 @@ export function advanceWorkflowInstanceState(input: {
     throw new Error("Transição não permitida a partir do nó atual.");
   }
 
+  const waitsForHumanTask = targetNode.type === "task.human";
   const isTerminalTarget = !input.graph.edges.some(edge => edge.source === input.targetNodeId);
-  const status: WorkflowInstanceStatus = isTerminalTarget ? "completed" : "running";
+  const status: WorkflowInstanceStatus = waitsForHumanTask
+    ? "waiting"
+    : isTerminalTarget
+      ? "completed"
+      : "running";
 
   return {
     state: {
@@ -183,7 +188,7 @@ export function advanceWorkflowInstanceState(input: {
       status,
     },
     transition: transition({
-      action: isTerminalTarget ? "complete" : "advance",
+      action: !waitsForHumanTask && isTerminalTarget ? "complete" : "advance",
       fromNodeId: input.state.currentNodeId,
       toNodeId: input.targetNodeId,
       actorUserId: input.actorUserId,
