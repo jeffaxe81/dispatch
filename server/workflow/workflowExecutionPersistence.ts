@@ -13,6 +13,7 @@ import {
   getDb,
   validateWorkflowDefinition,
 } from "../dbLegacy";
+import { assertLegacyExecutorSupportsDefinition } from "./workflowHumanTaskPolicy";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 
 function buildWorkflowExecutionAuditLog(input: {
@@ -51,6 +52,7 @@ async function processSimulatedWorkflowExecution(executionId: number, actorUserI
       ? (await tx.select().from(workflowVersions).where(eq(workflowVersions.id, execution.workflowVersionId)).limit(1))[0]
       : null;
     if (!version) throw new Error("A versão do workflow desta execução não foi encontrada.");
+    assertLegacyExecutorSupportsDefinition(version.definition);
 
     const attempt = execution.attempts + 1;
     const now = new Date();
@@ -149,6 +151,7 @@ export async function executeSimulatedWorkflow(input: {
 
     const validation = validateWorkflowDefinition(version.definition, { forPublication: true });
     if (!validation.valid) throw new Error(validation.errors.join(" "));
+    assertLegacyExecutorSupportsDefinition(version.definition);
 
     const attemptsBefore = input.attemptsBefore ?? 0;
     const triggerType = input.retrySourceExecutionId ? "manual_retry" : "manual";
