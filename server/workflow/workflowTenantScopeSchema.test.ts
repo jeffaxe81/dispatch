@@ -23,6 +23,12 @@ describe("D-012E workflow tenant scope persistence", () => {
     expect(migration).not.toMatch(/UPDATE\s+`?workflow_tasks`?/i);
   });
 
+  it("separa todos os comandos SQL para execução segura pelo drizzle-kit migrate", async () => {
+    const { default: migration } = await loadMigration();
+    const statements = migration.split("--> statement-breakpoint").map(statement => statement.trim()).filter(Boolean);
+    expect(statements).toHaveLength(6);
+  });
+
   it("registra schema e migration no controle do Drizzle", async () => {
     const [{ default: config }, { default: rawJournal }] = await Promise.all([loadConfig(), loadJournal()]);
     expect(config).toContain("./server/workflow/workflowTenantScopeSchema.ts");
