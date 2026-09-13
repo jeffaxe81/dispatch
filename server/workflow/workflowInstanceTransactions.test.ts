@@ -3,6 +3,7 @@ import { auditLogs, workflowExecutions, workflowVersions, workflows } from "../.
 import { setDbForTesting } from "../dbLegacy";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
+import { workflowExecutionTenantScopes, workflowTenantScopes } from "./workflowTenantScopeSchema";
 import {
   advanceManualWorkflowInstance,
   cancelManualWorkflowInstance,
@@ -46,6 +47,7 @@ function createHarness() {
   const publishedVersion = { id: 101, workflowId: 1, version: 1, definition: publishedDefinition };
   const draftVersion = { id: 202, workflowId: 1, version: 2, definition: draftDefinition };
   const executions: Array<Record<string, unknown>> = [];
+  const executionTenantScopes: Array<{ executionId: number; organizationId: number }> = [];
   const audits: Array<Record<string, unknown>> = [];
   let publicationReads = 0;
 
@@ -61,11 +63,15 @@ function createHarness() {
             },
           };
         }
+        if (table === workflowExecutionTenantScopes) {
+          executionTenantScopes.push(values as { executionId: number; organizationId: number });
+          return Promise.resolve();
+        }
         if (table === auditLogs) {
           audits.push({ id: audits.length + 1, ...values });
           return Promise.resolve();
         }
-        throw new Error("Tabela inesperada no teste D-012C.");
+        throw new Error("Tabela inesperada no teste D-012C/D-012E.");
       },
     }),
     select: () => ({
@@ -73,6 +79,11 @@ function createHarness() {
         where: (condition: unknown) => ({
           limit: async () => {
             if (table === workflows) return [workflow];
+            if (table === workflowTenantScopes) return [{ organizationId: 10 }];
+            if (table === workflowExecutionTenantScopes) {
+              const row = executionTenantScopes.find(scope => conditionContainsNumber(condition, scope.executionId));
+              return row ? [row] : [];
+            }
             if (table === workflowPublicationPointers) {
               publicationReads += 1;
               return [publishedPointer];
@@ -106,6 +117,7 @@ function createHarness() {
     workflow,
     publishedPointer,
     executions,
+    executionTenantScopes,
     audits,
     getPublicationReads: () => publicationReads,
   };
@@ -121,17 +133,18 @@ afterEach(() => {
   process.env.NODE_ENV = originalNodeEnv;
 });
 
-describe("D-012C transações da instância stateful", () => {
-  it("inicia manualmente na versão publicada e persiste posição/correlação com auditoria", async () => {
+describe("D-012C/D-012E transações da instância stateful", () => {
+  it("inicia manualmente na versão publicada e congela o tenant da execução na mesma transação", async () => {
     const harness = createHarness();
     setDbForTesting(harness.db as never);
 
     const result = await startManualWorkflowInstance({
       workflowId: 1,
+      organizationId: 10,
       actorUserId: 7,
       correlationId: "corr-start-1",
       inputData: { source: "teste" },
-    });
+    } as never);
 
     expect(result).toMatchObject({
       executionId: 1,
@@ -140,6 +153,7 @@ describe("D-012C transações da instância stateful", () => {
       currentNodeId: "trigger-1",
       status: "em_execucao",
     });
+    expect(harness.executionTenantScopes).toEqual([{ executionId: 1, organizationId: 10 }]);
     expect(harness.executions[0]).toMatchObject({
       workflowId: 1,
       workflowVersionId: 101,
@@ -162,20 +176,21 @@ describe("D-012C transações da instância stateful", () => {
     });
   });
 
-  it("avança pela versão congelada mesmo se a publicação mudar depois do início", async () => {
+  it("avança pela versão e pelo tenant congelados mesmo se a publicação mudar depois do início", async () => {
     const harness = createHarness();
     setDbForTesting(harness.db as never);
 
-    await startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-start-2" });
+    await startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-start-2" } as never);
     expect(harness.getPublicationReads()).toBe(1);
 
     harness.publishedPointer.publishedVersion = 2;
     const result = await advanceManualWorkflowInstance({
       executionId: 1,
+      organizationId: 10,
       targetNodeId: "notification-1",
       actorUserId: 8,
       correlationId: "corr-advance-2",
-    });
+    } as never);
 
     expect(harness.getPublicationReads()).toBe(1);
     expect(result).toMatchObject({
@@ -198,20 +213,41 @@ describe("D-012C transações da instância stateful", () => {
     });
   });
 
-  it("rejeita nó presente apenas no rascunho sem qualquer mutação persistida", async () => {
+  it("nega avanço cross-tenant antes de qualquer mutação persistida", async () => {
     const harness = createHarness();
     setDbForTesting(harness.db as never);
-    await startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-start-3" });
+    await startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-start-tenant" } as never);
 
     const before = structuredClone(harness.executions[0]);
     const auditCount = harness.audits.length;
 
     await expect(advanceManualWorkflowInstance({
       executionId: 1,
+      organizationId: 11,
+      targetNodeId: "notification-1",
+      actorUserId: 8,
+      correlationId: "corr-cross-tenant",
+    } as never)).rejects.toThrow(/outra organização|tenant/i);
+
+    expect(harness.executions[0]).toEqual(before);
+    expect(harness.audits).toHaveLength(auditCount);
+  });
+
+  it("rejeita nó presente apenas no rascunho sem qualquer mutação persistida", async () => {
+    const harness = createHarness();
+    setDbForTesting(harness.db as never);
+    await startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-start-3" } as never);
+
+    const before = structuredClone(harness.executions[0]);
+    const auditCount = harness.audits.length;
+
+    await expect(advanceManualWorkflowInstance({
+      executionId: 1,
+      organizationId: 10,
       targetNodeId: "draft-only",
       actorUserId: 7,
       correlationId: "corr-invalid-3",
-    })).rejects.toThrow("não existe na versão congelada");
+    } as never)).rejects.toThrow("não existe na versão congelada");
 
     expect(harness.executions[0]).toEqual(before);
     expect(harness.audits).toHaveLength(auditCount);
@@ -220,13 +256,14 @@ describe("D-012C transações da instância stateful", () => {
   it("cancela instância ativa preservando o último nó e registra auditoria", async () => {
     const harness = createHarness();
     setDbForTesting(harness.db as never);
-    await startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-start-4" });
+    await startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-start-4" } as never);
 
     const result = await cancelManualWorkflowInstance({
       executionId: 1,
+      organizationId: 10,
       actorUserId: 9,
       correlationId: "corr-cancel-4",
-    });
+    } as never);
 
     expect(result).toMatchObject({ currentNodeId: "trigger-1", status: "cancelada" });
     expect(harness.executions[0]).toMatchObject({ currentNodeId: "trigger-1", status: "cancelada", correlationId: "corr-cancel-4" });
@@ -241,16 +278,16 @@ describe("D-012C transações da instância stateful", () => {
     const inactive = createHarness();
     inactive.workflow.active = false;
     setDbForTesting(inactive.db as never);
-    await expect(startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-inactive" })).rejects.toThrow("ativo");
+    await expect(startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-inactive" } as never)).rejects.toThrow("ativo");
 
     const production = createHarness();
     production.workflow.simulationOnly = false;
     setDbForTesting(production.db as never);
-    await expect(startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-production" })).rejects.toThrow("simulação");
+    await expect(startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-production" } as never)).rejects.toThrow("simulação");
 
     const unpublished = createHarness();
     unpublished.publishedPointer.publishedVersion = 0;
     setDbForTesting(unpublished.db as never);
-    await expect(startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-unpublished" })).rejects.toThrow("versão publicada");
+    await expect(startManualWorkflowInstance({ workflowId: 1, organizationId: 10, actorUserId: 7, correlationId: "corr-unpublished" } as never)).rejects.toThrow("versão publicada");
   });
 });
