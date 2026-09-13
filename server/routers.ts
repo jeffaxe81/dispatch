@@ -18,6 +18,7 @@ import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, 
 import { systemRouter } from "./_core/systemRouter";
 import { getSimulatedIntegrationsOverview } from "./integrations";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { requireActiveTenant } from "./tenantOperational";
 import {
   assignTeamToIncident,
   addIncidentEvidence,
@@ -360,7 +361,8 @@ export const appRouter = router({
     }),
     setActive: operationalProcedure.input(z.object({ workflowId: z.number().int().positive(), active: z.boolean() })).mutation(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "workflow.activate");
-      await setSimulatedWorkflowActive({ ...input, actorUserId: ctx.user.id });
+      const organizationId = await requireActiveTenant(ctx.user, ctx.req);
+      await setSimulatedWorkflowActive({ ...input, organizationId, actorUserId: ctx.user.id });
       return { success: true };
     }),
     delete: operationalProcedure.input(z.object({ workflowId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -392,7 +394,7 @@ export const appRouter = router({
         await assertPermission(ctx.user, "occurrences.view");
         return listIncidents({ ...input, teamId: ctx.user.operationalRole === "agente" ? ctx.user.teamId ?? -1 : input.teamId });
       }),
-    get: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    get: operationalProcedure.input(z.object({ workflowId: z.never().optional(), incidentId: z.number().int().positive() }).omit({ workflowId: true })).query(async ({ ctx, input }) => {
       const result = await getIncidentById(input.incidentId);
       const incident = requireIncident(result);
       await assertPermission(ctx.user, "occurrences.view");
