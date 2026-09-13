@@ -198,7 +198,7 @@ describe("D-012C transações da instância stateful", () => {
     });
   });
 
-  it("rejeita transição inválida antes de qualquer mutação persistida", async () => {
+  it("rejeita nó presente apenas no rascunho sem qualquer mutação persistida", async () => {
     const harness = createHarness();
     setDbForTesting(harness.db as never);
     await startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-start-3" });
@@ -211,7 +211,7 @@ describe("D-012C transações da instância stateful", () => {
       targetNodeId: "draft-only",
       actorUserId: 7,
       correlationId: "corr-invalid-3",
-    })).rejects.toThrow("Transição não permitida");
+    })).rejects.toThrow("não existe na versão congelada");
 
     expect(harness.executions[0]).toEqual(before);
     expect(harness.audits).toHaveLength(auditCount);
