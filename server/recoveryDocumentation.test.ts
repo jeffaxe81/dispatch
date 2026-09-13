@@ -40,14 +40,15 @@ describe("D-005 recovery documentation", () => {
     expect(decision).toContain("D-005C");
   });
 
-  it("records current release 2.18.0 while preserving historical release evidence", () => {
+  it("records current release 2.19.0-rc.1 while preserving historical release evidence", () => {
     const manifest = JSON.parse(read("package.json"));
     const security = read("scripts/security-regression-check.mjs");
     const releaseChangelog = read("CHANGELOG.md");
     const historicalChangelog = read("docs/source-package/CHANGELOG.md");
 
-    expect(manifest.version).toBe("2.18.0");
-    expect(security).toContain('packageJson.version === "2.18.0"');
+    expect(manifest.version).toBe("2.19.0-rc.1");
+    expect(security).toContain('packageJson.version === "2.19.0-rc.1"');
+    expect(releaseChangelog).toContain("## [2.19.0-rc.1]");
     expect(releaseChangelog).toContain("## [2.18.0]");
     expect(releaseChangelog).toContain("## [2.17.0]");
     expect(releaseChangelog).toContain("## [2.16.0]");
