@@ -73,3 +73,4 @@ export {
   cancelManualWorkflowInstance,
   startManualWorkflowInstance,
 } from "./workflow/workflowInstancePersistence";
+export { claimWorkflowTask, startWorkflowTask } from "./workflow/workflowTaskPersistence";
