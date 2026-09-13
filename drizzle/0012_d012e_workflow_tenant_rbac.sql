@@ -7,8 +7,9 @@ CREATE TABLE `workflow_tenant_scopes` (
   CONSTRAINT `workflow_tenant_scopes_workflow_fk` FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`) ON DELETE CASCADE,
   CONSTRAINT `workflow_tenant_scopes_org_fk` FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON DELETE RESTRICT
 );
+--> statement-breakpoint
 CREATE INDEX `workflow_tenant_scopes_org_idx` ON `workflow_tenant_scopes` (`organization_id`);
-
+--> statement-breakpoint
 CREATE TABLE `workflow_execution_tenant_scopes` (
   `execution_id` int NOT NULL,
   `organization_id` int NOT NULL,
@@ -18,8 +19,9 @@ CREATE TABLE `workflow_execution_tenant_scopes` (
   CONSTRAINT `workflow_execution_tenant_scopes_execution_fk` FOREIGN KEY (`execution_id`) REFERENCES `workflow_executions`(`id`) ON DELETE CASCADE,
   CONSTRAINT `workflow_execution_tenant_scopes_org_fk` FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON DELETE RESTRICT
 );
+--> statement-breakpoint
 CREATE INDEX `workflow_execution_tenant_scopes_org_idx` ON `workflow_execution_tenant_scopes` (`organization_id`);
-
+--> statement-breakpoint
 INSERT IGNORE INTO `workflow_tenant_scopes` (`workflow_id`, `organization_id`)
 SELECT
   w.id,
@@ -31,7 +33,7 @@ JOIN `user_role_assignments` ura
  AND ura.organization_id IS NOT NULL
 GROUP BY w.id
 HAVING COUNT(DISTINCT ura.organization_id) = 1;
-
+--> statement-breakpoint
 INSERT IGNORE INTO `workflow_execution_tenant_scopes` (`execution_id`, `organization_id`)
 SELECT
   e.id,
