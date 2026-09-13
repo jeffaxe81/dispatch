@@ -15,8 +15,8 @@ describe("D-012D architecture boundaries", () => {
     ]);
 
     expect(schema).toContain("mysqlTable(");
-    expect(schema).toContain('"workflow_tasks",');
-    expect(`${tasks}\n${instances}\n${schema}`).not.toContain('mysqlTable("workflow_instances"');
+    expect(schema).toContain('\"workflow_tasks\",');
+    expect(`${tasks}\n${instances}\n${schema}`).not.toContain('mysqlTable(\"workflow_instances\"');
     expect(instances).toContain("workflowTasks");
   });
 
@@ -65,5 +65,14 @@ describe("D-012D architecture boundaries", () => {
     }
     expect(facade).not.toContain("createWorkflowTask");
     expect(facade).not.toContain("cancelWorkflowTask");
+  });
+
+  it("requires tenant scope on every public human-task mutation", async () => {
+    const { default: tasks } = await loadTaskPersistence();
+
+    expect(tasks).toContain("assertTaskTenant");
+    expect(tasks).toContain("assertAssigneeAuthorizedForTenant");
+    expect(tasks.match(/organizationId:\s*number/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+    expect(tasks.match(/assertTaskTenant\(tx, input\.taskId, input\.organizationId\)/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
   });
 });
