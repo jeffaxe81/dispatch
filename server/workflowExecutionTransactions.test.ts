@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { auditLogs, integrationLogs, workflowExecutions, workflowExecutionSteps, workflowVersions, workflows } from "../drizzle/schema";
 import { executeSimulatedWorkflow, retrySimulatedWorkflowExecution, setDbForTesting } from "./db";
 import { workflowPublicationPointers } from "./workflow/workflowPublicationSchema";
+import { workflowExecutionTenantScopes, workflowTenantScopes } from "./workflow/workflowTenantScopeSchema";
 
 const definition = {
   nodes: [
@@ -38,10 +39,12 @@ function conditionContainsNumber(value: unknown, expected: number, visited = new
 }
 
 function createExecutionHarness() {
+  const organizationId = 10;
   const workflow = { id: 1, active: true, simulationOnly: true, currentVersion: 1 };
   const publishedPointer = { id: 1, publishedVersion: 1 };
   const version = { id: 1, workflowId: 1, version: 1, definition };
   const executions: Array<Record<string, unknown>> = [];
+  const executionTenantScopes: Array<{ executionId: number; organizationId: number }> = [];
   const steps: Array<Record<string, unknown>> = [];
   const logs: Array<Record<string, unknown>> = [];
   const audits: Array<Record<string, unknown>> = [];
@@ -50,6 +53,7 @@ function createExecutionHarness() {
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>) => {
         if (table === workflowExecutions) return { $returningId: async () => { const id = executions.length + 1; executions.push({ id, ...values }); return [{ id }]; } };
+        if (table === workflowExecutionTenantScopes) { executionTenantScopes.push(values as { executionId: number; organizationId: number }); return Promise.resolve(); }
         if (table === workflowExecutionSteps) {
           if (steps.some(step => step.executionId === values.executionId && step.nodeId === values.nodeId)) throw new Error("workflow_execution_steps_execution_node_unique");
           steps.push({ id: steps.length + 1, ...values });
@@ -64,6 +68,11 @@ function createExecutionHarness() {
       from: (table: unknown) => ({
         where: (condition: unknown) => ({
           limit: async () => {
+            if (table === workflowTenantScopes) return [{ organizationId }];
+            if (table === workflowExecutionTenantScopes) {
+              const requestedId = conditionNumber(condition);
+              return executionTenantScopes.filter(scope => scope.executionId === requestedId).slice(0, 1);
+            }
             if (table === workflows) return [workflow];
             if (table === workflowPublicationPointers) return [publishedPointer];
             if (table === workflowVersions) return [version];
@@ -88,10 +97,11 @@ function createExecutionHarness() {
     }),
   };
 
-  return { db: { transaction: async (callback: (transaction: typeof tx) => unknown) => callback(tx) }, executions, steps, logs, audits };
+  return { db: { transaction: async (callback: (transaction: typeof tx) => unknown) => callback(tx) }, organizationId, executions, executionTenantScopes, steps, logs, audits };
 }
 
 function createPublishedVersionExecutionHarness() {
+  const organizationId = 10;
   const workflow = { id: 1, active: true, simulationOnly: true, currentVersion: 2 };
   const publishedPointer = { id: 1, publishedVersion: 1 };
   const publishedVersion = { id: 101, workflowId: 1, version: 1, definition };
@@ -109,6 +119,7 @@ function createPublishedVersionExecutionHarness() {
     },
   };
   const executions: Array<Record<string, unknown>> = [];
+  const executionTenantScopes: Array<{ executionId: number; organizationId: number }> = [];
   const steps: Array<Record<string, unknown>> = [];
   const logs: Array<Record<string, unknown>> = [];
   const audits: Array<Record<string, unknown>> = [];
@@ -117,6 +128,7 @@ function createPublishedVersionExecutionHarness() {
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>) => {
         if (table === workflowExecutions) return { $returningId: async () => { const id = executions.length + 1; executions.push({ id, ...values }); return [{ id }]; } };
+        if (table === workflowExecutionTenantScopes) { executionTenantScopes.push(values as { executionId: number; organizationId: number }); return Promise.resolve(); }
         if (table === workflowExecutionSteps) { steps.push({ id: steps.length + 1, ...values }); return Promise.resolve(); }
         if (table === integrationLogs) { logs.push({ id: logs.length + 1, ...values }); return Promise.resolve(); }
         if (table === auditLogs) { audits.push({ id: audits.length + 1, ...values }); return Promise.resolve(); }
@@ -127,6 +139,11 @@ function createPublishedVersionExecutionHarness() {
       from: (table: unknown) => ({
         where: (condition: unknown) => ({
           limit: async () => {
+            if (table === workflowTenantScopes) return [{ organizationId }];
+            if (table === workflowExecutionTenantScopes) {
+              const requestedId = conditionNumber(condition);
+              return executionTenantScopes.filter(scope => scope.executionId === requestedId).slice(0, 1);
+            }
             if (table === workflows) return [workflow];
             if (table === workflowPublicationPointers) return [publishedPointer];
             if (table === workflowVersions) {
@@ -151,7 +168,7 @@ function createPublishedVersionExecutionHarness() {
     }),
   };
 
-  return { db: { transaction: async (callback: (transaction: typeof tx) => unknown) => callback(tx) }, executions, steps };
+  return { db: { transaction: async (callback: (transaction: typeof tx) => unknown) => callback(tx) }, organizationId, executions, executionTenantScopes, steps };
 }
 
 let originalNodeEnv: string | undefined;
@@ -163,17 +180,19 @@ describe("transações do executor simulado", () => {
     const harness = createExecutionHarness();
     setDbForTesting(harness.db as never);
 
-    const success = await executeSimulatedWorkflow({ workflowId: 1, actorUserId: 7 });
-    const failure = await executeSimulatedWorkflow({ workflowId: 1, actorUserId: 7, inputData: { simulateFailure: true } });
-    const retryOne = await retrySimulatedWorkflowExecution({ executionId: failure.executionId, actorUserId: 7 });
-    await expect(retrySimulatedWorkflowExecution({ executionId: failure.executionId, actorUserId: 7 })).rejects.toThrow("já foi reprocessada");
-    const retryTwo = await retrySimulatedWorkflowExecution({ executionId: retryOne.executionId, actorUserId: 7 });
+    const success = await executeSimulatedWorkflow({ workflowId: 1, organizationId: harness.organizationId, actorUserId: 7 });
+    const failure = await executeSimulatedWorkflow({ workflowId: 1, organizationId: harness.organizationId, actorUserId: 7, inputData: { simulateFailure: true } });
+    const retryOne = await retrySimulatedWorkflowExecution({ executionId: failure.executionId, organizationId: harness.organizationId, actorUserId: 7 });
+    await expect(retrySimulatedWorkflowExecution({ executionId: failure.executionId, organizationId: harness.organizationId, actorUserId: 7 })).rejects.toThrow("já foi reprocessada");
+    const retryTwo = await retrySimulatedWorkflowExecution({ executionId: retryOne.executionId, organizationId: harness.organizationId, actorUserId: 7 });
 
     expect(success).toMatchObject({ executionId: 1, status: "concluida", attempts: 1 });
     expect(failure).toMatchObject({ executionId: 2, status: "falha", attempts: 1 });
     expect(retryOne).toMatchObject({ executionId: 3, status: "falha", attempts: 2 });
     expect(retryTwo).toMatchObject({ executionId: 4, status: "dead_letter", attempts: 3 });
     expect(harness.executions).toHaveLength(4);
+    expect(harness.executionTenantScopes).toHaveLength(4);
+    expect(harness.executionTenantScopes.every(scope => scope.organizationId === harness.organizationId)).toBe(true);
     expect(harness.executions[2]).toMatchObject({ id: 3, retryOfExecutionId: 2, status: "falha", attempts: 2, triggerType: "manual_retry" });
     expect(harness.executions[3]).toMatchObject({ id: 4, retryOfExecutionId: 3, status: "dead_letter", attempts: 3, triggerType: "manual_retry" });
     expect(harness.steps.filter(step => step.executionId === 2)).toHaveLength(2);
@@ -187,10 +206,11 @@ describe("transações do executor simulado", () => {
     const harness = createPublishedVersionExecutionHarness();
     setDbForTesting(harness.db as never);
 
-    const result = await executeSimulatedWorkflow({ workflowId: 1, actorUserId: 7 });
+    const result = await executeSimulatedWorkflow({ workflowId: 1, organizationId: harness.organizationId, actorUserId: 7 });
 
     expect(result).toMatchObject({ executionId: 1, status: "concluida", outputData: { nodesProcessed: 2 } });
     expect(harness.executions[0]).toMatchObject({ workflowId: 1, workflowVersionId: 101 });
+    expect(harness.executionTenantScopes).toEqual([{ executionId: 1, organizationId: harness.organizationId }]);
     expect(harness.steps.map(step => step.nodeId)).toEqual(["trigger-1", "notification-1"]);
   });
 });
