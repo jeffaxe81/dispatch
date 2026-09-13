@@ -85,6 +85,13 @@
       "when": 1789325280000,
       "tag": "0011_d012d_workflow_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1789327800000,
+      "tag": "0012_d012e_workflow_tenant_rbac",
+      "breakpoints": true
     }
   ]
 }
