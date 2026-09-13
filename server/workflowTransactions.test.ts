@@ -64,6 +64,7 @@ function createWorkflowTransactionHarness() {
     db: { transaction: async (callback: (transaction: typeof tx) => unknown) => callback(tx) },
     auditEntries,
     versions,
+    getWorkflow: () => workflow ? { ...workflow } : null,
   };
 }
 
@@ -80,6 +81,31 @@ afterEach(() => {
 });
 
 describe("transações auditáveis de workflows simulados", () => {
+  it("mantém a versão publicada estável enquanto um novo rascunho evolui", async () => {
+    const harness = createWorkflowTransactionHarness();
+    setDbForTesting(harness.db as never);
+    const definition = {
+      nodes: [{ id: "trigger-1", type: "trigger.manual", label: "Execução manual", position: { x: 24, y: 24 }, configuration: { mode: "simulacao", inputLabel: "entrada_manual" } }],
+      edges: [],
+      metadata: { mode: "simulacao", definitionVersion: 1 },
+    };
+
+    await createSimulatedWorkflow({ name: "Triagem simulada", description: "Versão inicial", actorUserId: 7 });
+    expect(harness.getWorkflow()).toMatchObject({ currentVersion: 1, publishedVersion: null, active: false });
+
+    await updateSimulatedWorkflow({ workflowId: 1, name: "Triagem revisada", description: "Versão 2", changeSummary: "Primeiro rascunho", definition, actorUserId: 7 });
+    expect(harness.getWorkflow()).toMatchObject({ currentVersion: 2, publishedVersion: null, active: false });
+
+    await setSimulatedWorkflowActive({ workflowId: 1, active: true, actorUserId: 7 });
+    expect(harness.getWorkflow()).toMatchObject({ currentVersion: 2, publishedVersion: 2, active: true, status: "publicado" });
+
+    await updateSimulatedWorkflow({ workflowId: 1, name: "Triagem futura", description: "Versão 3", changeSummary: "Novo rascunho após publicação", definition, actorUserId: 7 });
+    expect(harness.getWorkflow()).toMatchObject({ currentVersion: 3, publishedVersion: 2, active: true });
+
+    await setSimulatedWorkflowActive({ workflowId: 1, active: false, actorUserId: 7 });
+    expect(harness.getWorkflow()).toMatchObject({ currentVersion: 3, publishedVersion: 2, active: false });
+  });
+
   it("registra criação, edição, publicação, desativação e exclusão em audit_logs", async () => {
     const harness = createWorkflowTransactionHarness();
     setDbForTesting(harness.db as never);
