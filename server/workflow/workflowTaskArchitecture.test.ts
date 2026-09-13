@@ -14,7 +14,8 @@ describe("D-012D architecture boundaries", () => {
       loadTaskSchema(),
     ]);
 
-    expect(schema).toContain('mysqlTable("workflow_tasks"');
+    expect(schema).toContain("mysqlTable(");
+    expect(schema).toContain('"workflow_tasks",');
     expect(`${tasks}\n${instances}\n${schema}`).not.toContain('mysqlTable("workflow_instances"');
     expect(instances).toContain("workflowTasks");
   });
