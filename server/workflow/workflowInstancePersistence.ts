@@ -14,6 +14,8 @@ import {
   createWorkflowTaskState,
   type WorkflowTaskState,
 } from "./workflowTaskStateMachine";
+import { assertWorkflowTenant } from "./workflowTenantAccess";
+import { workflowExecutionTenantScopes } from "./workflowTenantScopeSchema";
 import {
   advanceWorkflowInstanceState,
   cancelWorkflowInstanceState,
@@ -299,10 +301,30 @@ async function cancelOpenTasksForExecution(tx: WorkflowTx, input: {
   }
 }
 
+async function assertWorkflowExecutionTenant(
+  tx: WorkflowTx,
+  executionId: number,
+  organizationId: number,
+) {
+  const scope = (
+    await tx
+      .select({ organizationId: workflowExecutionTenantScopes.organizationId })
+      .from(workflowExecutionTenantScopes)
+      .where(eq(workflowExecutionTenantScopes.executionId, executionId))
+      .limit(1)
+  )[0];
+  if (!scope) throw new Error("Instância de workflow sem escopo de tenant mapeado.");
+  if (scope.organizationId !== organizationId) throw new Error("Instância de workflow pertence a outra organização.");
+  return scope.organizationId;
+}
+
 async function loadFrozenInstanceForTransition(
   tx: WorkflowTx,
   executionId: number,
+  organizationId: number,
 ) {
+  await assertWorkflowExecutionTenant(tx, executionId, organizationId);
+
   const execution = (
     await tx.select().from(workflowExecutions).where(eq(workflowExecutions.id, executionId)).limit(1)
   )[0];
@@ -333,6 +355,7 @@ async function loadFrozenInstanceForTransition(
 
 export async function startManualWorkflowInstance(input: {
   workflowId: number;
+  organizationId: number;
   actorUserId: number;
   correlationId: string;
   inputData?: Record<string, unknown> | null;
@@ -340,6 +363,8 @@ export async function startManualWorkflowInstance(input: {
   const db = await requireDb();
 
   return db.transaction(async tx => {
+    await assertWorkflowTenant(tx, input.workflowId, input.organizationId);
+
     const workflow = (
       await tx.select().from(workflows).where(eq(workflows.id, input.workflowId)).limit(1)
     )[0];
@@ -405,6 +430,11 @@ export async function startManualWorkflowInstance(input: {
       .$returningId();
     if (!created?.id) throw new Error("Falha ao persistir a instância do workflow.");
 
+    await tx.insert(workflowExecutionTenantScopes).values({
+      executionId: created.id,
+      organizationId: input.organizationId,
+    });
+
     await tx
       .update(workflowInstanceExecutions)
       .set({
@@ -441,6 +471,7 @@ export async function startManualWorkflowInstance(input: {
 
 export async function advanceManualWorkflowInstance(input: {
   executionId: number;
+  organizationId: number;
   targetNodeId: string;
   actorUserId: number;
   correlationId: string;
@@ -448,7 +479,7 @@ export async function advanceManualWorkflowInstance(input: {
   const db = await requireDb();
 
   return db.transaction(async tx => {
-    const frozen = await loadFrozenInstanceForTransition(tx, input.executionId);
+    const frozen = await loadFrozenInstanceForTransition(tx, input.executionId, input.organizationId);
     const beforeStatus = frozen.execution.status as WorkflowExecutionDbStatus;
     const now = new Date();
     const occurredAt = now.toISOString();
@@ -521,6 +552,7 @@ export async function advanceManualWorkflowInstance(input: {
 
 export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
   executionId: number;
+  organizationId: number;
   taskId: number;
   targetNodeId?: string;
   actorUserId: number;
@@ -529,7 +561,7 @@ export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
   const db = await requireDb();
 
   return db.transaction(async tx => {
-    const frozen = await loadFrozenInstanceForTransition(tx, input.executionId);
+    const frozen = await loadFrozenInstanceForTransition(tx, input.executionId, input.organizationId);
     if (frozen.state.status !== "waiting") throw new Error("A instância não está aguardando tarefa.");
     const task = (await tx.select().from(workflowTasks).where(eq(workflowTasks.id, input.taskId)).limit(1))[0];
     if (!task) throw new Error("Tarefa de workflow não encontrada.");
@@ -601,13 +633,14 @@ export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
 
 export async function cancelManualWorkflowInstance(input: {
   executionId: number;
+  organizationId: number;
   actorUserId: number;
   correlationId: string;
 }): Promise<WorkflowInstanceResult> {
   const db = await requireDb();
 
   return db.transaction(async tx => {
-    const frozen = await loadFrozenInstanceForTransition(tx, input.executionId);
+    const frozen = await loadFrozenInstanceForTransition(tx, input.executionId, input.organizationId);
     const beforeStatus = frozen.execution.status as WorkflowExecutionDbStatus;
     const now = new Date();
     const occurredAt = now.toISOString();
