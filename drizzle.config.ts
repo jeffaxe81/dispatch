@@ -12,6 +12,7 @@ export default defineConfig({
     "./drizzle/workShiftSchema.ts",
     "./drizzle/workspaceLayoutSchema.ts",
     "./server/workflow/workflowTaskSchema.ts",
+    "./server/workflow/workflowTenantScopeSchema.ts",
   ],
   out: "./drizzle",
   dialect: "mysql",
