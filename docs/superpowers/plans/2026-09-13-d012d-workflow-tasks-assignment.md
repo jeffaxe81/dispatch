@@ -52,3 +52,5 @@ Criar `server/workflow/workflowTaskSchema.ts` e migration `drizzle/0011_d012d_wo
 ## Gates
 
 TDD RED → GREEN por microetapa. Migration somente versionada, sem aplicação/deploy. PR fica Draft enquanto dependências anteriores não estiverem integradas. Merge em `main` somente com aprovação explícita.
+
+O PR #106 pode apontar temporariamente para `main` durante o desenvolvimento apenas para acionar os workflows de CI filtrados por base; isso não altera a dependência lógica da D-012C nem autoriza merge.
