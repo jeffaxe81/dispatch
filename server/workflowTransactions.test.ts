@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { auditLogs, workflowVersions, workflows } from "../drizzle/schema";
 import { createSimulatedWorkflow, deleteSimulatedWorkflow, setDbForTesting, setSimulatedWorkflowActive, updateSimulatedWorkflow } from "./db";
+import { workflowPublicationPointers } from "./workflow/workflowPublicationSchema";
 
 function createWorkflowTransactionHarness() {
   let workflow: Record<string, unknown> | null = null;
@@ -14,7 +15,7 @@ function createWorkflowTransactionHarness() {
         if (table === workflows) {
           return {
             $returningId: async () => {
-              workflow = { id: 1, publishedAt: null, archivedAt: null, createdAt: new Date(), updatedAt: new Date(), ...values };
+              workflow = { id: 1, publishedVersion: null, publishedAt: null, archivedAt: null, createdAt: new Date(), updatedAt: new Date(), ...values };
               return [{ id: 1 }];
             },
           };
@@ -40,6 +41,7 @@ function createWorkflowTransactionHarness() {
         where: () => ({
           limit: async () => {
             if (table === workflows) return workflow ? [workflow] : [];
+            if (table === workflowPublicationPointers) return workflow ? [{ id: workflow.id, publishedVersion: workflow.publishedVersion ?? null }] : [];
             if (table === workflowVersions) return workflow ? versions.filter(version => version.version === workflow?.currentVersion).slice(0, 1) : [];
             return [];
           },
@@ -49,7 +51,7 @@ function createWorkflowTransactionHarness() {
     update: (table: unknown) => ({
       set: (patch: Record<string, unknown>) => ({
         where: async () => {
-          if (table === workflows && workflow) workflow = { ...workflow, ...patch };
+          if ((table === workflows || table === workflowPublicationPointers) && workflow) workflow = { ...workflow, ...patch };
         },
       }),
     }),
@@ -119,6 +121,8 @@ describe("transações auditáveis de workflows simulados", () => {
     expect(harness.auditEntries.map(entry => entry.action)).toEqual(["create", "update_versioned", "publish_activate", "deactivate", "delete"]);
     expect(harness.auditEntries[0]).toMatchObject({ resourceType: "workflow", resourceId: 1, actorUserId: 7, afterData: { simulationOnly: true, version: 1 } });
     expect(harness.auditEntries[1]).toMatchObject({ beforeData: { currentVersion: 1 }, afterData: { currentVersion: 2, changeSummary: "Ajuste de título" } });
+    expect(harness.auditEntries[2]).toMatchObject({ afterData: { publishedVersion: 2 } });
+    expect(harness.auditEntries[3]).toMatchObject({ afterData: { publishedVersion: 2 } });
     expect(harness.versions[1]).toMatchObject({ definition: { nodes: [expect.objectContaining({ configuration: { mode: "simulacao", inputLabel: "entrada_manual" } })] } });
     expect(harness.auditEntries[4]).toMatchObject({ action: "delete", beforeData: { name: "Triagem revisada", currentVersion: 2 }, afterData: null });
   });
