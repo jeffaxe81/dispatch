@@ -74,6 +74,9 @@ function toWorkflowInstanceGraph(definition: Record<string, unknown>): WorkflowI
     }
     const node = rawNode as Record<string, unknown>;
     const configuration = taskConfiguration(node.configuration);
+    if (configuration.requiresHumanTask !== undefined && typeof configuration.requiresHumanTask !== "boolean") {
+      throw new Error("requiresHumanTask deve ser boolean na definição do workflow.");
+    }
     const requiresHumanTask = configuration.requiresHumanTask === true;
     return {
       id: requireNonEmptyString(node.id, "node.id"),
@@ -519,7 +522,7 @@ export async function advanceManualWorkflowInstance(input: {
 export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
   executionId: number;
   taskId: number;
-  targetNodeId: string;
+  targetNodeId?: string;
   actorUserId: number;
   correlationId: string;
 }): Promise<WorkflowInstanceResult> {
