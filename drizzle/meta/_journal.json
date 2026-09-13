@@ -71,6 +71,13 @@
       "when": 1789203600000,
       "tag": "0009_d012b_workflow_published_version",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1789317900000,
+      "tag": "0010_d012c_workflow_instance_state",
+      "breakpoints": true
     }
   ]
 }
