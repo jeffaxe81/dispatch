@@ -24,6 +24,15 @@ const definition = {
   metadata: { mode: "simulacao", definitionVersion: 1 },
 };
 
+const terminalDefinition = {
+  nodes: [
+    { id: "trigger-1", type: "trigger.manual", label: "Inicio", position: { x: 0, y: 0 }, configuration: { mode: "simulacao", inputLabel: "manual" } },
+    { id: "human-end", type: "notification.simulate", label: "Aprovar", position: { x: 180, y: 0 }, configuration: { mode: "simulacao", channel: "painel_interno", messageTemplate: "Aprovar", requiresHumanTask: true, assigneeUserId: 11 } },
+  ],
+  edges: [{ id: "edge-1", source: "trigger-1", target: "human-end" }],
+  metadata: { mode: "simulacao", definitionVersion: 1 },
+};
+
 function hasNumber(value: unknown, expected: number, visited = new Set<object>()): boolean {
   if (!value || typeof value !== "object") return false;
   if (visited.has(value as object)) return false;
@@ -38,10 +47,10 @@ function limited<T>(rows: T[]) {
   return promise;
 }
 
-function createHarness() {
+function createHarness(workflowDefinition: Record<string, unknown> = definition) {
   const workflow = { id: 1, active: true, simulationOnly: true, currentVersion: 1 };
   const pointer = { id: 1, publishedVersion: 1 };
-  const version = { id: 101, workflowId: 1, version: 1, definition };
+  const version = { id: 101, workflowId: 1, version: 1, definition: workflowDefinition };
   const executions: Array<Record<string, any>> = [];
   const tasks: Array<Record<string, any>> = [];
   const audits: Array<Record<string, any>> = [];
@@ -137,6 +146,20 @@ describe("D-012D task and instance integration", () => {
     const resumed = await resumeManualWorkflowInstanceFromCompletedTask({ executionId: 1, taskId: 1, targetNodeId: "notify-2", actorUserId: 11, correlationId: "corr-resume" });
     expect(resumed.status).toBe("concluida");
     expect(resumed.currentNodeId).toBe("notify-2");
+  });
+
+  it("completes the instance after a terminal human task without an artificial next node", async () => {
+    const harness = createHarness(terminalDefinition);
+    setDbForTesting(harness.db as never);
+
+    await startManualWorkflowInstance({ workflowId: 1, actorUserId: 7, correlationId: "corr-terminal-start" });
+    const waiting = await advanceManualWorkflowInstance({ executionId: 1, targetNodeId: "human-end", actorUserId: 7, correlationId: "corr-terminal-wait" });
+    expect(waiting.status).toBe("pendente");
+    harness.tasks[0].status = "completed";
+
+    const completed = await resumeManualWorkflowInstanceFromCompletedTask({ executionId: 1, taskId: 1, actorUserId: 11, correlationId: "corr-terminal-done" });
+    expect(completed.status).toBe("concluida");
+    expect(completed.currentNodeId).toBe("human-end");
   });
 
   it("cancels non-terminal tasks when the waiting instance is cancelled", async () => {
