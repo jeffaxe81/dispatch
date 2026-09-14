@@ -36,6 +36,6 @@ describe("D-012E workflow tenant scope persistence", () => {
     expect(config).toContain("./server/workflow/workflowTenantScopeSchema.ts");
     expect(config).toContain("./server/rbac/rbacAssignmentSourceSchema.ts");
     const journal = JSON.parse(rawJournal) as { entries: Array<{ idx: number; tag: string }> };
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 12, tag: "0012_d012e_workflow_tenant_rbac" });
+    expect(journal.entries.find(entry => entry.idx === 12)).toMatchObject({ idx: 12, tag: "0012_d012e_workflow_tenant_rbac" });
   });
 });

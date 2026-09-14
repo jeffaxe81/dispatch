@@ -699,3 +699,130 @@ export async function cancelManualWorkflowInstance(input: {
     };
   });
 }
+
+export async function startEventWorkflowInstanceInTransaction(
+  tx: WorkflowTx,
+  input: {
+    workflowId: number;
+    workflowVersionId: number;
+    organizationId: number;
+    triggerNodeId: string;
+    eventId: string;
+    eventType: string;
+    producer: string;
+    actorUserId: number;
+    correlationId: string;
+    payload: Record<string, unknown>;
+  },
+): Promise<WorkflowInstanceResult> {
+  await assertWorkflowTenant(tx, input.workflowId, input.organizationId);
+
+  const workflow = (
+    await tx.select().from(workflows).where(eq(workflows.id, input.workflowId)).limit(1)
+  )[0];
+  if (!workflow) throw new Error("Workflow não encontrado.");
+  if (!workflow.active) throw new Error("O workflow deve estar ativo antes de iniciar uma instância.");
+  if (!workflow.simulationOnly) throw new Error("A D-012F inicia somente workflows em modo de simulação.");
+
+  const pointer = (
+    await tx
+      .select()
+      .from(workflowPublicationPointers)
+      .where(eq(workflowPublicationPointers.id, input.workflowId))
+      .limit(1)
+  )[0];
+  if (!pointer?.publishedVersion || pointer.publishedVersion < 1) {
+    throw new Error("O workflow ativo não possui versão publicada válida.");
+  }
+
+  const version = (
+    await tx
+      .select()
+      .from(workflowVersions)
+      .where(and(
+        eq(workflowVersions.id, input.workflowVersionId),
+        eq(workflowVersions.workflowId, input.workflowId),
+        eq(workflowVersions.version, pointer.publishedVersion),
+      ))
+      .limit(1)
+  )[0];
+  if (!version || version.id !== input.workflowVersionId || version.version !== pointer.publishedVersion) {
+    throw new Error("A versão publicada indicada pelo evento não está mais elegível.");
+  }
+
+  const graph = toWorkflowInstanceGraph(version.definition);
+  const { startEventWorkflowInstanceState } = await import("./workflowInstanceStateMachine");
+  const now = new Date();
+  const occurredAt = now.toISOString();
+  const started = startEventWorkflowInstanceState({
+    workflowId: input.workflowId,
+    workflowVersionId: version.id,
+    graph,
+    triggerNodeId: input.triggerNodeId,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt,
+  });
+  const status = dbStatusFromState(started.state.status);
+
+  const [created] = await tx
+    .insert(workflowExecutions)
+    .values({
+      workflowId: input.workflowId,
+      workflowVersionId: version.id,
+      triggerType: `event:${input.eventType}`,
+      mode: "simulacao",
+      status,
+      idempotencyKey: `${input.organizationId}:${input.eventId}`,
+      inputData: {
+        simulation: true,
+        eventId: input.eventId,
+        eventType: input.eventType,
+        producer: input.producer,
+        payload: { ...input.payload },
+      },
+      attempts: 0,
+      maxAttempts: 3,
+      startedAt: now,
+      initiatedByUserId: input.actorUserId,
+    })
+    .$returningId();
+  if (!created?.id) throw new Error("Falha ao persistir a instância do workflow por evento.");
+
+  await tx.insert(workflowExecutionTenantScopes).values({
+    executionId: created.id,
+    organizationId: input.organizationId,
+  });
+
+  await tx
+    .update(workflowInstanceExecutions)
+    .set({
+      currentNodeId: started.state.currentNodeId,
+      correlationId: input.correlationId,
+    })
+    .where(eq(workflowInstanceExecutions.id, created.id));
+
+  await tx.insert(auditLogs).values(
+    buildWorkflowInstanceAuditLog({
+      executionId: created.id,
+      workflowId: input.workflowId,
+      workflowVersionId: version.id,
+      actorUserId: input.actorUserId,
+      action: "start",
+      fromNodeId: null,
+      toNodeId: started.state.currentNodeId,
+      correlationId: input.correlationId,
+      occurredAt,
+      beforeStatus: null,
+      afterStatus: status,
+    }),
+  );
+
+  return {
+    executionId: created.id,
+    workflowId: input.workflowId,
+    workflowVersionId: version.id,
+    currentNodeId: started.state.currentNodeId,
+    status,
+  };
+}
