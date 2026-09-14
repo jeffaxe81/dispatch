@@ -25,6 +25,10 @@ type WorkflowEventTriggerPersistenceAdapter<TTransaction> = {
   ): WorkflowEventTriggerDependencies;
 };
 
+type WorkflowEventTriggerTransactionOutcome =
+  | { ok: true; result: WorkflowEventTriggerResult }
+  | { ok: false; error: unknown };
+
 export function parseWorkflowEventTenantOrganizationId(tenantId: string): number {
   if (!/^[1-9]\d*$/.test(tenantId)) {
     throw new Error("tenantId de evento deve ser um identificador canônico positivo de organização.");
@@ -69,12 +73,19 @@ export function createWorkflowEventTriggerPersistence<TTransaction>(
       actorUserId: number,
     ): Promise<WorkflowEventTriggerResult> {
       const organizationId = parseWorkflowEventTenantOrganizationId(input.tenantId);
-      return adapter.transaction(async transaction => {
+      const outcome = await adapter.transaction<WorkflowEventTriggerTransactionOutcome>(async transaction => {
         const service = createWorkflowEventTriggerService(
           adapter.buildDependencies(transaction, organizationId),
         );
-        return service.consume(input, actorUserId);
+        try {
+          return { ok: true, result: await service.consume(input, actorUserId) };
+        } catch (error) {
+          return { ok: false, error };
+        }
       });
+
+      if (!outcome.ok) throw outcome.error;
+      return outcome.result;
     },
   };
 }
