@@ -177,4 +177,52 @@ describe("D-012F persisted event trigger boundary", () => {
       else process.env.DATABASE_URL = previousDatabaseUrl;
     }
   });
+
+  it("interrompe replay persistente no receipt duplicate antes de consultar workflows", async () => {
+    const { setDbForTesting } = await import("../dbLegacy");
+    const calls: string[] = [];
+    const tx = {
+      select: () => {
+        calls.push("receipt:select");
+        return {
+          from: () => ({
+            where: () => ({
+              limit: () => ({
+                for: async (lock: string) => {
+                  calls.push(`receipt:lock:${lock}`);
+                  return [{ id: 99 }];
+                },
+              }),
+            }),
+          }),
+        };
+      },
+    };
+    const db = {
+      transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => {
+        calls.push("transaction:start");
+        const result = await callback(tx);
+        calls.push("transaction:end");
+        return result;
+      },
+    };
+
+    setDbForTesting(db as never);
+    try {
+      const { consumeWorkflowEventPersisted } = await loadPersistence();
+      await expect(consumeWorkflowEventPersisted(envelope, 7)).resolves.toEqual({
+        status: "duplicate",
+        eventId: envelope.eventId,
+        executionIds: [],
+      });
+      expect(calls).toEqual([
+        "transaction:start",
+        "receipt:select",
+        "receipt:lock:update",
+        "transaction:end",
+      ]);
+    } finally {
+      setDbForTesting(null);
+    }
+  });
 });
