@@ -1,5 +1,9 @@
 import type { WorkflowEventEnvelope } from "../../shared/workflowIntegration/v1";
-import type { WorkflowEventTriggerResult } from "./workflowEventTriggerService";
+import {
+  createWorkflowEventTriggerService,
+  type WorkflowEventTriggerDependencies,
+  type WorkflowEventTriggerResult,
+} from "./workflowEventTriggerService";
 
 type WorkflowEventDefinition = {
   nodes?: Array<{
@@ -11,6 +15,14 @@ type WorkflowEventDefinition = {
     source?: unknown;
     target?: unknown;
   }>;
+};
+
+type WorkflowEventTriggerPersistenceAdapter<TTransaction> = {
+  transaction<TResult>(callback: (transaction: TTransaction) => Promise<TResult>): Promise<TResult>;
+  buildDependencies(
+    transaction: TTransaction,
+    organizationId: number,
+  ): WorkflowEventTriggerDependencies;
 };
 
 export function parseWorkflowEventTenantOrganizationId(tenantId: string): number {
@@ -46,6 +58,25 @@ export function findWorkflowEventTriggerNodeIds(
       : {};
     return configuration.eventType === eventType ? [node.id] : [];
   });
+}
+
+export function createWorkflowEventTriggerPersistence<TTransaction>(
+  adapter: WorkflowEventTriggerPersistenceAdapter<TTransaction>,
+) {
+  return {
+    async consume(
+      input: WorkflowEventEnvelope,
+      actorUserId: number,
+    ): Promise<WorkflowEventTriggerResult> {
+      const organizationId = parseWorkflowEventTenantOrganizationId(input.tenantId);
+      return adapter.transaction(async transaction => {
+        const service = createWorkflowEventTriggerService(
+          adapter.buildDependencies(transaction, organizationId),
+        );
+        return service.consume(input, actorUserId);
+      });
+    },
+  };
 }
 
 export async function consumeWorkflowEventPersisted(
