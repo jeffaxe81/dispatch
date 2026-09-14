@@ -112,6 +112,53 @@ describe("D-012F persisted event trigger boundary", () => {
     ]);
   });
 
+  it("confirma o receipt failed antes de relançar erro do start fora da transação", async () => {
+    const { createWorkflowEventTriggerPersistence } = await loadPersistence();
+    const calls: string[] = [];
+    const tx = { id: "tx-failure" };
+
+    const persistence = createWorkflowEventTriggerPersistence({
+      transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => {
+        calls.push("transaction:start");
+        try {
+          const result = await callback(tx);
+          calls.push("transaction:commit");
+          return result;
+        } catch (error) {
+          calls.push("transaction:rollback");
+          throw error;
+        }
+      },
+      buildDependencies: () => ({
+        claimReceipt: async () => {
+          calls.push("claim");
+          return { status: "claimed" as const, tenantId: "42", eventId: envelope.eventId };
+        },
+        findStartCandidates: async () => {
+          calls.push("match");
+          return [{ workflowId: 1, workflowVersionId: 101, tenantId: "42", triggerNodeId: "incident-created" }];
+        },
+        startInstance: async () => {
+          calls.push("start");
+          throw new Error("start indisponível");
+        },
+        completeReceipt: async input => {
+          calls.push(`complete:${input.status}`);
+        },
+      }),
+    });
+
+    await expect(persistence.consume(envelope, 7)).rejects.toThrow("start indisponível");
+    expect(calls).toEqual([
+      "transaction:start",
+      "claim",
+      "match",
+      "start",
+      "complete:failed",
+      "transaction:commit",
+    ]);
+  });
+
   it("expõe o consumer persistente usado pela API de produção", async () => {
     const { consumeWorkflowEventPersisted } = await loadPersistence();
     expect(typeof consumeWorkflowEventPersisted).toBe("function");
