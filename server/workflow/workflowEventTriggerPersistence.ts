@@ -1,6 +1,10 @@
 import type { WorkflowEventEnvelope } from "../../shared/workflowIntegration/v1";
 import { getDb } from "../dbLegacy";
 import {
+  claimWorkflowEventReceipt,
+  completeWorkflowEventReceipt,
+} from "./workflowEventReceiptStore";
+import {
   createWorkflowEventTriggerService,
   type WorkflowEventTriggerDependencies,
   type WorkflowEventTriggerResult,
@@ -92,10 +96,22 @@ export function createWorkflowEventTriggerPersistence<TTransaction>(
 }
 
 export async function consumeWorkflowEventPersisted(
-  _input: WorkflowEventEnvelope,
+  input: WorkflowEventEnvelope,
   _actorUserId: number,
 ): Promise<WorkflowEventTriggerResult> {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-  throw new Error("Consumer persistente D-012F ainda não está conectado ao runtime de workflow.");
+
+  return db.transaction(async tx => {
+    const claim = await claimWorkflowEventReceipt(tx, input);
+    if (claim.status === "duplicate") {
+      return {
+        status: "duplicate",
+        eventId: input.eventId,
+        executionIds: [],
+      };
+    }
+
+    throw new Error("Consumer persistente D-012F ainda não está conectado ao matching e start do runtime de workflow.");
+  });
 }
