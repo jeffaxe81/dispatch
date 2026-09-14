@@ -89,6 +89,23 @@ describe("D-012F workflow event trigger service", () => {
     expect(harness.completions).toEqual([expect.objectContaining({ status: "ignored" })]);
   });
 
+  it("fecha o recibo como failed quando o start falha depois do claim", async () => {
+    const { createWorkflowEventTriggerService } = await loadService();
+    const harness = createHarness();
+    harness.dependencies.startInstance = async () => {
+      throw new Error("falha simulada no start");
+    };
+    const service = createWorkflowEventTriggerService(harness.dependencies);
+
+    await expect(service.consume(envelope, 7)).rejects.toThrow("falha simulada no start");
+    expect(harness.completions).toEqual([expect.objectContaining({
+      tenantId: "42",
+      eventId: envelope.eventId,
+      status: "failed",
+      failureCode: "WORKFLOW_EVENT_TRIGGER_START_FAILED",
+    })]);
+  });
+
   it("replay retorna duplicate sem segundo efeito", async () => {
     const { createWorkflowEventTriggerService } = await loadService();
     const harness = createHarness({ duplicate: true });
