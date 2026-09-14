@@ -89,6 +89,24 @@ describe("D-012F workflow event trigger service", () => {
     expect(harness.completions).toEqual([expect.objectContaining({ status: "ignored" })]);
   });
 
+  it("fecha o recibo como failed quando o matching falha depois do claim", async () => {
+    const { createWorkflowEventTriggerService } = await loadService();
+    const harness = createHarness();
+    harness.dependencies.findStartCandidates = async () => {
+      throw new Error("matching indisponível");
+    };
+    const service = createWorkflowEventTriggerService(harness.dependencies);
+
+    await expect(service.consume(envelope, 7)).rejects.toThrow("matching indisponível");
+    expect(harness.completions).toEqual([expect.objectContaining({
+      tenantId: "42",
+      eventId: envelope.eventId,
+      status: "failed",
+      failureCode: "WORKFLOW_EVENT_TRIGGER_MATCH_FAILED",
+    })]);
+    expect(harness.starts).toHaveLength(0);
+  });
+
   it("fecha o recibo como failed quando o start falha depois do claim", async () => {
     const { createWorkflowEventTriggerService } = await loadService();
     const harness = createHarness();
