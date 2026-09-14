@@ -162,10 +162,12 @@ function moveToTarget(input: {
   };
 }
 
-export function startManualWorkflowInstanceState(input: {
+function startWorkflowInstanceAtInitialTrigger(input: {
   workflowId: number;
   workflowVersionId: number;
   graph: WorkflowInstanceGraph;
+  triggerType: "trigger.manual" | "trigger.external_data";
+  triggerNodeId?: string;
   actorUserId: number;
   correlationId: string;
   occurredAt: string;
@@ -177,14 +179,23 @@ export function startManualWorkflowInstanceState(input: {
 
   const incomingTargets = new Set(input.graph.edges.map(edge => edge.target));
   const initialTriggers = input.graph.nodes.filter(
-    node => node.type === "trigger.manual" && !incomingTargets.has(node.id),
+    node => node.type === input.triggerType && !incomingTargets.has(node.id),
   );
 
-  if (initialTriggers.length !== 1) {
-    throw new Error("O workflow deve possuir exatamente um trigger.manual inicial.");
+  let currentNodeId: string;
+  if (input.triggerNodeId) {
+    const selected = initialTriggers.find(node => node.id === input.triggerNodeId);
+    if (!selected) {
+      throw new Error(`O workflow deve iniciar em um ${input.triggerType} inicial autorizado.`);
+    }
+    currentNodeId = selected.id;
+  } else {
+    if (initialTriggers.length !== 1) {
+      throw new Error(`O workflow deve possuir exatamente um ${input.triggerType} inicial.`);
+    }
+    currentNodeId = initialTriggers[0].id;
   }
 
-  const currentNodeId = initialTriggers[0].id;
   return {
     state: {
       workflowId: input.workflowId,
@@ -201,6 +212,35 @@ export function startManualWorkflowInstanceState(input: {
       occurredAt: input.occurredAt,
     }),
   };
+}
+
+export function startManualWorkflowInstanceState(input: {
+  workflowId: number;
+  workflowVersionId: number;
+  graph: WorkflowInstanceGraph;
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+}): WorkflowInstanceStateChange {
+  return startWorkflowInstanceAtInitialTrigger({ ...input, triggerType: "trigger.manual" });
+}
+
+export function startEventWorkflowInstanceState(input: {
+  workflowId: number;
+  workflowVersionId: number;
+  graph: WorkflowInstanceGraph;
+  triggerNodeId: string;
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+}): WorkflowInstanceStateChange {
+  if (!input.triggerNodeId.trim()) {
+    throw new Error("triggerNodeId é obrigatório para início por evento.");
+  }
+  return startWorkflowInstanceAtInitialTrigger({
+    ...input,
+    triggerType: "trigger.external_data",
+  });
 }
 
 export function advanceWorkflowInstanceState(input: {
