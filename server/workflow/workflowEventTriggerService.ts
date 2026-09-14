@@ -91,18 +91,29 @@ export function createWorkflowEventTriggerService(dependencies: WorkflowEventTri
       }
 
       const candidate = candidates[0];
-      const started = await dependencies.startInstance({
-        workflowId: candidate.workflowId,
-        workflowVersionId: candidate.workflowVersionId,
-        tenantId: envelope.tenantId,
-        triggerNodeId: candidate.triggerNodeId,
-        eventId: envelope.eventId,
-        eventType: envelope.eventType,
-        producer: envelope.producer,
-        correlationId: envelope.correlationId,
-        actorUserId,
-        payload: { ...envelope.payload },
-      });
+      let started: { executionId: number };
+      try {
+        started = await dependencies.startInstance({
+          workflowId: candidate.workflowId,
+          workflowVersionId: candidate.workflowVersionId,
+          tenantId: envelope.tenantId,
+          triggerNodeId: candidate.triggerNodeId,
+          eventId: envelope.eventId,
+          eventType: envelope.eventType,
+          producer: envelope.producer,
+          correlationId: envelope.correlationId,
+          actorUserId,
+          payload: { ...envelope.payload },
+        });
+      } catch (error) {
+        await dependencies.completeReceipt({
+          tenantId: envelope.tenantId,
+          eventId: envelope.eventId,
+          status: "failed",
+          failureCode: "WORKFLOW_EVENT_TRIGGER_START_FAILED",
+        });
+        throw error;
+      }
 
       await dependencies.completeReceipt({
         tenantId: envelope.tenantId,
