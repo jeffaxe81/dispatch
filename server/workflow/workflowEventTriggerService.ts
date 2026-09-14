@@ -64,11 +64,22 @@ export function createWorkflowEventTriggerService(dependencies: WorkflowEventTri
         return { status: "duplicate", eventId: envelope.eventId, executionIds: [] };
       }
 
-      const candidates = (await dependencies.findStartCandidates({
-        tenantId: envelope.tenantId,
-        eventType: envelope.eventType,
-        producer: envelope.producer,
-      })).filter(candidate => candidate.tenantId === envelope.tenantId);
+      let candidates: WorkflowEventStartCandidate[];
+      try {
+        candidates = (await dependencies.findStartCandidates({
+          tenantId: envelope.tenantId,
+          eventType: envelope.eventType,
+          producer: envelope.producer,
+        })).filter(candidate => candidate.tenantId === envelope.tenantId);
+      } catch (error) {
+        await dependencies.completeReceipt({
+          tenantId: envelope.tenantId,
+          eventId: envelope.eventId,
+          status: "failed",
+          failureCode: "WORKFLOW_EVENT_TRIGGER_MATCH_FAILED",
+        });
+        throw error;
+      }
 
       if (candidates.length === 0) {
         await dependencies.completeReceipt({
