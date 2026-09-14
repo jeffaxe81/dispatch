@@ -40,6 +40,18 @@ const terminalHumanTaskGraph: WorkflowInstanceGraph = {
   edges: [{ id: "edge-1", source: "trigger-1", target: "human-end" }],
 };
 
+const eventWaitGraph: WorkflowInstanceGraph = {
+  nodes: [
+    { id: "trigger-1", type: "trigger.manual" },
+    { id: "wait-incident", type: "wait.event" },
+    { id: "notify-2", type: "notification.simulate" },
+  ],
+  edges: [
+    { id: "edge-1", source: "trigger-1", target: "wait-incident" },
+    { id: "edge-2", source: "wait-incident", target: "notify-2" },
+  ],
+};
+
 function start() {
   return startManualWorkflowInstanceState({ workflowId: 10, workflowVersionId: 101, graph, actorUserId, correlationId, occurredAt });
 }
@@ -95,6 +107,28 @@ describe("D-012C/D workflow instance state machine", () => {
     expect(waiting.state).toEqual({ ...initial.state, currentNodeId: "human-1", status: "waiting" });
     expect(waiting.transition.action).toBe("advance");
     expect(() => advanceWorkflowInstanceState({ state: waiting.state, graph: humanTaskGraph, targetNodeId: "notify-2", actorUserId, correlationId: "corr-d012d-blocked", occurredAt })).toThrow("waiting");
+  });
+
+  it("entra em waiting ao alcançar wait.event e bloqueia avanço direto", () => {
+    const initial = startManualWorkflowInstanceState({ workflowId: 10, workflowVersionId: 101, graph: eventWaitGraph, actorUserId, correlationId, occurredAt });
+    const waiting = advanceWorkflowInstanceState({
+      state: initial.state,
+      graph: eventWaitGraph,
+      targetNodeId: "wait-incident",
+      actorUserId,
+      correlationId: "corr-d012f-event-wait",
+      occurredAt,
+    });
+    expect(waiting.state).toEqual({ ...initial.state, currentNodeId: "wait-incident", status: "waiting" });
+    expect(waiting.transition.action).toBe("advance");
+    expect(() => advanceWorkflowInstanceState({
+      state: waiting.state,
+      graph: eventWaitGraph,
+      targetNodeId: "notify-2",
+      actorUserId,
+      correlationId: "corr-d012f-event-blocked",
+      occurredAt,
+    })).toThrow("waiting");
   });
 
   it("retoma uma instância waiting somente pela aresta válida da versão congelada", () => {
