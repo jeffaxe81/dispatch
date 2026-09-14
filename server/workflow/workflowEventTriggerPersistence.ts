@@ -1,9 +1,10 @@
+import { and, eq } from "drizzle-orm";
+import { workflowVersions, workflows } from "../../drizzle/schema";
 import type { WorkflowEventEnvelope } from "../../shared/workflowIntegration/v1";
 import { getDb } from "../dbLegacy";
-import {
-  claimWorkflowEventReceipt,
-  completeWorkflowEventReceipt,
-} from "./workflowEventReceiptStore";
+import { claimWorkflowEventReceipt } from "./workflowEventReceiptStore";
+import { workflowPublicationPointers } from "./workflowPublicationSchema";
+import { workflowTenantScopes } from "./workflowTenantScopeSchema";
 import {
   createWorkflowEventTriggerService,
   type WorkflowEventTriggerDependencies,
@@ -33,6 +34,9 @@ type WorkflowEventTriggerPersistenceAdapter<TTransaction> = {
 type WorkflowEventTriggerTransactionOutcome =
   | { ok: true; result: WorkflowEventTriggerResult }
   | { ok: false; error: unknown };
+
+type WorkflowDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+type WorkflowEventTx = Parameters<Parameters<WorkflowDb["transaction"]>[0]>[0];
 
 export function parseWorkflowEventTenantOrganizationId(tenantId: string): number {
   if (!/^[1-9]\d*$/.test(tenantId)) {
@@ -67,6 +71,65 @@ export function findWorkflowEventTriggerNodeIds(
       : {};
     return configuration.eventType === eventType ? [node.id] : [];
   });
+}
+
+export async function findWorkflowEventStartCandidatesInTransaction(
+  tx: WorkflowEventTx,
+  organizationId: number,
+  eventType: WorkflowEventEnvelope["eventType"],
+): Promise<WorkflowEventTriggerDependencies["findStartCandidates"] extends (...args: never[]) => Promise<infer TResult> ? TResult : never> {
+  const scopes = await tx
+    .select({ workflowId: workflowTenantScopes.workflowId })
+    .from(workflowTenantScopes)
+    .where(eq(workflowTenantScopes.organizationId, organizationId))
+    .limit(1000);
+
+  const candidates: Array<{
+    workflowId: number;
+    workflowVersionId: number;
+    tenantId: string;
+    triggerNodeId: string;
+  }> = [];
+
+  for (const scope of scopes) {
+    const workflow = (
+      await tx.select().from(workflows).where(eq(workflows.id, scope.workflowId)).limit(1)
+    )[0];
+    if (!workflow?.active || !workflow.simulationOnly) continue;
+
+    const pointer = (
+      await tx
+        .select()
+        .from(workflowPublicationPointers)
+        .where(eq(workflowPublicationPointers.id, scope.workflowId))
+        .limit(1)
+    )[0];
+    if (!pointer?.publishedVersion || pointer.publishedVersion < 1) continue;
+
+    const version = (
+      await tx
+        .select()
+        .from(workflowVersions)
+        .where(and(
+          eq(workflowVersions.workflowId, scope.workflowId),
+          eq(workflowVersions.version, pointer.publishedVersion),
+        ))
+        .limit(1)
+    )[0];
+    if (!version) continue;
+
+    const triggerNodeIds = findWorkflowEventTriggerNodeIds(version.definition, eventType);
+    for (const triggerNodeId of triggerNodeIds) {
+      candidates.push({
+        workflowId: scope.workflowId,
+        workflowVersionId: version.id,
+        tenantId: String(organizationId),
+        triggerNodeId,
+      });
+    }
+  }
+
+  return candidates;
 }
 
 export function createWorkflowEventTriggerPersistence<TTransaction>(
