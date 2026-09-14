@@ -57,12 +57,14 @@ const noMatchingTriggerDefinition = {
 };
 
 function createMatchingHarness() {
+  const publishedVersion = 71;
+  const draftVersion = 72;
   const workflowRows = [
-    { id: 1, active: true, simulationOnly: true, currentVersion: 2 },
-    { id: 2, active: false, simulationOnly: true, currentVersion: 1 },
-    { id: 3, active: true, simulationOnly: true, currentVersion: 1 },
-    { id: 4, active: true, simulationOnly: true, currentVersion: 2 },
-    { id: 5, active: true, simulationOnly: true, currentVersion: 1 },
+    { id: 1, active: true, simulationOnly: true, currentVersion: draftVersion },
+    { id: 2, active: false, simulationOnly: true, currentVersion: publishedVersion },
+    { id: 3, active: true, simulationOnly: true, currentVersion: publishedVersion },
+    { id: 4, active: true, simulationOnly: true, currentVersion: draftVersion },
+    { id: 5, active: true, simulationOnly: true, currentVersion: publishedVersion },
   ];
   const scopes = [
     { workflowId: 1, organizationId: 42 },
@@ -71,16 +73,19 @@ function createMatchingHarness() {
     { workflowId: 5, organizationId: 42 },
     { workflowId: 3, organizationId: 99 },
   ];
-  const pointers = [1, 2, 3, 4, 5].map(id => ({ id, publishedVersion: 1 }));
+  const pointers = [1, 2, 3, 4, 5].map(id => ({ id, publishedVersion }));
   const versions = [
-    { id: 101, workflowId: 1, version: 1, definition: incidentTriggerDefinition },
-    { id: 102, workflowId: 1, version: 2, definition: formTriggerDefinition },
-    { id: 201, workflowId: 2, version: 1, definition: incidentTriggerDefinition },
-    { id: 301, workflowId: 3, version: 1, definition: incidentTriggerDefinition },
-    { id: 401, workflowId: 4, version: 1, definition: noMatchingTriggerDefinition },
-    { id: 402, workflowId: 4, version: 2, definition: incidentTriggerDefinition },
-    { id: 501, workflowId: 5, version: 1, definition: formTriggerDefinition },
+    { id: 101, workflowId: 1, version: publishedVersion, definition: incidentTriggerDefinition },
+    { id: 102, workflowId: 1, version: draftVersion, definition: formTriggerDefinition },
+    { id: 201, workflowId: 2, version: publishedVersion, definition: incidentTriggerDefinition },
+    { id: 301, workflowId: 3, version: publishedVersion, definition: incidentTriggerDefinition },
+    { id: 401, workflowId: 4, version: publishedVersion, definition: noMatchingTriggerDefinition },
+    { id: 402, workflowId: 4, version: draftVersion, definition: incidentTriggerDefinition },
+    { id: 501, workflowId: 5, version: publishedVersion, definition: formTriggerDefinition },
   ];
+
+  let workflowReadQueue: number[] = [];
+  let currentWorkflowId: number | null = null;
 
   const tx = {
     select: () => ({
@@ -88,23 +93,30 @@ function createMatchingHarness() {
         where: (condition: unknown) => ({
           limit: async () => {
             if (table === workflowTenantScopes) {
-              if (conditionContainsNumber(condition, 42)) return scopes.filter(scope => scope.organizationId === 42);
-              if (conditionContainsNumber(condition, 99)) return scopes.filter(scope => scope.organizationId === 99);
-              return [];
+              const organizationId = conditionContainsNumber(condition, 42)
+                ? 42
+                : conditionContainsNumber(condition, 99)
+                  ? 99
+                  : null;
+              if (organizationId === null) return [];
+              const rows = scopes.filter(scope => scope.organizationId === organizationId);
+              workflowReadQueue = rows.map(scope => scope.workflowId);
+              return rows;
             }
             if (table === workflows) {
-              const row = workflowRows.find(candidate => conditionContainsNumber(condition, candidate.id));
+              currentWorkflowId = workflowReadQueue.shift() ?? null;
+              const row = workflowRows.find(candidate => candidate.id === currentWorkflowId);
               return row ? [row] : [];
             }
             if (table === workflowPublicationPointers) {
-              const row = pointers.find(candidate => conditionContainsNumber(condition, candidate.id));
+              const row = pointers.find(candidate => candidate.id === currentWorkflowId);
               return row ? [row] : [];
             }
             if (table === workflowVersions) {
-              const workflowId = [1, 2, 3, 4, 5].find(id => conditionContainsNumber(condition, id));
-              if (!workflowId) return [];
-              const version = conditionContainsNumber(condition, 2) ? 2 : 1;
-              const row = versions.find(candidate => candidate.workflowId === workflowId && candidate.version === version);
+              if (currentWorkflowId === null || !conditionContainsNumber(condition, publishedVersion)) return [];
+              const row = versions.find(candidate =>
+                candidate.workflowId === currentWorkflowId && candidate.version === publishedVersion,
+              );
               return row ? [row] : [];
             }
             return [];
@@ -136,10 +148,10 @@ describe("D-012F persisted event start candidates", () => {
 
   it("não usa currentVersion/rascunho e mantém o matching isolado por tenant", async () => {
     const { findWorkflowEventStartCandidatesInTransaction } = await loadPersistence();
-    const { tx } = createMatchingHarness();
+    const formHarness = createMatchingHarness();
 
     await expect(
-      findWorkflowEventStartCandidatesInTransaction(tx, 42, "form.submission.submitted.v1"),
+      findWorkflowEventStartCandidatesInTransaction(formHarness.tx, 42, "form.submission.submitted.v1"),
     ).resolves.toEqual([
       {
         workflowId: 5,
@@ -149,8 +161,9 @@ describe("D-012F persisted event start candidates", () => {
       },
     ]);
 
+    const tenantHarness = createMatchingHarness();
     await expect(
-      findWorkflowEventStartCandidatesInTransaction(tx, 99, "incident.created.v1"),
+      findWorkflowEventStartCandidatesInTransaction(tenantHarness.tx, 99, "incident.created.v1"),
     ).resolves.toEqual([
       {
         workflowId: 3,
