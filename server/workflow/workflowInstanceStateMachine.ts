@@ -138,7 +138,8 @@ function moveToTarget(input: {
   }
 
   const isTerminalTarget = !input.graph.edges.some(edge => edge.source === input.targetNodeId);
-  const status: WorkflowInstanceStatus = targetNode.requiresHumanTask
+  const waitsForExternalEvent = targetNode.type === "wait.event";
+  const status: WorkflowInstanceStatus = targetNode.requiresHumanTask || waitsForExternalEvent
     ? "waiting"
     : isTerminalTarget
       ? "completed"
