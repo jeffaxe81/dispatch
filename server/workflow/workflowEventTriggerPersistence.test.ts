@@ -163,4 +163,18 @@ describe("D-012F persisted event trigger boundary", () => {
     const { consumeWorkflowEventPersisted } = await loadPersistence();
     expect(typeof consumeWorkflowEventPersisted).toBe("function");
   });
+
+  it("conecta o consumer de produção ao runtime persistente antes de processar o evento", async () => {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      const { setDbForTesting } = await import("../dbLegacy");
+      setDbForTesting(null);
+      const { consumeWorkflowEventPersisted } = await loadPersistence();
+      await expect(consumeWorkflowEventPersisted(envelope, 7)).rejects.toThrow("Banco de dados indisponível.");
+    } finally {
+      if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  });
 });
