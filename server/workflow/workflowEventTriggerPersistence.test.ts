@@ -164,6 +164,84 @@ describe("D-012F persisted event trigger boundary", () => {
     expect(typeof consumeWorkflowEventPersisted).toBe("function");
   });
 
+  it("conecta o adapter real de banco ao claim, matching, start e completion na mesma transação", async () => {
+    const module = await loadPersistence();
+    const createDatabasePersistence = (module as unknown as {
+      createWorkflowEventTriggerDatabasePersistence?: (database: unknown, operations: unknown) => {
+        consume(input: typeof envelope, actorUserId: number): Promise<unknown>;
+      };
+    }).createWorkflowEventTriggerDatabasePersistence;
+    expect(typeof createDatabasePersistence).toBe("function");
+
+    const calls: string[] = [];
+    const tx = { id: "tx-production-adapter" };
+    const db = {
+      transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => {
+        calls.push("transaction:start");
+        const result = await callback(tx);
+        calls.push("transaction:commit");
+        return result;
+      },
+    };
+    const operations = {
+      claimReceipt: async (transaction: typeof tx, event: typeof envelope) => {
+        expect(transaction).toBe(tx);
+        expect(event).toEqual(envelope);
+        calls.push("claim");
+        return { status: "claimed" as const, tenantId: "42", eventId: envelope.eventId };
+      },
+      findStartCandidates: async (transaction: typeof tx, organizationId: number, eventType: string) => {
+        expect(transaction).toBe(tx);
+        expect(organizationId).toBe(42);
+        expect(eventType).toBe(envelope.eventType);
+        calls.push("match");
+        return [{ workflowId: 9, workflowVersionId: 901, tenantId: "42", triggerNodeId: "incident-created" }];
+      },
+      startInstance: async (transaction: typeof tx, input: Record<string, unknown>) => {
+        expect(transaction).toBe(tx);
+        expect(input).toEqual(expect.objectContaining({
+          workflowId: 9,
+          workflowVersionId: 901,
+          organizationId: 42,
+          triggerNodeId: "incident-created",
+          eventId: envelope.eventId,
+          eventType: envelope.eventType,
+          producer: envelope.producer,
+          actorUserId: 7,
+          correlationId: envelope.correlationId,
+          payload: envelope.payload,
+        }));
+        calls.push("start");
+        return { executionId: 7001 };
+      },
+      completeReceipt: async (transaction: typeof tx, input: Record<string, unknown>) => {
+        expect(transaction).toBe(tx);
+        expect(input).toEqual(expect.objectContaining({
+          tenantId: "42",
+          eventId: envelope.eventId,
+          status: "processed",
+          workflowExecutionId: 7001,
+        }));
+        calls.push("complete");
+      },
+    };
+
+    const persistence = createDatabasePersistence!(db, operations);
+    await expect(persistence.consume(envelope, 7)).resolves.toEqual({
+      status: "processed",
+      eventId: envelope.eventId,
+      executionIds: [7001],
+    });
+    expect(calls).toEqual([
+      "transaction:start",
+      "claim",
+      "match",
+      "start",
+      "complete",
+      "transaction:commit",
+    ]);
+  });
+
   it("conecta o consumer de produção ao runtime persistente antes de processar o evento", async () => {
     const previousDatabaseUrl = process.env.DATABASE_URL;
     delete process.env.DATABASE_URL;
