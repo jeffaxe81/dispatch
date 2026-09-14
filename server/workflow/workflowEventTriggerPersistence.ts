@@ -1,4 +1,5 @@
 import type { WorkflowEventEnvelope } from "../../shared/workflowIntegration/v1";
+import { getDb } from "../dbLegacy";
 import {
   createWorkflowEventTriggerService,
   type WorkflowEventTriggerDependencies,
@@ -94,5 +95,7 @@ export async function consumeWorkflowEventPersisted(
   _input: WorkflowEventEnvelope,
   _actorUserId: number,
 ): Promise<WorkflowEventTriggerResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
   throw new Error("Consumer persistente D-012F ainda não está conectado ao runtime de workflow.");
 }
