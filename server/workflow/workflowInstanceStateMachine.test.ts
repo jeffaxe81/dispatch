@@ -131,6 +131,52 @@ describe("D-012C/D workflow instance state machine", () => {
     })).toThrow("waiting");
   });
 
+  it("retoma wait.event somente pelo caminho de evento e mantém o caminho humano separado", async () => {
+    const initial = startManualWorkflowInstanceState({ workflowId: 10, workflowVersionId: 101, graph: eventWaitGraph, actorUserId, correlationId, occurredAt });
+    const waiting = advanceWorkflowInstanceState({ state: initial.state, graph: eventWaitGraph, targetNodeId: "wait-incident", actorUserId, correlationId, occurredAt });
+    const module = await import("./workflowInstanceStateMachine");
+    const resumeEventWaitingWorkflowInstanceState = (module as unknown as {
+      resumeEventWaitingWorkflowInstanceState?: typeof resumeWaitingWorkflowInstanceState;
+    }).resumeEventWaitingWorkflowInstanceState;
+
+    expect(typeof resumeEventWaitingWorkflowInstanceState).toBe("function");
+    const resumed = resumeEventWaitingWorkflowInstanceState!({
+      state: waiting.state,
+      graph: eventWaitGraph,
+      targetNodeId: "notify-2",
+      actorUserId,
+      correlationId: "corr-d012f-event-resume",
+      occurredAt,
+    });
+    expect(resumed.state).toEqual({ ...waiting.state, currentNodeId: "notify-2", status: "completed" });
+    expect(resumed.transition).toMatchObject({
+      action: "complete",
+      fromNodeId: "wait-incident",
+      toNodeId: "notify-2",
+      correlationId: "corr-d012f-event-resume",
+    });
+
+    expect(() => resumeWaitingWorkflowInstanceState({
+      state: waiting.state,
+      graph: eventWaitGraph,
+      targetNodeId: "notify-2",
+      actorUserId,
+      correlationId,
+      occurredAt,
+    })).toThrow("wait.event");
+
+    const humanInitial = startHumanTaskGraph();
+    const humanWaiting = advanceWorkflowInstanceState({ state: humanInitial.state, graph: humanTaskGraph, targetNodeId: "human-1", actorUserId, correlationId, occurredAt });
+    expect(() => resumeEventWaitingWorkflowInstanceState!({
+      state: humanWaiting.state,
+      graph: humanTaskGraph,
+      targetNodeId: "notify-2",
+      actorUserId,
+      correlationId,
+      occurredAt,
+    })).toThrow("wait.event");
+  });
+
   it("retoma uma instância waiting somente pela aresta válida da versão congelada", () => {
     const initial = startHumanTaskGraph();
     const waiting = advanceWorkflowInstanceState({ state: initial.state, graph: humanTaskGraph, targetNodeId: "human-1", actorUserId, correlationId, occurredAt });
