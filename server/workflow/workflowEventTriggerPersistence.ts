@@ -2,7 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { workflowVersions, workflows } from "../../drizzle/schema";
 import type { WorkflowEventEnvelope } from "../../shared/workflowIntegration/v1";
 import { getDb } from "../dbLegacy";
-import { claimWorkflowEventReceipt } from "./workflowEventReceiptStore";
+import {
+  claimWorkflowEventReceipt,
+  completeWorkflowEventReceipt,
+} from "./workflowEventReceiptStore";
+import { startEventWorkflowInstanceInTransaction } from "./workflowInstancePersistence";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 import { workflowTenantScopes } from "./workflowTenantScopeSchema";
 import {
@@ -158,23 +162,52 @@ export function createWorkflowEventTriggerPersistence<TTransaction>(
   };
 }
 
+type WorkflowEventTriggerDatabaseOperations = {
+  claimReceipt: typeof claimWorkflowEventReceipt;
+  findStartCandidates: typeof findWorkflowEventStartCandidatesInTransaction;
+  startInstance: typeof startEventWorkflowInstanceInTransaction;
+  completeReceipt: typeof completeWorkflowEventReceipt;
+};
+
+const defaultWorkflowEventTriggerDatabaseOperations: WorkflowEventTriggerDatabaseOperations = {
+  claimReceipt: claimWorkflowEventReceipt,
+  findStartCandidates: findWorkflowEventStartCandidatesInTransaction,
+  startInstance: startEventWorkflowInstanceInTransaction,
+  completeReceipt: completeWorkflowEventReceipt,
+};
+
+export function createWorkflowEventTriggerDatabasePersistence(
+  db: Pick<WorkflowDb, "transaction">,
+  operations: WorkflowEventTriggerDatabaseOperations = defaultWorkflowEventTriggerDatabaseOperations,
+) {
+  return createWorkflowEventTriggerPersistence<WorkflowEventTx>({
+    transaction: callback => db.transaction(async tx => callback(tx)),
+    buildDependencies: (tx, organizationId) => ({
+      claimReceipt: event => operations.claimReceipt(tx, event),
+      findStartCandidates: ({ eventType }) => operations.findStartCandidates(tx, organizationId, eventType),
+      startInstance: input => operations.startInstance(tx, {
+        workflowId: input.workflowId,
+        workflowVersionId: input.workflowVersionId,
+        organizationId,
+        triggerNodeId: input.triggerNodeId,
+        eventId: input.eventId,
+        eventType: input.eventType,
+        producer: input.producer,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        payload: input.payload,
+      }),
+      completeReceipt: input => operations.completeReceipt(tx, input),
+    }),
+  });
+}
+
 export async function consumeWorkflowEventPersisted(
   input: WorkflowEventEnvelope,
-  _actorUserId: number,
+  actorUserId: number,
 ): Promise<WorkflowEventTriggerResult> {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
 
-  return db.transaction(async tx => {
-    const claim = await claimWorkflowEventReceipt(tx, input);
-    if (claim.status === "duplicate") {
-      return {
-        status: "duplicate",
-        eventId: input.eventId,
-        executionIds: [],
-      };
-    }
-
-    throw new Error("Consumer persistente D-012F ainda não está conectado ao matching e start do runtime de workflow.");
-  });
+  return createWorkflowEventTriggerDatabasePersistence(db).consume(input, actorUserId);
 }
