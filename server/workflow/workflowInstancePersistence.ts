@@ -750,7 +750,7 @@ export async function startEventWorkflowInstanceInTransaction(
     throw new Error("A versão publicada indicada pelo evento não está mais elegível.");
   }
 
-  const graph = validateAndBuildGraph(version.definition);
+  const graph = toWorkflowInstanceGraph(version.definition);
   const { startEventWorkflowInstanceState } = await import("./workflowInstanceStateMachine");
   const now = new Date();
   const occurredAt = now.toISOString();
