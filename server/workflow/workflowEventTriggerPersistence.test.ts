@@ -62,6 +62,31 @@ describe("D-012F persisted event trigger boundary", () => {
     expect(findWorkflowEventTriggerNodeIds(definition, "inventory.asset.updated.v1")).toEqual([]);
   });
 
+  it("resolve wait.event somente com eventType exato e uma única saída", async () => {
+    const module = await loadPersistence() as unknown as {
+      findWorkflowEventWaitTargetNodeId?: (definition: unknown, currentNodeId: string, eventType: string) => string | null;
+    };
+    expect(typeof module.findWorkflowEventWaitTargetNodeId).toBe("function");
+
+    const waitDefinition = {
+      nodes: [
+        { id: "wait-incident", type: "wait.event", configuration: { eventType: "incident.created.v1" } },
+        { id: "notify", type: "notification.simulate", configuration: {} },
+      ],
+      edges: [{ id: "wait-next", source: "wait-incident", target: "notify" }],
+    };
+    expect(module.findWorkflowEventWaitTargetNodeId!(waitDefinition, "wait-incident", "incident.created.v1")).toBe("notify");
+    expect(module.findWorkflowEventWaitTargetNodeId!(waitDefinition, "wait-incident", "inventory.asset.updated.v1")).toBeNull();
+    expect(() => module.findWorkflowEventWaitTargetNodeId!({
+      ...waitDefinition,
+      nodes: [...waitDefinition.nodes, { id: "notify-2", type: "notification.simulate", configuration: {} }],
+      edges: [
+        ...waitDefinition.edges,
+        { id: "wait-next-2", source: "wait-incident", target: "notify-2" },
+      ],
+    }, "wait-incident", "incident.created.v1")).toThrow(/saída|ambígu/i);
+  });
+
   it("mantém claim, matching, start e completion dentro da mesma transação", async () => {
     const { createWorkflowEventTriggerPersistence } = await loadPersistence();
     const calls: string[] = [];
