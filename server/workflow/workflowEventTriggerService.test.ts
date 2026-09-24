@@ -15,8 +15,13 @@ const envelope = {
   payload: { incidentId: 99 },
 } as const;
 
-function createHarness(options: { duplicate?: boolean; candidates?: Array<Record<string, unknown>> } = {}) {
+function createHarness(options: {
+  duplicate?: boolean;
+  candidates?: Array<Record<string, unknown>>;
+  waitingCandidates?: Array<Record<string, unknown>>;
+} = {}) {
   const starts: Array<Record<string, unknown>> = [];
+  const resumes: Array<Record<string, unknown>> = [];
   const completions: Array<Record<string, unknown>> = [];
   const claims: Array<Record<string, unknown>> = [];
   const candidates = options.candidates ?? [{
@@ -25,9 +30,11 @@ function createHarness(options: { duplicate?: boolean; candidates?: Array<Record
     tenantId: "42",
     triggerNodeId: "trigger-external",
   }];
+  const waitingCandidates = options.waitingCandidates ?? [];
 
   return {
     starts,
+    resumes,
     completions,
     claims,
     dependencies: {
@@ -37,10 +44,17 @@ function createHarness(options: { duplicate?: boolean; candidates?: Array<Record
           ? { status: "duplicate" as const, tenantId: String(event.tenantId), eventId: String(event.eventId) }
           : { status: "claimed" as const, tenantId: String(event.tenantId), eventId: String(event.eventId) };
       },
-      findStartCandidates: async (input: { tenantId: string; eventType: string }) => candidates.filter(candidate => candidate.tenantId === input.tenantId),
+      findStartCandidates: async (input: { tenantId: string; eventType: string }) =>
+        candidates.filter(candidate => candidate.tenantId === input.tenantId),
+      findWaitingCandidates: async (input: { tenantId: string; eventType: string }) =>
+        waitingCandidates.filter(candidate => candidate.tenantId === input.tenantId),
       startInstance: async (input: Record<string, unknown>) => {
         starts.push(input);
         return { executionId: starts.length };
+      },
+      resumeInstance: async (input: Record<string, unknown>) => {
+        resumes.push(input);
+        return { executionId: Number(input.executionId) };
       },
       completeReceipt: async (input: Record<string, unknown>) => {
         completions.push(input);
@@ -67,6 +81,7 @@ describe("D-012F workflow event trigger service", () => {
       eventId: envelope.eventId,
       actorUserId: 7,
     })]);
+    expect(harness.resumes).toHaveLength(0);
     expect(harness.completions).toEqual([expect.objectContaining({
       tenantId: "42",
       eventId: envelope.eventId,
@@ -75,9 +90,75 @@ describe("D-012F workflow event trigger service", () => {
     })]);
   });
 
+  it("retoma exatamente uma instância waiting em wait.event quando não há start elegível", async () => {
+    const { createWorkflowEventTriggerService } = await loadService();
+    const harness = createHarness({
+      candidates: [],
+      waitingCandidates: [{
+        executionId: 77,
+        workflowId: 9,
+        workflowVersionId: 901,
+        tenantId: "42",
+        currentNodeId: "wait-incident-created",
+        targetNodeId: "notify-after-wait",
+      }],
+    });
+    const service = createWorkflowEventTriggerService(harness.dependencies);
+
+    await expect(service.consume(envelope, 7)).resolves.toEqual({
+      status: "processed",
+      eventId: envelope.eventId,
+      executionIds: [77],
+    });
+    expect(harness.starts).toHaveLength(0);
+    expect(harness.resumes).toEqual([expect.objectContaining({
+      executionId: 77,
+      workflowVersionId: 901,
+      tenantId: "42",
+      currentNodeId: "wait-incident-created",
+      targetNodeId: "notify-after-wait",
+      eventId: envelope.eventId,
+      eventType: envelope.eventType,
+      correlationId: envelope.correlationId,
+      actorUserId: 7,
+    })]);
+    expect(harness.completions).toEqual([expect.objectContaining({
+      status: "processed",
+      workflowExecutionId: 77,
+    })]);
+  });
+
+  it("falha fechado quando o mesmo evento encontra mais de um efeito elegível", async () => {
+    const { createWorkflowEventTriggerService } = await loadService();
+    const harness = createHarness({
+      waitingCandidates: [{
+        executionId: 77,
+        workflowId: 9,
+        workflowVersionId: 901,
+        tenantId: "42",
+        currentNodeId: "wait-incident-created",
+        targetNodeId: "notify-after-wait",
+      }],
+    });
+    const service = createWorkflowEventTriggerService(harness.dependencies);
+
+    await expect(service.consume(envelope, 7)).resolves.toEqual({
+      status: "failed",
+      eventId: envelope.eventId,
+      executionIds: [],
+      failureCode: "WORKFLOW_EVENT_TRIGGER_AMBIGUOUS",
+    });
+    expect(harness.starts).toHaveLength(0);
+    expect(harness.resumes).toHaveLength(0);
+    expect(harness.completions).toEqual([expect.objectContaining({
+      status: "failed",
+      failureCode: "WORKFLOW_EVENT_TRIGGER_AMBIGUOUS",
+    })]);
+  });
+
   it("marca ignored quando não há workflow elegível", async () => {
     const { createWorkflowEventTriggerService } = await loadService();
-    const harness = createHarness({ candidates: [] });
+    const harness = createHarness({ candidates: [], waitingCandidates: [] });
     const service = createWorkflowEventTriggerService(harness.dependencies);
 
     await expect(service.consume(envelope, 7)).resolves.toEqual({
@@ -86,6 +167,7 @@ describe("D-012F workflow event trigger service", () => {
       executionIds: [],
     });
     expect(harness.starts).toHaveLength(0);
+    expect(harness.resumes).toHaveLength(0);
     expect(harness.completions).toEqual([expect.objectContaining({ status: "ignored" })]);
   });
 
@@ -105,6 +187,7 @@ describe("D-012F workflow event trigger service", () => {
       failureCode: "WORKFLOW_EVENT_TRIGGER_MATCH_FAILED",
     })]);
     expect(harness.starts).toHaveLength(0);
+    expect(harness.resumes).toHaveLength(0);
   });
 
   it("fecha o recibo como failed quando o start falha depois do claim", async () => {
@@ -135,6 +218,7 @@ describe("D-012F workflow event trigger service", () => {
       executionIds: [],
     });
     expect(harness.starts).toHaveLength(0);
+    expect(harness.resumes).toHaveLength(0);
     expect(harness.completions).toHaveLength(0);
   });
 
