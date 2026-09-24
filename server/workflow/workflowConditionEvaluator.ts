@@ -132,32 +132,32 @@ function evaluateParsed(
 
   const fieldValue = requireExposedField(condition.field, context);
 
-  if (condition.operator === "present") {
-    return fieldValue !== null && fieldValue !== undefined;
+  switch (condition.operator) {
+    case "present":
+      return fieldValue !== null && fieldValue !== undefined;
+    case "absent":
+      return fieldValue === null || fieldValue === undefined;
+    case "eq":
+      return Object.is(fieldValue, condition.value);
+    case "neq":
+      return !Object.is(fieldValue, condition.value);
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte":
+      if (condition.valueType === "number") {
+        return compare(
+          condition.operator,
+          requireFiniteNumber(fieldValue, `Campo ${condition.field}`),
+          requireFiniteNumber(condition.value, "Valor de comparação"),
+        );
+      }
+      return compare(
+        condition.operator,
+        requireIsoDate(fieldValue, `Campo ${condition.field}`),
+        requireIsoDate(condition.value, "Valor de comparação"),
+      );
   }
-  if (condition.operator === "absent") {
-    return fieldValue === null || fieldValue === undefined;
-  }
-  if (condition.operator === "eq") {
-    return Object.is(fieldValue, condition.value);
-  }
-  if (condition.operator === "neq") {
-    return !Object.is(fieldValue, condition.value);
-  }
-
-  if (condition.valueType === "number") {
-    return compare(
-      condition.operator,
-      requireFiniteNumber(fieldValue, `Campo ${condition.field}`),
-      requireFiniteNumber(condition.value, "Valor de comparação"),
-    );
-  }
-
-  return compare(
-    condition.operator,
-    requireIsoDate(fieldValue, `Campo ${condition.field}`),
-    requireIsoDate(condition.value, "Valor de comparação"),
-  );
 }
 
 export function evaluateWorkflowCondition(
