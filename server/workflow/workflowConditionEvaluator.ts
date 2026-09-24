@@ -26,7 +26,7 @@ const comparisonConditionSchema = z.object({
   field: fieldSchema,
   operator: z.enum(["gt", "gte", "lt", "lte"]),
   valueType: z.enum(["number", "date"]),
-  value: z.union([z.number(), z.string()]),
+  value: z.unknown(),
 }).strict();
 
 export type WorkflowCondition =
@@ -164,6 +164,10 @@ export function evaluateWorkflowCondition(
   input: unknown,
   context: WorkflowConditionContext,
 ): boolean {
-  const condition = workflowConditionSchema.parse(input);
-  return evaluateParsed(condition, context, 0);
+  const parsed = workflowConditionSchema.safeParse(input);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map(issue => issue.message).join(" ");
+    throw new Error(`Condição inválida: ${message}`);
+  }
+  return evaluateParsed(parsed.data, context, 0);
 }
