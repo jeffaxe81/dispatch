@@ -1,14 +1,21 @@
 import { and, eq } from "drizzle-orm";
-import { workflowVersions, workflows } from "../../drizzle/schema";
+import { workflowExecutions, workflowVersions, workflows } from "../../drizzle/schema";
 import type { WorkflowEventEnvelope } from "../../shared/workflowIntegration/v1";
 import { getDb } from "../dbLegacy";
 import {
   claimWorkflowEventReceipt,
   completeWorkflowEventReceipt,
 } from "./workflowEventReceiptStore";
-import { startEventWorkflowInstanceInTransaction } from "./workflowInstancePersistence";
+import {
+  resumeEventWorkflowInstanceInTransaction,
+  startEventWorkflowInstanceInTransaction,
+} from "./workflowInstancePersistence";
+import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
-import { workflowTenantScopes } from "./workflowTenantScopeSchema";
+import {
+  workflowExecutionTenantScopes,
+  workflowTenantScopes,
+} from "./workflowTenantScopeSchema";
 import {
   createWorkflowEventTriggerService,
   type WorkflowEventTriggerDependencies,
@@ -77,6 +84,39 @@ export function findWorkflowEventTriggerNodeIds(
   });
 }
 
+export function findWorkflowEventWaitTargetNodeId(
+  definitionValue: unknown,
+  currentNodeId: string,
+  eventType: string,
+): string | null {
+  if (!definitionValue || typeof definitionValue !== "object") return null;
+  const definition = definitionValue as WorkflowEventDefinition;
+  const nodes = Array.isArray(definition.nodes) ? definition.nodes : [];
+  const edges = Array.isArray(definition.edges) ? definition.edges : [];
+  const currentNode = nodes.find(node =>
+    node && typeof node.id === "string" && node.id === currentNodeId
+  );
+  if (!currentNode || currentNode.type !== "wait.event") return null;
+  const configuration = currentNode.configuration && typeof currentNode.configuration === "object"
+    ? currentNode.configuration as Record<string, unknown>
+    : {};
+  if (configuration.eventType !== eventType) return null;
+
+  const outgoing = edges.filter(edge => edge && edge.source === currentNodeId);
+  if (outgoing.length !== 1) {
+    throw new Error("Nó wait.event deve possuir exatamente uma saída; definição ambígua.");
+  }
+  const target = outgoing[0]?.target;
+  if (typeof target !== "string" || !target.trim()) {
+    throw new Error("Nó wait.event possui saída inválida.");
+  }
+  const targetExists = nodes.some(node => node && node.id === target);
+  if (!targetExists) {
+    throw new Error("Nó wait.event aponta para destino inexistente.");
+  }
+  return target;
+}
+
 export async function findWorkflowEventStartCandidatesInTransaction(
   tx: WorkflowEventTx,
   organizationId: number,
@@ -136,6 +176,75 @@ export async function findWorkflowEventStartCandidatesInTransaction(
   return candidates;
 }
 
+export async function findWorkflowEventWaitingCandidatesInTransaction(
+  tx: WorkflowEventTx,
+  organizationId: number,
+  eventType: WorkflowEventEnvelope["eventType"],
+): Promise<WorkflowEventTriggerDependencies["findWaitingCandidates"] extends (...args: never[]) => Promise<infer TResult> ? TResult : never> {
+  const scopes = await tx
+    .select({ executionId: workflowExecutionTenantScopes.executionId })
+    .from(workflowExecutionTenantScopes)
+    .where(eq(workflowExecutionTenantScopes.organizationId, organizationId))
+    .limit(1000);
+
+  const candidates: Array<{
+    executionId: number;
+    workflowId: number;
+    workflowVersionId: number;
+    tenantId: string;
+    currentNodeId: string;
+    targetNodeId: string;
+  }> = [];
+
+  for (const scope of scopes) {
+    const execution = (
+      await tx.select().from(workflowExecutions).where(eq(workflowExecutions.id, scope.executionId)).limit(1)
+    )[0];
+    if (!execution || execution.mode !== "simulacao" || execution.status !== "pendente" || !execution.workflowVersionId) {
+      continue;
+    }
+
+    const projection = (
+      await tx
+        .select({ currentNodeId: workflowInstanceExecutions.currentNodeId })
+        .from(workflowInstanceExecutions)
+        .where(eq(workflowInstanceExecutions.id, scope.executionId))
+        .limit(1)
+    )[0];
+    if (!projection?.currentNodeId) continue;
+
+    const version = (
+      await tx
+        .select()
+        .from(workflowVersions)
+        .where(and(
+          eq(workflowVersions.id, execution.workflowVersionId),
+          eq(workflowVersions.workflowId, execution.workflowId),
+        ))
+        .limit(1)
+    )[0];
+    if (!version) continue;
+
+    const targetNodeId = findWorkflowEventWaitTargetNodeId(
+      version.definition,
+      projection.currentNodeId,
+      eventType,
+    );
+    if (!targetNodeId) continue;
+
+    candidates.push({
+      executionId: execution.id,
+      workflowId: execution.workflowId,
+      workflowVersionId: execution.workflowVersionId,
+      tenantId: String(organizationId),
+      currentNodeId: projection.currentNodeId,
+      targetNodeId,
+    });
+  }
+
+  return candidates;
+}
+
 export function createWorkflowEventTriggerPersistence<TTransaction>(
   adapter: WorkflowEventTriggerPersistenceAdapter<TTransaction>,
 ) {
@@ -165,14 +274,18 @@ export function createWorkflowEventTriggerPersistence<TTransaction>(
 type WorkflowEventTriggerDatabaseOperations = {
   claimReceipt: typeof claimWorkflowEventReceipt;
   findStartCandidates: typeof findWorkflowEventStartCandidatesInTransaction;
+  findWaitingCandidates: typeof findWorkflowEventWaitingCandidatesInTransaction;
   startInstance: typeof startEventWorkflowInstanceInTransaction;
+  resumeInstance: typeof resumeEventWorkflowInstanceInTransaction;
   completeReceipt: typeof completeWorkflowEventReceipt;
 };
 
 const defaultWorkflowEventTriggerDatabaseOperations: WorkflowEventTriggerDatabaseOperations = {
   claimReceipt: claimWorkflowEventReceipt,
   findStartCandidates: findWorkflowEventStartCandidatesInTransaction,
+  findWaitingCandidates: findWorkflowEventWaitingCandidatesInTransaction,
   startInstance: startEventWorkflowInstanceInTransaction,
+  resumeInstance: resumeEventWorkflowInstanceInTransaction,
   completeReceipt: completeWorkflowEventReceipt,
 };
 
@@ -185,11 +298,26 @@ export function createWorkflowEventTriggerDatabasePersistence(
     buildDependencies: (tx, organizationId) => ({
       claimReceipt: event => operations.claimReceipt(tx, event),
       findStartCandidates: ({ eventType }) => operations.findStartCandidates(tx, organizationId, eventType),
+      findWaitingCandidates: ({ eventType }) => operations.findWaitingCandidates(tx, organizationId, eventType),
       startInstance: input => operations.startInstance(tx, {
         workflowId: input.workflowId,
         workflowVersionId: input.workflowVersionId,
         organizationId,
         triggerNodeId: input.triggerNodeId,
+        eventId: input.eventId,
+        eventType: input.eventType,
+        producer: input.producer,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        payload: input.payload,
+      }),
+      resumeInstance: input => operations.resumeInstance(tx, {
+        executionId: input.executionId,
+        workflowId: input.workflowId,
+        workflowVersionId: input.workflowVersionId,
+        organizationId,
+        currentNodeId: input.currentNodeId,
+        targetNodeId: input.targetNodeId,
         eventId: input.eventId,
         eventType: input.eventType,
         producer: input.producer,
