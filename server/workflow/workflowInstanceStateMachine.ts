@@ -274,6 +274,14 @@ export function resumeWaitingWorkflowInstanceState(input: {
     throw new Error("Somente instância waiting pode ser retomada por conclusão de tarefa.");
   }
 
+  const currentNode = input.graph.nodes.find(node => node.id === input.state.currentNodeId);
+  if (!currentNode) {
+    throw new Error("O nó atual da instância não existe na versão congelada do workflow.");
+  }
+  if (currentNode.type === "wait.event") {
+    throw new Error("Nó wait.event só pode ser retomado pelo caminho de evento.");
+  }
+
   const outgoing = input.graph.edges.filter(edge => edge.source === input.state.currentNodeId);
   if (!outgoing.length) {
     if (input.targetNodeId) {
@@ -295,6 +303,39 @@ export function resumeWaitingWorkflowInstanceState(input: {
   if (!input.targetNodeId) {
     throw new Error("targetNodeId é obrigatório para retomar etapa humana com saída.");
   }
+  return moveToTarget({
+    state: input.state,
+    graph: input.graph,
+    targetNodeId: input.targetNodeId,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt: input.occurredAt,
+  });
+}
+
+export function resumeEventWaitingWorkflowInstanceState(input: {
+  state: WorkflowInstanceState;
+  graph: WorkflowInstanceGraph;
+  targetNodeId: string;
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+}): WorkflowInstanceStateChange {
+  assertMutableState(input.state);
+  assertTransitionMetadata(input);
+  assertGraph(input.graph);
+  if (input.state.status !== "waiting") {
+    throw new Error("Somente instância waiting pode ser retomada por evento.");
+  }
+
+  const currentNode = input.graph.nodes.find(node => node.id === input.state.currentNodeId);
+  if (!currentNode) {
+    throw new Error("O nó atual da instância não existe na versão congelada do workflow.");
+  }
+  if (currentNode.type !== "wait.event") {
+    throw new Error("Retomada por evento exige nó atual wait.event.");
+  }
+
   return moveToTarget({
     state: input.state,
     graph: input.graph,
