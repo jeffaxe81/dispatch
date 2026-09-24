@@ -86,9 +86,16 @@ describe("D-012F persisted event trigger boundary", () => {
             calls.push("match");
             return [{ workflowId: 1, workflowVersionId: 101, tenantId: "42", triggerNodeId: "incident-created" }];
           },
+          findWaitingCandidates: async () => {
+            calls.push("match:waiting");
+            return [];
+          },
           startInstance: async () => {
             calls.push("start");
             return { executionId: 5001 };
+          },
+          resumeInstance: async () => {
+            throw new Error("resume inesperado");
           },
           completeReceipt: async () => {
             calls.push("complete");
@@ -106,6 +113,7 @@ describe("D-012F persisted event trigger boundary", () => {
       "transaction:start",
       "claim",
       "match",
+      "match:waiting",
       "start",
       "complete",
       "transaction:end",
@@ -138,9 +146,16 @@ describe("D-012F persisted event trigger boundary", () => {
           calls.push("match");
           return [{ workflowId: 1, workflowVersionId: 101, tenantId: "42", triggerNodeId: "incident-created" }];
         },
+        findWaitingCandidates: async () => {
+          calls.push("match:waiting");
+          return [];
+        },
         startInstance: async () => {
           calls.push("start");
           throw new Error("start indisponível");
+        },
+        resumeInstance: async () => {
+          throw new Error("resume inesperado");
         },
         completeReceipt: async input => {
           calls.push(`complete:${input.status}`);
@@ -153,6 +168,7 @@ describe("D-012F persisted event trigger boundary", () => {
       "transaction:start",
       "claim",
       "match",
+      "match:waiting",
       "start",
       "complete:failed",
       "transaction:commit",
@@ -197,6 +213,13 @@ describe("D-012F persisted event trigger boundary", () => {
         calls.push("match");
         return [{ workflowId: 9, workflowVersionId: 901, tenantId: "42", triggerNodeId: "incident-created" }];
       },
+      findWaitingCandidates: async (transaction: typeof tx, organizationId: number, eventType: string) => {
+        expect(transaction).toBe(tx);
+        expect(organizationId).toBe(42);
+        expect(eventType).toBe(envelope.eventType);
+        calls.push("match:waiting");
+        return [];
+      },
       startInstance: async (transaction: typeof tx, input: Record<string, unknown>) => {
         expect(transaction).toBe(tx);
         expect(input).toEqual(expect.objectContaining({
@@ -213,6 +236,9 @@ describe("D-012F persisted event trigger boundary", () => {
         }));
         calls.push("start");
         return { executionId: 7001 };
+      },
+      resumeInstance: async () => {
+        throw new Error("resume inesperado");
       },
       completeReceipt: async (transaction: typeof tx, input: Record<string, unknown>) => {
         expect(transaction).toBe(tx);
@@ -236,8 +262,80 @@ describe("D-012F persisted event trigger boundary", () => {
       "transaction:start",
       "claim",
       "match",
+      "match:waiting",
       "start",
       "complete",
+      "transaction:commit",
+    ]);
+  });
+
+  it("mantém resume de wait.event dentro da mesma transação e receipt", async () => {
+    const { createWorkflowEventTriggerPersistence } = await loadPersistence();
+    const calls: string[] = [];
+    const tx = { id: "tx-wait-event" };
+    const persistence = createWorkflowEventTriggerPersistence({
+      transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => {
+        calls.push("transaction:start");
+        const result = await callback(tx);
+        calls.push("transaction:commit");
+        return result;
+      },
+      buildDependencies: () => ({
+        claimReceipt: async () => {
+          calls.push("claim");
+          return { status: "claimed" as const, tenantId: "42", eventId: envelope.eventId };
+        },
+        findStartCandidates: async () => {
+          calls.push("match:start");
+          return [];
+        },
+        findWaitingCandidates: async () => {
+          calls.push("match:waiting");
+          return [{
+            executionId: 88,
+            workflowId: 9,
+            workflowVersionId: 901,
+            tenantId: "42",
+            currentNodeId: "wait-incident",
+            targetNodeId: "notify",
+          }];
+        },
+        startInstance: async () => {
+          throw new Error("start inesperado");
+        },
+        resumeInstance: async input => {
+          calls.push("resume");
+          expect(input).toEqual(expect.objectContaining({
+            executionId: 88,
+            tenantId: "42",
+            targetNodeId: "notify",
+            eventType: envelope.eventType,
+            correlationId: envelope.correlationId,
+          }));
+          return { executionId: 88 };
+        },
+        completeReceipt: async input => {
+          calls.push(`complete:${input.status}`);
+          expect(input).toEqual(expect.objectContaining({
+            workflowExecutionId: 88,
+            status: "processed",
+          }));
+        },
+      }),
+    });
+
+    await expect(persistence.consume(envelope, 7)).resolves.toEqual({
+      status: "processed",
+      eventId: envelope.eventId,
+      executionIds: [88],
+    });
+    expect(calls).toEqual([
+      "transaction:start",
+      "claim",
+      "match:start",
+      "match:waiting",
+      "resume",
+      "complete:processed",
       "transaction:commit",
     ]);
   });
