@@ -1,3 +1,4 @@
+// D-012G G1 — contrato RED: implementação ainda não existe.
 import { describe, expect, it } from "vitest";
 
 const modulePath = "./workflowConditionEvaluator";
