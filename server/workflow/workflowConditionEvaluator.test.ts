@@ -1,4 +1,4 @@
-// D-012G G1 — contrato RED: implementação ainda não existe.
+// D-012G G1 — contrato TDD: candidato GREEN após implementação mínima.
 import { describe, expect, it } from "vitest";
 
 const modulePath = "./workflowConditionEvaluator";
