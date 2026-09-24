@@ -10,6 +10,15 @@ export type WorkflowEventStartCandidate = {
   triggerNodeId: string;
 };
 
+export type WorkflowEventWaitingCandidate = {
+  executionId: number;
+  workflowId: number;
+  workflowVersionId: number;
+  tenantId: string;
+  currentNodeId: string;
+  targetNodeId: string;
+};
+
 export type WorkflowEventTriggerDependencies = {
   claimReceipt(event: WorkflowEventEnvelope): Promise<
     | { status: "claimed"; tenantId: string; eventId: string }
@@ -20,11 +29,30 @@ export type WorkflowEventTriggerDependencies = {
     eventType: WorkflowEventEnvelope["eventType"];
     producer: WorkflowEventEnvelope["producer"];
   }): Promise<WorkflowEventStartCandidate[]>;
+  findWaitingCandidates(input: {
+    tenantId: string;
+    eventType: WorkflowEventEnvelope["eventType"];
+    producer: WorkflowEventEnvelope["producer"];
+  }): Promise<WorkflowEventWaitingCandidate[]>;
   startInstance(input: {
     workflowId: number;
     workflowVersionId: number;
     tenantId: string;
     triggerNodeId: string;
+    eventId: string;
+    eventType: WorkflowEventEnvelope["eventType"];
+    producer: WorkflowEventEnvelope["producer"];
+    correlationId: string;
+    actorUserId: number;
+    payload: Record<string, unknown>;
+  }): Promise<{ executionId: number }>;
+  resumeInstance(input: {
+    executionId: number;
+    workflowId: number;
+    workflowVersionId: number;
+    tenantId: string;
+    currentNodeId: string;
+    targetNodeId: string;
     eventId: string;
     eventType: WorkflowEventEnvelope["eventType"];
     producer: WorkflowEventEnvelope["producer"];
@@ -64,9 +92,15 @@ export function createWorkflowEventTriggerService(dependencies: WorkflowEventTri
         return { status: "duplicate", eventId: envelope.eventId, executionIds: [] };
       }
 
-      let candidates: WorkflowEventStartCandidate[];
+      let startCandidates: WorkflowEventStartCandidate[];
+      let waitingCandidates: WorkflowEventWaitingCandidate[];
       try {
-        candidates = (await dependencies.findStartCandidates({
+        startCandidates = (await dependencies.findStartCandidates({
+          tenantId: envelope.tenantId,
+          eventType: envelope.eventType,
+          producer: envelope.producer,
+        })).filter(candidate => candidate.tenantId === envelope.tenantId);
+        waitingCandidates = (await dependencies.findWaitingCandidates({
           tenantId: envelope.tenantId,
           eventType: envelope.eventType,
           producer: envelope.producer,
@@ -81,7 +115,8 @@ export function createWorkflowEventTriggerService(dependencies: WorkflowEventTri
         throw error;
       }
 
-      if (candidates.length === 0) {
+      const effectCount = startCandidates.length + waitingCandidates.length;
+      if (effectCount === 0) {
         await dependencies.completeReceipt({
           tenantId: envelope.tenantId,
           eventId: envelope.eventId,
@@ -90,7 +125,7 @@ export function createWorkflowEventTriggerService(dependencies: WorkflowEventTri
         return { status: "ignored", eventId: envelope.eventId, executionIds: [] };
       }
 
-      if (candidates.length > 1) {
+      if (effectCount > 1) {
         const failureCode = "WORKFLOW_EVENT_TRIGGER_AMBIGUOUS";
         await dependencies.completeReceipt({
           tenantId: envelope.tenantId,
@@ -101,7 +136,48 @@ export function createWorkflowEventTriggerService(dependencies: WorkflowEventTri
         return { status: "failed", eventId: envelope.eventId, executionIds: [], failureCode };
       }
 
-      const candidate = candidates[0];
+      if (waitingCandidates.length === 1) {
+        const candidate = waitingCandidates[0];
+        let resumed: { executionId: number };
+        try {
+          resumed = await dependencies.resumeInstance({
+            executionId: candidate.executionId,
+            workflowId: candidate.workflowId,
+            workflowVersionId: candidate.workflowVersionId,
+            tenantId: envelope.tenantId,
+            currentNodeId: candidate.currentNodeId,
+            targetNodeId: candidate.targetNodeId,
+            eventId: envelope.eventId,
+            eventType: envelope.eventType,
+            producer: envelope.producer,
+            correlationId: envelope.correlationId,
+            actorUserId,
+            payload: { ...envelope.payload },
+          });
+        } catch (error) {
+          await dependencies.completeReceipt({
+            tenantId: envelope.tenantId,
+            eventId: envelope.eventId,
+            status: "failed",
+            failureCode: "WORKFLOW_EVENT_TRIGGER_RESUME_FAILED",
+          });
+          throw error;
+        }
+
+        await dependencies.completeReceipt({
+          tenantId: envelope.tenantId,
+          eventId: envelope.eventId,
+          status: "processed",
+          workflowExecutionId: resumed.executionId,
+        });
+        return {
+          status: "processed",
+          eventId: envelope.eventId,
+          executionIds: [resumed.executionId],
+        };
+      }
+
+      const candidate = startCandidates[0];
       let started: { executionId: number };
       try {
         started = await dependencies.startInstance({
