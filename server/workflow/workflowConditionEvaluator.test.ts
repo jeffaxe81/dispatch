@@ -1,4 +1,4 @@
-// D-012G G1 — contrato TDD: candidato GREEN após implementação mínima.
+// D-012G G1 — contrato TDD: candidato GREEN após correção de narrowing.
 import { describe, expect, it } from "vitest";
 
 const modulePath = "./workflowConditionEvaluator";
