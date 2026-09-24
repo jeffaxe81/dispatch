@@ -19,6 +19,7 @@ import { workflowExecutionTenantScopes } from "./workflowTenantScopeSchema";
 import {
   advanceWorkflowInstanceState,
   cancelWorkflowInstanceState,
+  resumeEventWaitingWorkflowInstanceState,
   resumeWaitingWorkflowInstanceState,
   startManualWorkflowInstanceState,
   type WorkflowInstanceGraph,
@@ -495,17 +496,21 @@ export async function advanceManualWorkflowInstance(input: {
     const status = dbStatusFromState(advanced.state.status);
 
     if (advanced.state.status === "waiting") {
-      const taskNode = frozen.graph.nodes.find(node => node.id === advanced.state.currentNodeId);
-      if (!taskNode?.requiresHumanTask) throw new Error("Estado waiting sem etapa humana válida.");
-      await ensureWorkflowTaskForNode(tx, {
-        executionId: input.executionId,
-        workflowVersionId: frozen.state.workflowVersionId,
-        nodeId: taskNode.id,
-        assigneeUserId: taskNode.assigneeUserId ?? null,
-        actorUserId: input.actorUserId,
-        correlationId: input.correlationId,
-        occurredAt,
-      });
+      const waitingNode = frozen.graph.nodes.find(node => node.id === advanced.state.currentNodeId);
+      if (!waitingNode) throw new Error("Estado waiting sem nó válido.");
+      if (waitingNode.requiresHumanTask) {
+        await ensureWorkflowTaskForNode(tx, {
+          executionId: input.executionId,
+          workflowVersionId: frozen.state.workflowVersionId,
+          nodeId: waitingNode.id,
+          assigneeUserId: waitingNode.assigneeUserId ?? null,
+          actorUserId: input.actorUserId,
+          correlationId: input.correlationId,
+          occurredAt,
+        });
+      } else if (waitingNode.type !== "wait.event") {
+        throw new Error("Estado waiting sem etapa humana ou wait.event válida.");
+      }
     }
 
     await tx
@@ -584,17 +589,21 @@ export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
     const status = dbStatusFromState(resumed.state.status);
 
     if (resumed.state.status === "waiting") {
-      const taskNode = frozen.graph.nodes.find(node => node.id === resumed.state.currentNodeId);
-      if (!taskNode?.requiresHumanTask) throw new Error("Estado waiting sem etapa humana válida.");
-      await ensureWorkflowTaskForNode(tx, {
-        executionId: input.executionId,
-        workflowVersionId: frozen.state.workflowVersionId,
-        nodeId: taskNode.id,
-        assigneeUserId: taskNode.assigneeUserId ?? null,
-        actorUserId: input.actorUserId,
-        correlationId: input.correlationId,
-        occurredAt,
-      });
+      const waitingNode = frozen.graph.nodes.find(node => node.id === resumed.state.currentNodeId);
+      if (!waitingNode) throw new Error("Estado waiting sem nó válido.");
+      if (waitingNode.requiresHumanTask) {
+        await ensureWorkflowTaskForNode(tx, {
+          executionId: input.executionId,
+          workflowVersionId: frozen.state.workflowVersionId,
+          nodeId: waitingNode.id,
+          assigneeUserId: waitingNode.assigneeUserId ?? null,
+          actorUserId: input.actorUserId,
+          correlationId: input.correlationId,
+          occurredAt,
+        });
+      } else if (waitingNode.type !== "wait.event") {
+        throw new Error("Estado waiting sem etapa humana ou wait.event válida.");
+      }
     }
 
     await tx
@@ -698,4 +707,249 @@ export async function cancelManualWorkflowInstance(input: {
       status,
     };
   });
+}
+
+export async function startEventWorkflowInstanceInTransaction(
+  tx: WorkflowTx,
+  input: {
+    workflowId: number;
+    workflowVersionId: number;
+    organizationId: number;
+    triggerNodeId: string;
+    eventId: string;
+    eventType: string;
+    producer: string;
+    actorUserId: number;
+    correlationId: string;
+    payload: Record<string, unknown>;
+  },
+): Promise<WorkflowInstanceResult> {
+  await assertWorkflowTenant(tx, input.workflowId, input.organizationId);
+
+  const workflow = (
+    await tx.select().from(workflows).where(eq(workflows.id, input.workflowId)).limit(1)
+  )[0];
+  if (!workflow) throw new Error("Workflow não encontrado.");
+  if (!workflow.active) throw new Error("O workflow deve estar ativo antes de iniciar uma instância.");
+  if (!workflow.simulationOnly) throw new Error("A D-012F inicia somente workflows em modo de simulação.");
+
+  const pointer = (
+    await tx
+      .select()
+      .from(workflowPublicationPointers)
+      .where(eq(workflowPublicationPointers.id, input.workflowId))
+      .limit(1)
+  )[0];
+  if (!pointer?.publishedVersion || pointer.publishedVersion < 1) {
+    throw new Error("O workflow ativo não possui versão publicada válida.");
+  }
+
+  const version = (
+    await tx
+      .select()
+      .from(workflowVersions)
+      .where(and(
+        eq(workflowVersions.id, input.workflowVersionId),
+        eq(workflowVersions.workflowId, input.workflowId),
+        eq(workflowVersions.version, pointer.publishedVersion),
+      ))
+      .limit(1)
+  )[0];
+  if (!version || version.id !== input.workflowVersionId || version.version !== pointer.publishedVersion) {
+    throw new Error("A versão publicada indicada pelo evento não está mais elegível.");
+  }
+
+  const graph = toWorkflowInstanceGraph(version.definition);
+  const { startEventWorkflowInstanceState } = await import("./workflowInstanceStateMachine");
+  const now = new Date();
+  const occurredAt = now.toISOString();
+  const started = startEventWorkflowInstanceState({
+    workflowId: input.workflowId,
+    workflowVersionId: version.id,
+    graph,
+    triggerNodeId: input.triggerNodeId,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt,
+  });
+  const status = dbStatusFromState(started.state.status);
+
+  const [created] = await tx
+    .insert(workflowExecutions)
+    .values({
+      workflowId: input.workflowId,
+      workflowVersionId: version.id,
+      triggerType: `event:${input.eventType}`,
+      mode: "simulacao",
+      status,
+      idempotencyKey: `${input.organizationId}:${input.eventId}`,
+      inputData: {
+        simulation: true,
+        eventId: input.eventId,
+        eventType: input.eventType,
+        producer: input.producer,
+        payload: { ...input.payload },
+      },
+      attempts: 0,
+      maxAttempts: 3,
+      startedAt: now,
+      initiatedByUserId: input.actorUserId,
+    })
+    .$returningId();
+  if (!created?.id) throw new Error("Falha ao persistir a instância do workflow por evento.");
+
+  await tx.insert(workflowExecutionTenantScopes).values({
+    executionId: created.id,
+    organizationId: input.organizationId,
+  });
+
+  await tx
+    .update(workflowInstanceExecutions)
+    .set({
+      currentNodeId: started.state.currentNodeId,
+      correlationId: input.correlationId,
+    })
+    .where(eq(workflowInstanceExecutions.id, created.id));
+
+  await tx.insert(auditLogs).values(
+    buildWorkflowInstanceAuditLog({
+      executionId: created.id,
+      workflowId: input.workflowId,
+      workflowVersionId: version.id,
+      actorUserId: input.actorUserId,
+      action: "start",
+      fromNodeId: null,
+      toNodeId: started.state.currentNodeId,
+      correlationId: input.correlationId,
+      occurredAt,
+      beforeStatus: null,
+      afterStatus: status,
+    }),
+  );
+
+  return {
+    executionId: created.id,
+    workflowId: input.workflowId,
+    workflowVersionId: version.id,
+    currentNodeId: started.state.currentNodeId,
+    status,
+  };
+}
+
+
+export async function resumeEventWorkflowInstanceInTransaction(
+  tx: WorkflowTx,
+  input: {
+    executionId: number;
+    workflowId: number;
+    workflowVersionId: number;
+    organizationId: number;
+    currentNodeId: string;
+    targetNodeId: string;
+    eventId: string;
+    eventType: string;
+    producer: string;
+    actorUserId: number;
+    correlationId: string;
+    payload: Record<string, unknown>;
+  },
+): Promise<WorkflowInstanceResult> {
+  const frozen = await loadFrozenInstanceForTransition(tx, input.executionId, input.organizationId);
+  if (frozen.state.workflowId !== input.workflowId || frozen.state.workflowVersionId !== input.workflowVersionId) {
+    throw new Error("Instância waiting não corresponde ao workflow/version congelados.");
+  }
+  if (frozen.state.currentNodeId !== input.currentNodeId) {
+    throw new Error("Instância waiting mudou de nó antes do processamento do evento.");
+  }
+
+  const definition = frozen.version.definition as Record<string, unknown>;
+  const nodes = Array.isArray(definition.nodes) ? definition.nodes : [];
+  const currentRaw = nodes.find(raw => {
+    if (!raw || typeof raw !== "object") return false;
+    return (raw as Record<string, unknown>).id === input.currentNodeId;
+  }) as Record<string, unknown> | undefined;
+  if (!currentRaw || currentRaw.type !== "wait.event") {
+    throw new Error("Retomada por evento exige nó persistido wait.event.");
+  }
+  const configuration = taskConfiguration(currentRaw.configuration);
+  if (configuration.eventType !== input.eventType) {
+    throw new Error("Evento não corresponde ao eventType aguardado pela instância.");
+  }
+
+  const outgoing = frozen.graph.edges.filter(edge => edge.source === input.currentNodeId);
+  if (outgoing.length !== 1) {
+    throw new Error("Nó wait.event deve possuir exatamente uma saída.");
+  }
+  if (outgoing[0].target !== input.targetNodeId) {
+    throw new Error("Destino do wait.event não corresponde à versão congelada.");
+  }
+
+  const beforeStatus = frozen.execution.status as WorkflowExecutionDbStatus;
+  const now = new Date();
+  const occurredAt = now.toISOString();
+  const resumed = resumeEventWaitingWorkflowInstanceState({
+    state: frozen.state,
+    graph: frozen.graph,
+    targetNodeId: input.targetNodeId,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt,
+  });
+  const status = dbStatusFromState(resumed.state.status);
+
+  if (resumed.state.status === "waiting") {
+    const waitingNode = frozen.graph.nodes.find(node => node.id === resumed.state.currentNodeId);
+    if (!waitingNode) throw new Error("Estado waiting sem nó válido após evento.");
+    if (waitingNode.requiresHumanTask) {
+      await ensureWorkflowTaskForNode(tx, {
+        executionId: input.executionId,
+        workflowVersionId: frozen.state.workflowVersionId,
+        nodeId: waitingNode.id,
+        assigneeUserId: waitingNode.assigneeUserId ?? null,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        occurredAt,
+      });
+    } else if (waitingNode.type !== "wait.event") {
+      throw new Error("Estado waiting sem etapa humana ou wait.event válida após evento.");
+    }
+  }
+
+  await tx
+    .update(workflowExecutions)
+    .set({
+      status,
+      completedAt: resumed.state.status === "completed" ? now : null,
+    })
+    .where(eq(workflowExecutions.id, input.executionId));
+  await tx
+    .update(workflowInstanceExecutions)
+    .set({
+      currentNodeId: resumed.state.currentNodeId,
+      correlationId: input.correlationId,
+    })
+    .where(eq(workflowInstanceExecutions.id, input.executionId));
+  await tx.insert(auditLogs).values(
+    buildWorkflowInstanceAuditLog({
+      executionId: input.executionId,
+      workflowId: frozen.state.workflowId,
+      workflowVersionId: frozen.state.workflowVersionId,
+      actorUserId: input.actorUserId,
+      action: resumed.transition.action === "complete" ? "complete" : "advance",
+      fromNodeId: resumed.transition.fromNodeId,
+      toNodeId: resumed.transition.toNodeId,
+      correlationId: input.correlationId,
+      occurredAt,
+      beforeStatus,
+      afterStatus: status,
+    }),
+  );
+
+  return {
+    executionId: input.executionId,
+    workflowId: frozen.state.workflowId,
+    workflowVersionId: frozen.state.workflowVersionId,
+    currentNodeId: resumed.state.currentNodeId,
+    status,
+  };
 }
