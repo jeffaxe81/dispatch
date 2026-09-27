@@ -46,7 +46,8 @@ import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
 import { parseOpenapiDocument } from "./openapi";
 import { storageGet, storagePut } from "./storage";
-import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";\nimport { workflowConditionSchema } from "./workflow/workflowConditionEvaluator";
+import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
+import { workflowConditionSchema } from "./workflow/workflowConditionEvaluator";
 
 let cachedDb: ReturnType<typeof drizzle> | null = null;
 
