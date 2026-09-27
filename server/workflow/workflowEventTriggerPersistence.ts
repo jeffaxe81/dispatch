@@ -42,10 +42,6 @@ type WorkflowEventTriggerPersistenceAdapter<TTransaction> = {
   ): WorkflowEventTriggerDependencies;
 };
 
-type WorkflowEventTriggerTransactionOutcome =
-  | { ok: true; result: WorkflowEventTriggerResult }
-  | { ok: false; error: unknown };
-
 type WorkflowDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 type WorkflowEventTx = Parameters<Parameters<WorkflowDb["transaction"]>[0]>[0];
 
@@ -254,19 +250,12 @@ export function createWorkflowEventTriggerPersistence<TTransaction>(
       actorUserId: number,
     ): Promise<WorkflowEventTriggerResult> {
       const organizationId = parseWorkflowEventTenantOrganizationId(input.tenantId);
-      const outcome = await adapter.transaction<WorkflowEventTriggerTransactionOutcome>(async transaction => {
+      return adapter.transaction(async transaction => {
         const service = createWorkflowEventTriggerService(
           adapter.buildDependencies(transaction, organizationId),
         );
-        try {
-          return { ok: true, result: await service.consume(input, actorUserId) };
-        } catch (error) {
-          return { ok: false, error };
-        }
+        return service.consume(input, actorUserId);
       });
-
-      if (!outcome.ok) throw outcome.error;
-      return outcome.result;
     },
   };
 }
