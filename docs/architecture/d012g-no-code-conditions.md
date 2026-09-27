@@ -6,7 +6,7 @@
 - G2 — validação de definição: GREEN, checkpoint `checkpoint/d012g-g2-green-20260927`.
 - G3 — máquina de estados: GREEN, checkpoint `checkpoint/d012g-g3-green-20260927`.
 - G4 — persistência/runtime: GREEN, checkpoint `checkpoint/d012g-g4-green-20260927`.
-- G5 — hardening: em validação.
+- G5 — hardening: GREEN, checkpoint `checkpoint/d012g-g5-green-20260927`.
 
 ## Contrato de decisão
 
