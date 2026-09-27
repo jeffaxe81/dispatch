@@ -49,6 +49,7 @@ import { storageGet, storagePut } from "./storage";
 import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
 import { workflowConditionSchema } from "./workflow/workflowConditionEvaluator";
 import { workflowFormRequirementSchema } from "./workflow/workflowFormRequirement";
+import { workflowSlaConfigurationSchema } from "./workflow/workflowSla";
 
 let cachedDb: ReturnType<typeof drizzle> | null = null;
 
@@ -1753,6 +1754,15 @@ function configurationText(configuration: Record<string, unknown>, key: string) 
 
 export function getWorkflowNodeConfigurationErrors(node: WorkflowDefinition["nodes"][number]) {
   const configuration = node.configuration;
+  if (configuration.sla !== undefined) {
+    const explicitlyHuman = configuration.requiresHumanTask === true;
+    if (node.type.startsWith("trigger.") || !explicitlyHuman) {
+      return ["SLA só pode ser configurado em tarefa humana com requiresHumanTask=true."];
+    }
+    if (!workflowSlaConfigurationSchema.safeParse(configuration.sla).success) {
+      return ["A tarefa humana precisa conter uma configuração SLA válida."];
+    }
+  }
   if (node.type === "trigger.manual") return configurationText(configuration, "inputLabel") ? [] : ["O gatilho manual precisa de um nome para a entrada de teste."];
   if (node.type === "trigger.external_data") {
     const sourceApplication = configurationText(configuration, "sourceApplication");
