@@ -86,3 +86,23 @@ export function assertWorkflowFormRequirementForAction(
     );
   }
 }
+
+export function workflowFormRequirementFromDefinition(
+  definitionValue: unknown,
+  nodeId: string,
+): WorkflowFormRequirement | null {
+  if (!definitionValue || typeof definitionValue !== "object" || Array.isArray(definitionValue)) {
+    return null;
+  }
+  const definition = definitionValue as Record<string, unknown>;
+  const nodes = Array.isArray(definition.nodes) ? definition.nodes : [];
+  const rawNode = nodes.find(raw => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const node = raw as Record<string, unknown>;
+    return node.id === nodeId;
+  });
+  if (!rawNode || typeof rawNode !== "object" || Array.isArray(rawNode)) return null;
+  const node = rawNode as Record<string, unknown>;
+  if (node.type !== "form.d008") return null;
+  return workflowFormRequirementSchema.parse(node.configuration);
+}
