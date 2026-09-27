@@ -46,7 +46,7 @@ import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
 import { parseOpenapiDocument } from "./openapi";
 import { storageGet, storagePut } from "./storage";
-import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
+import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";\nimport { workflowConditionSchema } from "./workflow/workflowConditionEvaluator";
 
 let cachedDb: ReturnType<typeof drizzle> | null = null;
 
@@ -1763,6 +1763,20 @@ export function getWorkflowNodeConfigurationErrors(node: WorkflowDefinition["nod
     if (environment !== "homologacao") errors.push("A entrada externa só pode ser configurada para homologação nesta etapa.");
     return errors;
   }
+  if (node.type === "decision.condition") {
+    const errors: string[] = [];
+    const condition = configuration.condition;
+    const trueTargetNodeId = configurationText(configuration, "trueTargetNodeId");
+    const falseTargetNodeId = configurationText(configuration, "falseTargetNodeId");
+    const parsedCondition = workflowConditionSchema.safeParse(condition);
+    if (!parsedCondition.success) errors.push("A decisão precisa conter uma condição no-code válida.");
+    if (!trueTargetNodeId) errors.push("A decisão precisa informar o destino verdadeiro (trueTargetNodeId).");
+    if (!falseTargetNodeId) errors.push("A decisão precisa informar o destino falso (falseTargetNodeId).");
+    if (trueTargetNodeId && falseTargetNodeId && trueTargetNodeId === falseTargetNodeId) {
+      errors.push("Os destinos verdadeiro e falso da decisão precisam ser distintos.");
+    }
+    return errors;
+  }
   if (node.type === "condition.if") {
     const operator = configurationText(configuration, "operator");
     const errors = [];
@@ -1863,6 +1877,26 @@ export function validateWorkflowDefinition(value: unknown, options: { forPublica
       }
     }
     if (definition.nodes.length > 1 && !definition.edges.length) errors.push("Conecte os nós antes de publicar o workflow.");
+    for (const node of definition.nodes.filter(node => node.type === "decision.condition")) {
+      const trueTargetNodeId = configurationText(node.configuration, "trueTargetNodeId");
+      const falseTargetNodeId = configurationText(node.configuration, "falseTargetNodeId");
+      const outgoing = definition.edges.filter(edge => edge.source === node.id);
+      if (outgoing.length !== 2) {
+        errors.push(`A decisão "${node.label}" precisa possuir exatamente duas conexões de saída.`);
+        continue;
+      }
+      const outgoingTargets = new Set(outgoing.map(edge => edge.target));
+      if (
+        !trueTargetNodeId
+        || !falseTargetNodeId
+        || trueTargetNodeId === falseTargetNodeId
+        || !outgoingTargets.has(trueTargetNodeId)
+        || !outgoingTargets.has(falseTargetNodeId)
+        || outgoingTargets.size !== 2
+      ) {
+        errors.push(`As saídas da decisão "${node.label}" precisam corresponder aos destinos verdadeiro e falso declarados.`);
+      }
+    }
     if (definition.nodes.length > 1) {
       for (const trigger of triggerNodes) {
         if (nodesWithInput.has(trigger.id)) errors.push(`O gatilho "${trigger.label}" não pode receber conexões de entrada.`);
