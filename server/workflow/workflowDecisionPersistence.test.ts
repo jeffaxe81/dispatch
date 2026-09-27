@@ -19,7 +19,7 @@ describe("D-012G G4 workflow decision persistence context", () => {
         severity: 4,
         status: "aberta",
       },
-    });
+    }, "event:incident.created.v1");
 
     expect(context.fields).toEqual({
       "input.priority": "alta",
@@ -70,6 +70,7 @@ describe("D-012G G4 workflow decision persistence context", () => {
         ],
       },
       inputData: { simulation: true, priority: "alta" },
+      triggerType: "manual",
       actorUserId: 7,
       correlationId: "corr-g4-0001",
       occurredAt: "2026-09-27T10:30:00.000Z",
@@ -82,9 +83,82 @@ describe("D-012G G4 workflow decision persistence context", () => {
   it("falha fechado para inputData inválido em vez de consultar domínio externo", async () => {
     const { buildWorkflowDecisionContextFromExecutionInput } = await loadModule();
 
-    expect(() => buildWorkflowDecisionContextFromExecutionInput(null)).toThrow(/inputData/i);
-    expect(() => buildWorkflowDecisionContextFromExecutionInput(["invalid"])).toThrow(/inputData/i);
+    expect(() => buildWorkflowDecisionContextFromExecutionInput(null, "manual")).toThrow(/inputData/i);
+    expect(() => buildWorkflowDecisionContextFromExecutionInput(["invalid"], "manual")).toThrow(/inputData/i);
   });
+  it("não interpreta campos manuais reservados como metadados de evento", async () => {
+    const { buildWorkflowDecisionContextFromExecutionInput } = await loadModule();
+
+    const context = buildWorkflowDecisionContextFromExecutionInput({
+      simulation: true,
+      eventId: "manual-value",
+      payload: { arbitrary: true },
+      priority: "alta",
+    }, "manual");
+
+    expect(context.fields).toEqual({
+      "input.eventId": "manual-value",
+      "input.payload": { arbitrary: true },
+      "input.priority": "alta",
+    });
+    expect(context.exposedFields.has("meta.eventId")).toBe(false);
+    expect(context.exposedFields.has("event.arbitrary")).toBe(false);
+  });
+
+  it("falha fechado para triggerType desconhecido e payload de evento inválido", async () => {
+    const { buildWorkflowDecisionContextFromExecutionInput } = await loadModule();
+
+    expect(() => buildWorkflowDecisionContextFromExecutionInput(
+      { simulation: true },
+      "scheduler",
+    )).toThrow(/triggerType|gatilho/i);
+
+    expect(() => buildWorkflowDecisionContextFromExecutionInput(
+      {
+        simulation: true,
+        eventId: "evt-1",
+        eventType: "incident.created.v1",
+        producer: "axe-dispatch",
+        payload: ["invalid"],
+      },
+      "event:incident.created.v1",
+    )).toThrow(/payload/i);
+  });
+
+  it("rejeita divergência entre triggerType e eventType persistido", async () => {
+    const { buildWorkflowDecisionContextFromExecutionInput } = await loadModule();
+
+    expect(() => buildWorkflowDecisionContextFromExecutionInput(
+      {
+        simulation: true,
+        eventId: "evt-2",
+        eventType: "incident.created.v1",
+        producer: "axe-dispatch",
+        payload: {},
+      },
+      "event:inventory.asset.updated.v1",
+    )).toThrow(/eventType|triggerType|diverg/i);
+  });
+
+  it("limita a quantidade de campos expostos no contexto persistido", async () => {
+    const {
+      buildWorkflowDecisionContextFromExecutionInput,
+      MAX_WORKFLOW_DECISION_CONTEXT_FIELDS,
+    } = await loadModule();
+
+    const oversized = Object.fromEntries(
+      Array.from({ length: MAX_WORKFLOW_DECISION_CONTEXT_FIELDS + 1 }, (_, index) => [
+        `field${index}`,
+        index,
+      ]),
+    );
+
+    expect(() => buildWorkflowDecisionContextFromExecutionInput(
+      { simulation: true, ...oversized },
+      "manual",
+    )).toThrow(/limite|campos/i);
+  });
+
   it("mantém o contexto de decisão desacoplado dos domínios produtores", () => {
     const source = readFileSync(new URL("./workflowDecisionPersistence.ts", import.meta.url), "utf8");
 

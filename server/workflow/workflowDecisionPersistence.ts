@@ -6,6 +6,8 @@ import {
 } from "./workflowInstanceStateMachine";
 import type { WorkflowConditionContext } from "./workflowConditionEvaluator";
 
+export const MAX_WORKFLOW_DECISION_CONTEXT_FIELDS = 200;
+
 function asRecord(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} deve ser um objeto persistido válido.`);
@@ -13,29 +15,60 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function requireMetadataString(
+  input: Record<string, unknown>,
+  key: "eventId" | "eventType" | "producer",
+): string {
+  const value = input[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Metadado de evento ${key} inválido no inputData persistido.`);
+  }
+  return value.trim();
+}
+
+function assertContextFieldLimit(fields: Record<string, unknown>) {
+  if (Object.keys(fields).length > MAX_WORKFLOW_DECISION_CONTEXT_FIELDS) {
+    throw new Error("Quantidade de campos expostos excede o limite do contexto de decisão.");
+  }
+}
+
 export function buildWorkflowDecisionContextFromExecutionInput(
   inputData: unknown,
+  triggerType: string,
 ): WorkflowConditionContext {
   const input = asRecord(inputData, "inputData");
   const fields: Record<string, unknown> = {};
 
-  for (const [key, value] of Object.entries(input)) {
-    if (["simulation", "eventId", "eventType", "producer", "payload"].includes(key)) continue;
-    fields[`input.${key}`] = value;
-  }
+  if (triggerType === "manual") {
+    for (const [key, value] of Object.entries(input)) {
+      if (key === "simulation") continue;
+      fields[`input.${key}`] = value;
+    }
+  } else if (triggerType.startsWith("event:")) {
+    const persistedEventType = requireMetadataString(input, "eventType");
+    const triggerEventType = triggerType.slice("event:".length);
+    if (!triggerEventType || triggerEventType !== persistedEventType) {
+      throw new Error("triggerType diverge do eventType persistido no contexto de decisão.");
+    }
 
-  if (input.payload !== undefined) {
+    for (const [key, value] of Object.entries(input)) {
+      if (["simulation", "eventId", "eventType", "producer", "payload"].includes(key)) continue;
+      fields[`input.${key}`] = value;
+    }
+
     const payload = asRecord(input.payload, "inputData.payload");
     for (const [key, value] of Object.entries(payload)) {
       fields[`event.${key}`] = value;
     }
+
+    fields["meta.eventId"] = requireMetadataString(input, "eventId");
+    fields["meta.eventType"] = persistedEventType;
+    fields["meta.producer"] = requireMetadataString(input, "producer");
+  } else {
+    throw new Error(`triggerType de workflow não suportado para decisão: ${triggerType || "(vazio)"}.`);
   }
 
-  for (const key of ["eventId", "eventType", "producer"] as const) {
-    const value = input[key];
-    if (value !== undefined) fields[`meta.${key}`] = value;
-  }
-
+  assertContextFieldLimit(fields);
   return {
     fields,
     exposedFields: new Set(Object.keys(fields)),
@@ -46,6 +79,7 @@ export function resolveWorkflowDecisionFromExecutionInput(input: {
   state: WorkflowInstanceState;
   graph: WorkflowInstanceGraph;
   inputData: unknown;
+  triggerType: string;
   actorUserId: number;
   correlationId: string;
   occurredAt: string;
@@ -53,7 +87,7 @@ export function resolveWorkflowDecisionFromExecutionInput(input: {
   return resolveWorkflowDecisionState({
     state: input.state,
     graph: input.graph,
-    context: buildWorkflowDecisionContextFromExecutionInput(input.inputData),
+    context: buildWorkflowDecisionContextFromExecutionInput(input.inputData, input.triggerType),
     actorUserId: input.actorUserId,
     correlationId: input.correlationId,
     occurredAt: input.occurredAt,
