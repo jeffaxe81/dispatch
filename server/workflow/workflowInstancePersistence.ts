@@ -6,6 +6,8 @@ import {
   workflows,
 } from "../../drizzle/schema";
 import { getDb, validateWorkflowDefinition } from "../dbLegacy";
+import { workflowConditionSchema } from "./workflowConditionEvaluator";
+import { resolveWorkflowDecisionFromExecutionInput } from "./workflowDecisionPersistence";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 import { workflowTasks } from "./workflowTaskSchema";
@@ -81,13 +83,22 @@ function toWorkflowInstanceGraph(definition: Record<string, unknown>): WorkflowI
       throw new Error("requiresHumanTask deve ser boolean na definição do workflow.");
     }
     const requiresHumanTask = configuration.requiresHumanTask === true;
+    const nodeType = requireNonEmptyString(node.type, "node.type");
+    const decision = nodeType === "decision.condition"
+      ? {
+          condition: workflowConditionSchema.parse(configuration.condition),
+          trueTargetNodeId: requireNonEmptyString(configuration.trueTargetNodeId, "trueTargetNodeId"),
+          falseTargetNodeId: requireNonEmptyString(configuration.falseTargetNodeId, "falseTargetNodeId"),
+        }
+      : undefined;
     return {
       id: requireNonEmptyString(node.id, "node.id"),
-      type: requireNonEmptyString(node.type, "node.type"),
+      type: nodeType,
       ...(requiresHumanTask ? {
         requiresHumanTask: true,
         assigneeUserId: taskAssignee(configuration),
       } : {}),
+      ...(decision ? { decision } : {}),
     };
   });
 
@@ -151,7 +162,7 @@ function buildWorkflowInstanceAuditLog(input: {
   workflowId: number;
   workflowVersionId: number;
   actorUserId: number;
-  action: "start" | "advance" | "complete" | "cancel";
+  action: "start" | "advance" | "decision" | "complete" | "cancel";
   fromNodeId: string | null;
   toNodeId: string | null;
   correlationId: string;
@@ -550,6 +561,90 @@ export async function advanceManualWorkflowInstance(input: {
       workflowId: frozen.state.workflowId,
       workflowVersionId: frozen.state.workflowVersionId,
       currentNodeId: advanced.state.currentNodeId,
+      status,
+    };
+  });
+}
+
+export async function resolvePersistedWorkflowDecision(input: {
+  executionId: number;
+  organizationId: number;
+  actorUserId: number;
+  correlationId: string;
+}): Promise<WorkflowInstanceResult> {
+  const db = await requireDb();
+
+  return db.transaction(async tx => {
+    const frozen = await loadFrozenInstanceForTransition(tx, input.executionId, input.organizationId);
+    const beforeStatus = frozen.execution.status as WorkflowExecutionDbStatus;
+    const now = new Date();
+    const occurredAt = now.toISOString();
+
+    const resolved = resolveWorkflowDecisionFromExecutionInput({
+      state: frozen.state,
+      graph: frozen.graph,
+      inputData: frozen.execution.inputData,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      occurredAt,
+    });
+    const status = dbStatusFromState(resolved.state.status);
+
+    if (resolved.state.status === "waiting") {
+      const waitingNode = frozen.graph.nodes.find(node => node.id === resolved.state.currentNodeId);
+      if (!waitingNode) throw new Error("Estado waiting sem nó válido após decisão.");
+      if (waitingNode.requiresHumanTask) {
+        await ensureWorkflowTaskForNode(tx, {
+          executionId: input.executionId,
+          workflowVersionId: frozen.state.workflowVersionId,
+          nodeId: waitingNode.id,
+          assigneeUserId: waitingNode.assigneeUserId ?? null,
+          actorUserId: input.actorUserId,
+          correlationId: input.correlationId,
+          occurredAt,
+        });
+      } else if (waitingNode.type !== "wait.event") {
+        throw new Error("Estado waiting sem etapa humana ou wait.event válida após decisão.");
+      }
+    }
+
+    await tx
+      .update(workflowExecutions)
+      .set({
+        status,
+        completedAt: resolved.state.status === "completed" ? now : null,
+      })
+      .where(eq(workflowExecutions.id, input.executionId));
+
+    await tx
+      .update(workflowInstanceExecutions)
+      .set({
+        currentNodeId: resolved.state.currentNodeId,
+        correlationId: input.correlationId,
+      })
+      .where(eq(workflowInstanceExecutions.id, input.executionId));
+
+    await tx.insert(auditLogs).values(
+      buildWorkflowInstanceAuditLog({
+        executionId: input.executionId,
+        workflowId: frozen.state.workflowId,
+        workflowVersionId: frozen.state.workflowVersionId,
+        actorUserId: input.actorUserId,
+        action: "decision",
+        fromNodeId: resolved.transition.fromNodeId,
+        toNodeId: resolved.transition.toNodeId,
+        correlationId: input.correlationId,
+        occurredAt,
+        beforeStatus,
+        afterStatus: status,
+      }),
+    );
+
+    return {
+      executionId: input.executionId,
+      workflowId: frozen.state.workflowId,
+      workflowVersionId: frozen.state.workflowVersionId,
+      currentNodeId: resolved.state.currentNodeId,
       status,
     };
   });
