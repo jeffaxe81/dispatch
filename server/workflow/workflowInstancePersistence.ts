@@ -584,6 +584,7 @@ export async function resolvePersistedWorkflowDecision(input: {
       state: frozen.state,
       graph: frozen.graph,
       inputData: frozen.execution.inputData,
+      triggerType: frozen.execution.triggerType,
       actorUserId: input.actorUserId,
       correlationId: input.correlationId,
       occurredAt,
