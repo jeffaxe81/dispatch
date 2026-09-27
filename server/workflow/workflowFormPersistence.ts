@@ -3,6 +3,10 @@ import { auditLogs, workflowExecutions, workflowVersions } from "../../drizzle/s
 import type { WorkflowEventEnvelope } from "../../shared/workflowIntegration/v1";
 import { getDb } from "../dbLegacy";
 import {
+  claimWorkflowEventReceipt,
+  completeWorkflowEventReceipt,
+} from "./workflowEventReceiptStore";
+import {
   readWorkflowFormEvidence,
   workflowFormEvidenceFromEnvelope,
   writeWorkflowFormEvidence,
@@ -61,6 +65,23 @@ type WorkflowFormEvidenceAdapter<TTransaction> = {
       policy?: "optional" | "required_before_task_completion" | "required_before_transition";
       actorUserId: number;
       correlationId: string;
+    },
+  ): Promise<void>;
+  claimReceipt?(
+    transaction: TTransaction,
+    envelope: WorkflowEventEnvelope,
+  ): Promise<
+    | { status: "claimed"; tenantId: string; eventId: string }
+    | { status: "duplicate"; tenantId: string; eventId: string }
+  >;
+  completeReceipt?(
+    transaction: TTransaction,
+    input: {
+      tenantId: string;
+      eventId: string;
+      status: "processed" | "ignored" | "failed";
+      workflowExecutionId?: number | null;
+      failureCode?: string | null;
     },
   ): Promise<void>;
 };
@@ -123,13 +144,36 @@ export function createWorkflowFormEvidencePersistence<TTransaction>(
         }
 
         const candidate = candidates[0];
-        const existing = readWorkflowFormEvidence(candidate.outputData, candidate.nodeId);
-        if (existing && sameEvidence(existing, evidence)) {
+        const claim = await adapter.claimReceipt?.(transaction, envelope);
+        if (claim?.status === "duplicate") {
           return {
             status: "duplicate",
             executionId: candidate.executionId,
             nodeId: candidate.nodeId,
           };
+        }
+
+        const existing = readWorkflowFormEvidence(candidate.outputData, candidate.nodeId);
+        if (existing) {
+          if (existing.submissionId !== evidence.submissionId) {
+            throw new Error("A etapa de formulário já está vinculada a outra submissão.");
+          }
+          if (existing.status === "corrected" && evidence.status === "submitted") {
+            throw new Error("Evento submitted atrasado não pode rebaixar evidência corrected.");
+          }
+          if (sameEvidence(existing, evidence)) {
+            await adapter.completeReceipt?.(transaction, {
+              tenantId: envelope.tenantId,
+              eventId: envelope.eventId,
+              status: "processed",
+              workflowExecutionId: candidate.executionId,
+            });
+            return {
+              status: "duplicate",
+              executionId: candidate.executionId,
+              nodeId: candidate.nodeId,
+            };
+          }
         }
 
         const outputData = writeWorkflowFormEvidence(
@@ -156,6 +200,12 @@ export function createWorkflowFormEvidencePersistence<TTransaction>(
           policy: candidate.policy,
           actorUserId,
           correlationId: envelope.correlationId,
+        });
+        await adapter.completeReceipt?.(transaction, {
+          tenantId: envelope.tenantId,
+          eventId: envelope.eventId,
+          status: "processed",
+          workflowExecutionId: candidate.executionId,
         });
 
         return {
@@ -350,6 +400,8 @@ export async function consumeWorkflowFormEvidencePersisted(
     findCandidates,
     persistEvidence,
     auditEvidence,
+    claimReceipt: (tx, event) => claimWorkflowEventReceipt(tx, event),
+    completeReceipt: (tx, input) => completeWorkflowEventReceipt(tx, input),
     afterPersist: async (tx, input) => {
       if (input.policy !== "required_before_transition") return;
       await resumeFormWorkflowInstanceInTransaction(tx, {
