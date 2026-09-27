@@ -45,6 +45,11 @@ export function buildWorkflowDecisionContextFromExecutionInput(
       fields[`input.${key}`] = value;
     }
   } else if (triggerType.startsWith("event:")) {
+    for (const [key, value] of Object.entries(input)) {
+      if (["simulation", "eventId", "eventType", "producer", "payload"].includes(key)) continue;
+      fields[`input.${key}`] = value;
+    }
+
     const payload = asRecord(input.payload, "inputData.payload");
     for (const [key, value] of Object.entries(payload)) {
       fields[`event.${key}`] = value;
