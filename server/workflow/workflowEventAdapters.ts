@@ -37,6 +37,17 @@ function parseEnvelope(input: WorkflowEventEnvelope): WorkflowEventEnvelope {
   return workflowEventEnvelopeSchema.parse(input);
 }
 
+function parseFormSubmissionId(value: string): number {
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error("aggregateId de submissão D-008 deve ser um identificador positivo.");
+  }
+  const submissionId = Number(value);
+  if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
+    throw new Error("aggregateId de submissão D-008 está fora do intervalo suportado.");
+  }
+  return submissionId;
+}
+
 export function adaptFormEventToWorkflowEnvelope(
   event: FormDomainEvent,
   correlationId: string,
@@ -55,7 +66,10 @@ export function adaptFormEventToWorkflowEnvelope(
     correlationId,
     actorUserId: String(event.actorUserId),
     producer: "d008-forms",
-    payload: { ...event.payload },
+    payload: {
+      ...event.payload,
+      submissionId: parseFormSubmissionId(event.aggregateId),
+    },
   });
 }
 
