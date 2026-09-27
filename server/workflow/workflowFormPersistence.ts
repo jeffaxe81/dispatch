@@ -10,6 +10,11 @@ import {
 import { workflowFormRequirementSchema } from "./workflowFormRequirement";
 import { resumeFormWorkflowInstanceInTransaction } from "./workflowInstancePersistence";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
+import {
+  resumeWaitingWorkflowInstanceState,
+  type WorkflowInstanceGraph,
+  type WorkflowInstanceState,
+} from "./workflowInstanceStateMachine";
 import { workflowExecutionTenantScopes } from "./workflowTenantScopeSchema";
 
 type WorkflowFormEvidenceCandidate = {
@@ -161,6 +166,40 @@ export function createWorkflowFormEvidencePersistence<TTransaction>(
       });
     },
   };
+}
+
+export function resolveWorkflowFormStepFromExecutionOutput(input: {
+  state: WorkflowInstanceState;
+  graph: WorkflowInstanceGraph;
+  outputData: unknown;
+  targetNodeId?: string;
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+}) {
+  const currentNode = input.graph.nodes.find(node => node.id === input.state.currentNodeId);
+  if (!currentNode || currentNode.type !== "form.d008" || !currentNode.formRequirement) {
+    throw new Error("Instância não está posicionada em um nó form.d008 válido.");
+  }
+
+  const outgoing = input.graph.edges.filter(edge => edge.source === input.state.currentNodeId);
+  if (outgoing.length !== 1) {
+    throw new Error("Nó form.d008 deve possuir exatamente uma saída para retomada.");
+  }
+  const targetNodeId = input.targetNodeId ?? outgoing[0].target;
+  if (targetNodeId !== outgoing[0].target) {
+    throw new Error("Destino informado diverge da versão congelada do nó form.d008.");
+  }
+
+  return resumeWaitingWorkflowInstanceState({
+    state: input.state,
+    graph: input.graph,
+    targetNodeId,
+    formSubmissionEvidence: readWorkflowFormEvidence(input.outputData, input.state.currentNodeId),
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt: input.occurredAt,
+  });
 }
 
 type WorkflowDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
