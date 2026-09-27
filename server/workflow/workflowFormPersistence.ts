@@ -8,6 +8,7 @@ import {
   writeWorkflowFormEvidence,
 } from "./workflowFormEventEvidence";
 import { workflowFormRequirementSchema } from "./workflowFormRequirement";
+import { resumeFormWorkflowInstanceInTransaction } from "./workflowInstancePersistence";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 import { workflowExecutionTenantScopes } from "./workflowTenantScopeSchema";
 
@@ -15,6 +16,7 @@ type WorkflowFormEvidenceCandidate = {
   executionId: number;
   nodeId: string;
   outputData: unknown;
+  policy?: "optional" | "required_before_task_completion" | "required_before_transition";
 };
 
 type WorkflowFormEvidenceAdapter<TTransaction> = {
@@ -43,6 +45,17 @@ type WorkflowFormEvidenceAdapter<TTransaction> = {
       actorUserId: number;
       correlationId: string;
       evidence: ReturnType<typeof workflowFormEvidenceFromEnvelope>;
+    },
+  ): Promise<void>;
+  afterPersist?(
+    transaction: TTransaction,
+    input: {
+      organizationId: number;
+      executionId: number;
+      nodeId: string;
+      policy?: "optional" | "required_before_task_completion" | "required_before_transition";
+      actorUserId: number;
+      correlationId: string;
     },
   ): Promise<void>;
 };
@@ -130,6 +143,14 @@ export function createWorkflowFormEvidencePersistence<TTransaction>(
           actorUserId,
           correlationId: envelope.correlationId,
           evidence,
+        });
+        await adapter.afterPersist?.(transaction, {
+          organizationId,
+          executionId: candidate.executionId,
+          nodeId: candidate.nodeId,
+          policy: candidate.policy,
+          actorUserId,
+          correlationId: envelope.correlationId,
         });
 
         return {
@@ -232,6 +253,7 @@ async function findCandidates(
       executionId: execution.id,
       nodeId: projection.currentNodeId,
       outputData: execution.outputData,
+      policy: requirement.data.policy,
     });
   }
   return candidates;
@@ -289,5 +311,14 @@ export async function consumeWorkflowFormEvidencePersisted(
     findCandidates,
     persistEvidence,
     auditEvidence,
+    afterPersist: async (tx, input) => {
+      if (input.policy !== "required_before_transition") return;
+      await resumeFormWorkflowInstanceInTransaction(tx, {
+        executionId: input.executionId,
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+      });
+    },
   }).consume(envelope, actorUserId);
 }
