@@ -99,3 +99,36 @@ Submissões válidas para satisfazer exigência obrigatória:
 - nenhuma leitura direta de tabelas/repositórios internos do D-008 foi adicionada ao Workflow.
 - nenhuma migration nova, deploy, grant ou merge automático foi executado.
 
+
+
+## Estado final — 2026-09-27
+
+- H1 — GREEN — `checkpoint/d012h-h1-green-20260927`
+- H2 — GREEN — `checkpoint/d012h-h2-green-20260927`
+- H3 — GREEN — `checkpoint/d012h-h3-green-20260927`
+- H4 contrato/eventos — GREEN — `checkpoint/d012h-h4-event-contract-green-20260927`
+- H4 runtime/persistência — GREEN — `checkpoint/d012h-h4-green-20260927`
+- H5 hardening — GREEN — `checkpoint/d012h-h5-green-20260927`
+- Consolidado D-012H — `checkpoint/d012h-green-20260927`
+
+Head GREEN consolidado: `bcd44d5aa3852ea393bd52986dac9bb57c37be2e`.
+
+Hardening final:
+- receipt persistente reutilizado da D-012F para replay;
+- receipt concluído somente após persistência, auditoria e gate;
+- vínculo de uma etapa a um único `submissionId`;
+- evento atrasado não rebaixa `corrected` para `submitted`;
+- replay reconhecido mesmo após a instância avançar;
+- correlação por tenant + correlationId + form/version + submission;
+- nenhuma resposta, schema ou anexo do D-008 é copiado para o Workflow;
+- nenhuma migration, deploy ou grant nesta entrega.
+
+Gates finais no head consolidado:
+- Segurança — success;
+- TypeScript — success;
+- Testes — success;
+- Build — success;
+- Docker — success;
+- GIS visual homologation — success;
+- NEO external compatibility — success;
+- NEO workspace visual homologation — success.
