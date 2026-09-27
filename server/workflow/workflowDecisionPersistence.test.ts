@@ -125,6 +125,21 @@ describe("D-012G G4 workflow decision persistence context", () => {
     )).toThrow(/payload/i);
   });
 
+  it("rejeita divergência entre triggerType e eventType persistido", async () => {
+    const { buildWorkflowDecisionContextFromExecutionInput } = await loadModule();
+
+    expect(() => buildWorkflowDecisionContextFromExecutionInput(
+      {
+        simulation: true,
+        eventId: "evt-2",
+        eventType: "incident.created.v1",
+        producer: "axe-dispatch",
+        payload: {},
+      },
+      "event:inventory.asset.updated.v1",
+    )).toThrow(/eventType|triggerType|diverg/i);
+  });
+
   it("limita a quantidade de campos expostos no contexto persistido", async () => {
     const {
       buildWorkflowDecisionContextFromExecutionInput,
