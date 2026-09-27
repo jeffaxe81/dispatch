@@ -1,3 +1,9 @@
+import {
+  evaluateWorkflowCondition,
+  type WorkflowCondition,
+  type WorkflowConditionContext,
+} from "./workflowConditionEvaluator";
+
 export type WorkflowInstanceStatus = "running" | "waiting" | "completed" | "cancelled" | "failed";
 
 export type WorkflowInstanceGraphNode = {
@@ -5,6 +11,11 @@ export type WorkflowInstanceGraphNode = {
   type: string;
   requiresHumanTask?: boolean;
   assigneeUserId?: number | null;
+  decision?: {
+    condition: WorkflowCondition;
+    trueTargetNodeId: string;
+    falseTargetNodeId: string;
+  };
 };
 
 export type WorkflowInstanceGraphEdge = {
@@ -241,6 +252,56 @@ export function startEventWorkflowInstanceState(input: {
   return startWorkflowInstanceAtInitialTrigger({
     ...input,
     triggerType: "trigger.external_data",
+  });
+}
+
+export function resolveWorkflowDecisionState(input: {
+  state: WorkflowInstanceState;
+  graph: WorkflowInstanceGraph;
+  context: WorkflowConditionContext;
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+}): WorkflowInstanceStateChange {
+  assertMutableState(input.state);
+  assertTransitionMetadata(input);
+  assertGraph(input.graph);
+  if (input.state.status !== "running") {
+    throw new Error("Decisão no-code exige instância running.");
+  }
+
+  const currentNode = input.graph.nodes.find(node => node.id === input.state.currentNodeId);
+  if (!currentNode || currentNode.type !== "decision.condition") {
+    throw new Error("O nó atual precisa ser decision.condition.");
+  }
+  if (!currentNode.decision) {
+    throw new Error("Configuração da decisão ausente na versão congelada.");
+  }
+
+  const { condition, trueTargetNodeId, falseTargetNodeId } = currentNode.decision;
+  if (!trueTargetNodeId.trim() || !falseTargetNodeId.trim() || trueTargetNodeId === falseTargetNodeId) {
+    throw new Error("Destinos da decisão inválidos na versão congelada.");
+  }
+
+  const outgoing = input.graph.edges.filter(edge => edge.source === currentNode.id);
+  const targets = new Set(outgoing.map(edge => edge.target));
+  if (
+    outgoing.length !== 2
+    || targets.size !== 2
+    || !targets.has(trueTargetNodeId)
+    || !targets.has(falseTargetNodeId)
+  ) {
+    throw new Error("Saídas da decisão divergem dos destinos da versão congelada.");
+  }
+
+  const matched = evaluateWorkflowCondition(condition, input.context);
+  return moveToTarget({
+    state: input.state,
+    graph: input.graph,
+    targetNodeId: matched ? trueTargetNodeId : falseTargetNodeId,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt: input.occurredAt,
   });
 }
 
