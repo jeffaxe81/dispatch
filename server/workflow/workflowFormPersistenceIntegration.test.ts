@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toWorkflowInstanceGraph } from "./workflowInstancePersistence";
 import { findWorkflowFormEventTargetNodeId } from "./workflowEventTriggerPersistence";
+import { writeWorkflowFormEvidence } from "./workflowFormEventEvidence";
 
 function definition(policy: "optional" | "required_before_task_completion" | "required_before_transition") {
   return {
@@ -65,5 +66,67 @@ describe("D-012H H4 — runtime persistente do form.d008", () => {
       "incident.created.v1",
       { submissionId: 44, formId: 10, formVersionId: 25 },
     )).toBeNull();
+  });
+
+  it("retoma required_before_transition usando a evidência persistida", async () => {
+    const module = await import("./workflowFormPersistence");
+    const resolver = (module as unknown as {
+      resolveWorkflowFormStepFromExecutionOutput?: (input: Record<string, unknown>) => {
+        state: { status: string; currentNodeId: string };
+      };
+    }).resolveWorkflowFormStepFromExecutionOutput;
+    expect(typeof resolver).toBe("function");
+
+    const graph = toWorkflowInstanceGraph(definition("required_before_transition"));
+    const outputData = writeWorkflowFormEvidence({}, "form-1", {
+      submissionId: 44,
+      formId: 10,
+      formVersionId: 25,
+      status: "submitted",
+    });
+
+    const result = resolver!({
+      state: {
+        workflowId: 1,
+        workflowVersionId: 101,
+        currentNodeId: "form-1",
+        status: "waiting",
+      },
+      graph,
+      outputData,
+      targetNodeId: "end-1",
+      actorUserId: 7,
+      correlationId: "corr-form-resume-0001",
+      occurredAt: "2026-09-27T12:20:00-03:00",
+    });
+
+    expect(result.state).toMatchObject({
+      currentNodeId: "end-1",
+      status: "completed",
+    });
+  });
+
+  it("falha fechado ao tentar retomar sem evidência persistida", async () => {
+    const module = await import("./workflowFormPersistence");
+    const resolver = (module as unknown as {
+      resolveWorkflowFormStepFromExecutionOutput?: (input: Record<string, unknown>) => unknown;
+    }).resolveWorkflowFormStepFromExecutionOutput;
+    expect(typeof resolver).toBe("function");
+
+    const graph = toWorkflowInstanceGraph(definition("required_before_transition"));
+    expect(() => resolver!({
+      state: {
+        workflowId: 1,
+        workflowVersionId: 101,
+        currentNodeId: "form-1",
+        status: "waiting",
+      },
+      graph,
+      outputData: null,
+      targetNodeId: "end-1",
+      actorUserId: 7,
+      correlationId: "corr-form-resume-0002",
+      occurredAt: "2026-09-27T12:21:00-03:00",
+    })).toThrow(/formulário|submissão|D-008|obrigat/i);
   });
 });
