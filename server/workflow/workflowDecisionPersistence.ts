@@ -45,6 +45,12 @@ export function buildWorkflowDecisionContextFromExecutionInput(
       fields[`input.${key}`] = value;
     }
   } else if (triggerType.startsWith("event:")) {
+    const persistedEventType = requireMetadataString(input, "eventType");
+    const triggerEventType = triggerType.slice("event:".length);
+    if (!triggerEventType || triggerEventType !== persistedEventType) {
+      throw new Error("triggerType diverge do eventType persistido no contexto de decisão.");
+    }
+
     for (const [key, value] of Object.entries(input)) {
       if (["simulation", "eventId", "eventType", "producer", "payload"].includes(key)) continue;
       fields[`input.${key}`] = value;
@@ -55,9 +61,9 @@ export function buildWorkflowDecisionContextFromExecutionInput(
       fields[`event.${key}`] = value;
     }
 
-    for (const key of ["eventId", "eventType", "producer"] as const) {
-      fields[`meta.${key}`] = requireMetadataString(input, key);
-    }
+    fields["meta.eventId"] = requireMetadataString(input, "eventId");
+    fields["meta.eventType"] = persistedEventType;
+    fields["meta.producer"] = requireMetadataString(input, "producer");
   } else {
     throw new Error(`triggerType de workflow não suportado para decisão: ${triggerType || "(vazio)"}.`);
   }
