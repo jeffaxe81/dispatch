@@ -1,8 +1,8 @@
 # D-012G — Condições No-Code — Implementation Plan
 
-**Base dependente:** `feat/d012f-events-triggers` head `faa09ad0efad6bb124e3761487ce3e6124b8003d`
-**Branch:** `feat/d012g-no-code-conditions`
-**Gate:** não integrar em `main` antes do fechamento/aprovação explícita da D-012F.
+**Base atual:** `main` no commit `88c73e4fbc96c415914b5ac8468f9c57908f9990` após integração da D-012F / PR #109
+**Branch:** `feat/d012g-no-code-conditions-greenbase`
+**Gate:** G1 deve permanecer isolada até GREEN, checkpoint e revisão da microentrega.
 
 ## Objetivo
 
