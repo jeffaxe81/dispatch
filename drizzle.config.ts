@@ -14,6 +14,7 @@ export default defineConfig({
     "./server/rbac/rbacAssignmentSourceSchema.ts",
     "./server/workflow/workflowTaskSchema.ts",
     "./server/workflow/workflowTenantScopeSchema.ts",
+    "./server/workflow/workflowEventReceiptSchema.ts",
   ],
   out: "./drizzle",
   dialect: "mysql",
