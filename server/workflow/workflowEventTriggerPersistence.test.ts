@@ -145,7 +145,7 @@ describe("D-012F persisted event trigger boundary", () => {
     ]);
   });
 
-  it("confirma o receipt failed antes de relançar erro do start fora da transação", async () => {
+  it("faz rollback integral quando start falha excepcionalmente", async () => {
     const { createWorkflowEventTriggerPersistence } = await loadPersistence();
     const calls: string[] = [];
     const tx = { id: "tx-failure" };
@@ -196,7 +196,7 @@ describe("D-012F persisted event trigger boundary", () => {
       "match:waiting",
       "start",
       "complete:failed",
-      "transaction:commit",
+      "transaction:rollback",
     ]);
   });
 
