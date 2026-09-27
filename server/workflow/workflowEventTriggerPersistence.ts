@@ -10,6 +10,7 @@ import {
   resumeEventWorkflowInstanceInTransaction,
   startEventWorkflowInstanceInTransaction,
 } from "./workflowInstancePersistence";
+import { consumeWorkflowFormEvidencePersisted } from "./workflowFormPersistence";
 import { workflowFormRequirementSchema } from "./workflowFormRequirement";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
@@ -382,8 +383,31 @@ export async function consumeWorkflowEventPersisted(
   input: WorkflowEventEnvelope,
   actorUserId: number,
 ): Promise<WorkflowEventTriggerResult> {
+  const isFormEvidenceEvent = input.producer === "d008-forms"
+    && (
+      input.eventType === "form.submission.submitted.v1"
+      || input.eventType === "form.submission.corrected.v1"
+    );
+
+  if (isFormEvidenceEvent) {
+    const formResult = await consumeWorkflowFormEvidencePersisted(input, actorUserId);
+    if (formResult.status === "processed") {
+      return {
+        status: "processed",
+        eventId: input.eventId,
+        executionIds: [formResult.executionId],
+      };
+    }
+    if (formResult.status === "duplicate") {
+      return {
+        status: "duplicate",
+        eventId: input.eventId,
+        executionIds: [],
+      };
+    }
+  }
+
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-
   return createWorkflowEventTriggerDatabasePersistence(db).consume(input, actorUserId);
 }
