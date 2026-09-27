@@ -64,3 +64,25 @@ export function isWorkflowFormRequirementSatisfied(
   return evidence.data.status === "submitted"
     || evidence.data.status === "corrected";
 }
+
+
+export type WorkflowFormGateAction = "task_completion" | "transition";
+
+export function assertWorkflowFormRequirementForAction(
+  requirementInput: unknown,
+  evidenceInput: unknown,
+  action: WorkflowFormGateAction,
+): void {
+  const requirement = workflowFormRequirementSchema.parse(requirementInput);
+
+  if (requirement.policy === "optional") return;
+  if (requirement.policy === "required_before_transition" && action === "task_completion") return;
+
+  if (!isWorkflowFormRequirementSatisfied(requirement, evidenceInput)) {
+    throw new Error(
+      action === "task_completion"
+        ? "Formulário D-008 obrigatório deve possuir submissão válida antes de concluir a tarefa."
+        : "Formulário D-008 obrigatório deve possuir submissão válida antes da transição.",
+    );
+  }
+}
