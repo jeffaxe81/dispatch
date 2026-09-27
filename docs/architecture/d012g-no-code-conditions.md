@@ -3,7 +3,8 @@
 ## Estado
 
 - G1 — contrato e avaliador puro: GREEN, checkpoint `checkpoint/d012g-g1-green-20260927`.
-- G2 — validação de definição: em validação.
+- G2 — validação de definição: GREEN, checkpoint `checkpoint/d012g-g2-green-20260927`.
+- G3 — máquina de estados: em validação.
 
 ## Contrato de decisão
 
@@ -35,3 +36,19 @@ A G2 apenas valida a definição. Ela não avalia a condição, não lê dados e
 - sem deploy;
 - sem grants;
 - execução da decisão fica reservada à G3/G4.
+
+
+## Resolução de decisão no runtime puro
+
+A G3 adiciona resolução determinística de `decision.condition` na máquina de estados.
+
+A resolução:
+- exige instância em estado `running`;
+- lê a configuração congelada do nó;
+- valida que as duas arestas correspondem aos destinos verdadeiro/falso;
+- avalia a expressão usando somente `WorkflowConditionContext`;
+- rejeita campos não incluídos em `exposedFields`;
+- preserva `correlationId` na transição;
+- não consulta banco nem domínio externo.
+
+A persistência do contexto e da auditoria fica reservada à G4.
