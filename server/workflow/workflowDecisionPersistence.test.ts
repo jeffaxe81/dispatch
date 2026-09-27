@@ -41,3 +41,5 @@ describe("D-012G G4 workflow decision persistence context", () => {
     expect(() => buildWorkflowDecisionContextFromExecutionInput(["invalid"])).toThrow(/inputData/i);
   });
 });
+
+// RED gate: módulo de persistência ainda não implementado.
