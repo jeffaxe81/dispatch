@@ -1,3 +1,4 @@
+// D-012I I1 RED — commit de sincronização para executar gates do PR empilhado.
 import { describe, expect, it } from "vitest";
 import {
   buildWorkflowSlaEscalationIntent,
