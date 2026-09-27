@@ -34,6 +34,50 @@ describe("D-012G G4 workflow decision persistence context", () => {
     expect(context.exposedFields.has("payload")).toBe(false);
   });
 
+
+  it("resolve decisão usando somente o inputData congelado e preserva correlationId", async () => {
+    const { resolveWorkflowDecisionFromExecutionInput } = await loadModule();
+
+    const result = resolveWorkflowDecisionFromExecutionInput({
+      state: {
+        workflowId: 9,
+        workflowVersionId: 901,
+        currentNodeId: "decision-priority",
+        status: "running",
+      },
+      graph: {
+        nodes: [
+          {
+            id: "decision-priority",
+            type: "decision.condition",
+            decision: {
+              condition: {
+                field: "input.priority",
+                operator: "eq",
+                value: "alta",
+              },
+              trueTargetNodeId: "notify-high",
+              falseTargetNodeId: "notify-normal",
+            },
+          },
+          { id: "notify-high", type: "notification.simulate" },
+          { id: "notify-normal", type: "notification.simulate" },
+        ],
+        edges: [
+          { source: "decision-priority", target: "notify-high" },
+          { source: "decision-priority", target: "notify-normal" },
+        ],
+      },
+      inputData: { simulation: true, priority: "alta" },
+      actorUserId: 7,
+      correlationId: "corr-g4-0001",
+      occurredAt: "2026-09-27T10:30:00.000Z",
+    });
+
+    expect(result.state.currentNodeId).toBe("notify-high");
+    expect(result.transition.correlationId).toBe("corr-g4-0001");
+  });
+
   it("falha fechado para inputData inválido em vez de consultar domínio externo", async () => {
     const { buildWorkflowDecisionContextFromExecutionInput } = await loadModule();
 
@@ -41,5 +85,3 @@ describe("D-012G G4 workflow decision persistence context", () => {
     expect(() => buildWorkflowDecisionContextFromExecutionInput(["invalid"])).toThrow(/inputData/i);
   });
 });
-
-// RED gate: módulo de persistência ainda não implementado.
