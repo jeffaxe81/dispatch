@@ -51,4 +51,4 @@ A resolução:
 - preserva `correlationId` na transição;
 - não consulta banco nem domínio externo.
 
-A persistência do contexto e da auditoria fica reservada à G4.
+A persistência do contexto e da auditoria fica reservada à G4. A validação de CI da G3 é executada contra `main`, preservando o PR empilhado após o gate.
