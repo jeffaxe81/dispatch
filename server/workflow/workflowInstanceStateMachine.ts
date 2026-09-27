@@ -3,6 +3,11 @@ import {
   type WorkflowCondition,
   type WorkflowConditionContext,
 } from "./workflowConditionEvaluator";
+import {
+  assertWorkflowFormRequirementForAction,
+  type WorkflowFormRequirement,
+  type WorkflowFormSubmissionEvidence,
+} from "./workflowFormRequirement";
 
 export type WorkflowInstanceStatus = "running" | "waiting" | "completed" | "cancelled" | "failed";
 
@@ -16,6 +21,7 @@ export type WorkflowInstanceGraphNode = {
     trueTargetNodeId: string;
     falseTargetNodeId: string;
   };
+  formRequirement?: WorkflowFormRequirement;
 };
 
 export type WorkflowInstanceGraphEdge = {
@@ -150,7 +156,8 @@ function moveToTarget(input: {
 
   const isTerminalTarget = !input.graph.edges.some(edge => edge.source === input.targetNodeId);
   const waitsForExternalEvent = targetNode.type === "wait.event";
-  const status: WorkflowInstanceStatus = targetNode.requiresHumanTask || waitsForExternalEvent
+  const waitsForForm = targetNode.type === "form.d008" && Boolean(targetNode.formRequirement);
+  const status: WorkflowInstanceStatus = targetNode.requiresHumanTask || waitsForExternalEvent || waitsForForm
     ? "waiting"
     : isTerminalTarget
       ? "completed"
@@ -324,6 +331,7 @@ export function resumeWaitingWorkflowInstanceState(input: {
   state: WorkflowInstanceState;
   graph: WorkflowInstanceGraph;
   targetNodeId?: string;
+  formSubmissionEvidence?: WorkflowFormSubmissionEvidence | null;
   actorUserId: number;
   correlationId: string;
   occurredAt: string;
@@ -341,6 +349,16 @@ export function resumeWaitingWorkflowInstanceState(input: {
   }
   if (currentNode.type === "wait.event") {
     throw new Error("Nó wait.event só pode ser retomado pelo caminho de evento.");
+  }
+  if (currentNode.type === "form.d008") {
+    if (!currentNode.formRequirement) {
+      throw new Error("Etapa form.d008 sem requisito congelado.");
+    }
+    assertWorkflowFormRequirementForAction(
+      currentNode.formRequirement,
+      input.formSubmissionEvidence ?? null,
+      "transition",
+    );
   }
 
   const outgoing = input.graph.edges.filter(edge => edge.source === input.state.currentNodeId);
