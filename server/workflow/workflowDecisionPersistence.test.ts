@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const modulePath = "./workflowDecisionPersistence";
@@ -84,4 +85,13 @@ describe("D-012G G4 workflow decision persistence context", () => {
     expect(() => buildWorkflowDecisionContextFromExecutionInput(null)).toThrow(/inputData/i);
     expect(() => buildWorkflowDecisionContextFromExecutionInput(["invalid"])).toThrow(/inputData/i);
   });
+  it("mantém o contexto de decisão desacoplado dos domínios produtores", () => {
+    const source = readFileSync(new URL("./workflowDecisionPersistence.ts", import.meta.url), "utf8");
+
+    expect(source).not.toMatch(/from\s+["'][^"']*forms\//);
+    expect(source).not.toMatch(/from\s+["'][^"']*assetInventory/);
+    expect(source).not.toMatch(/from\s+["'][^"']*incident(?:s|Lifecycle|Evidence)?/);
+    expect(source).not.toContain("dbLegacy");
+  });
+
 });
