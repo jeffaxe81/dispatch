@@ -5,7 +5,8 @@
 - G1 — contrato e avaliador puro: GREEN, checkpoint `checkpoint/d012g-g1-green-20260927`.
 - G2 — validação de definição: GREEN, checkpoint `checkpoint/d012g-g2-green-20260927`.
 - G3 — máquina de estados: GREEN, checkpoint `checkpoint/d012g-g3-green-20260927`.
-- G4 — persistência/runtime: em validação.
+- G4 — persistência/runtime: GREEN, checkpoint `checkpoint/d012g-g4-green-20260927`.
+- G5 — hardening: em validação.
 
 ## Contrato de decisão
 
@@ -78,3 +79,17 @@ A função persistida de resolução:
 7. registra auditoria `workflow_instance.decision` com o mesmo `correlationId`.
 
 Não há leitura direta de Formulários, Inventário ou Ocorrências e não foi adicionada migration.
+
+
+## Hardening G5
+
+O contexto persistido passa a considerar explicitamente o `triggerType` da execução:
+
+- `manual`: todos os campos de entrada, exceto o marcador interno `simulation`, são expostos somente sob `input.*`; nomes como `payload` ou `eventId` permanecem dados manuais e não recebem semântica de evento;
+- `event:*`: dados comuns permanecem sob `input.*`, o payload persistido é exposto sob `event.*` e os metadados autorizados sob `meta.*`;
+- qualquer outro `triggerType` falha fechado;
+- o sufixo de `event:*` deve corresponder ao `eventType` persistido;
+- payload de evento deve ser objeto válido;
+- o contexto possui limite explícito de 200 campos expostos.
+
+As proteções anteriores de G1 continuam válidas para números finitos, datas ISO-8601, campos ausentes/não expostos, operadores em allowlist e profundidade máxima da expressão. O isolamento por tenant continua sendo aplicado pelo carregamento congelado da instância antes de qualquer resolução persistida.
