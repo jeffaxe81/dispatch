@@ -976,12 +976,20 @@ export async function resumeFormWorkflowInstanceInTransaction(
     frozen.execution.outputData,
     frozen.state.currentNodeId,
   );
+  const outgoing = frozen.graph.edges.filter(
+    edge => edge.source === frozen.state.currentNodeId,
+  );
+  if (outgoing.length !== 1) {
+    throw new Error("Nó form.d008 deve possuir exatamente uma saída para retomada.");
+  }
+
   const beforeStatus = frozen.execution.status as WorkflowExecutionDbStatus;
   const now = new Date();
   const occurredAt = now.toISOString();
   const resumed = resumeWaitingWorkflowInstanceState({
     state: frozen.state,
     graph: frozen.graph,
+    targetNodeId: outgoing[0].target,
     formSubmissionEvidence,
     actorUserId: input.actorUserId,
     correlationId: input.correlationId,
