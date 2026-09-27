@@ -944,6 +944,110 @@ export async function startEventWorkflowInstanceInTransaction(
 }
 
 
+export async function resumeFormWorkflowInstanceInTransaction(
+  tx: WorkflowTx,
+  input: {
+    executionId: number;
+    organizationId: number;
+    actorUserId: number;
+    correlationId: string;
+  },
+): Promise<WorkflowInstanceResult> {
+  const frozen = await loadFrozenInstanceForTransition(
+    tx,
+    input.executionId,
+    input.organizationId,
+  );
+  if (frozen.state.status !== "waiting") {
+    throw new Error("Instância de formulário não está aguardando evidência.");
+  }
+
+  const currentNode = frozen.graph.nodes.find(
+    node => node.id === frozen.state.currentNodeId,
+  );
+  if (!currentNode || currentNode.type !== "form.d008" || !currentNode.formRequirement) {
+    throw new Error("Instância não está posicionada em um nó form.d008 válido.");
+  }
+  if (currentNode.formRequirement.policy !== "required_before_transition") {
+    throw new Error("Somente form.d008 required_before_transition pode ser retomado por evento.");
+  }
+
+  const formSubmissionEvidence = readWorkflowFormEvidence(
+    frozen.execution.outputData,
+    frozen.state.currentNodeId,
+  );
+  const beforeStatus = frozen.execution.status as WorkflowExecutionDbStatus;
+  const now = new Date();
+  const occurredAt = now.toISOString();
+  const resumed = resumeWaitingWorkflowInstanceState({
+    state: frozen.state,
+    graph: frozen.graph,
+    formSubmissionEvidence,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt,
+  });
+  const status = dbStatusFromState(resumed.state.status);
+
+  if (resumed.state.status === "waiting") {
+    const waitingNode = frozen.graph.nodes.find(
+      node => node.id === resumed.state.currentNodeId,
+    );
+    if (!waitingNode) throw new Error("Estado waiting sem nó válido após formulário.");
+    if (waitingNode.requiresHumanTask) {
+      await ensureWorkflowTaskForNode(tx, {
+        executionId: input.executionId,
+        workflowVersionId: frozen.state.workflowVersionId,
+        nodeId: waitingNode.id,
+        assigneeUserId: waitingNode.assigneeUserId ?? null,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        occurredAt,
+      });
+    } else if (waitingNode.type !== "wait.event" && waitingNode.type !== "form.d008") {
+      throw new Error("Estado waiting inválido após retomada de formulário.");
+    }
+  }
+
+  await tx
+    .update(workflowExecutions)
+    .set({
+      status,
+      completedAt: resumed.state.status === "completed" ? now : null,
+    })
+    .where(eq(workflowExecutions.id, input.executionId));
+  await tx
+    .update(workflowInstanceExecutions)
+    .set({
+      currentNodeId: resumed.state.currentNodeId,
+      correlationId: input.correlationId,
+    })
+    .where(eq(workflowInstanceExecutions.id, input.executionId));
+  await tx.insert(auditLogs).values(
+    buildWorkflowInstanceAuditLog({
+      executionId: input.executionId,
+      workflowId: frozen.state.workflowId,
+      workflowVersionId: frozen.state.workflowVersionId,
+      actorUserId: input.actorUserId,
+      action: resumed.transition.action === "complete" ? "complete" : "advance",
+      fromNodeId: resumed.transition.fromNodeId,
+      toNodeId: resumed.transition.toNodeId,
+      correlationId: input.correlationId,
+      occurredAt,
+      beforeStatus,
+      afterStatus: status,
+    }),
+  );
+
+  return {
+    executionId: input.executionId,
+    workflowId: frozen.state.workflowId,
+    workflowVersionId: frozen.state.workflowVersionId,
+    currentNodeId: resumed.state.currentNodeId,
+    status,
+  };
+}
+
 export async function resumeEventWorkflowInstanceInTransaction(
   tx: WorkflowTx,
   input: {
