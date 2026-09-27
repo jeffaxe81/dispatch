@@ -37,6 +37,7 @@ type WorkflowFormEvidenceAdapter<TTransaction> = {
       correlationId: string;
       formId: number;
       formVersionId: number;
+      submissionId: number;
     },
   ): Promise<WorkflowFormEvidenceCandidate[]>;
   persistEvidence(
@@ -136,6 +137,7 @@ export function createWorkflowFormEvidencePersistence<TTransaction>(
           correlationId: envelope.correlationId,
           formId: evidence.formId,
           formVersionId: evidence.formVersionId,
+          submissionId: evidence.submissionId,
         });
 
         if (candidates.length === 0) return { status: "ignored" };
@@ -268,6 +270,7 @@ async function findCandidates(
     correlationId: string;
     formId: number;
     formVersionId: number;
+    submissionId: number;
   },
 ): Promise<WorkflowFormEvidenceCandidate[]> {
   const scopes = await tx
@@ -286,12 +289,7 @@ async function findCandidates(
         .limit(1)
         .for("update")
     )[0];
-    if (
-      !execution
-      || execution.mode !== "simulacao"
-      || execution.status !== "pendente"
-      || !execution.workflowVersionId
-    ) continue;
+    if (!execution || execution.mode !== "simulacao" || !execution.workflowVersionId) continue;
 
     const projection = (
       await tx
@@ -303,10 +301,7 @@ async function findCandidates(
         .where(eq(workflowInstanceExecutions.id, execution.id))
         .limit(1)
     )[0];
-    if (
-      !projection?.currentNodeId
-      || projection.correlationId !== input.correlationId
-    ) continue;
+    if (!projection || projection.correlationId !== input.correlationId) continue;
 
     const version = (
       await tx
@@ -322,27 +317,55 @@ async function findCandidates(
 
     const definition = rawNodeConfiguration(version.definition);
     const nodes = Array.isArray(definition.nodes) ? definition.nodes : [];
-    const rawNode = nodes.find(raw => {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const matchingFormNodes = nodes.flatMap(raw => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
       const node = raw as Record<string, unknown>;
-      return node.id === projection.currentNodeId && node.type === "form.d008";
-    }) as Record<string, unknown> | undefined;
-    if (!rawNode) continue;
+      if (node.type !== "form.d008" || typeof node.id !== "string" || !node.id.trim()) return [];
+      const requirement = workflowFormRequirementSchema.safeParse(
+        rawNodeConfiguration(node.configuration),
+      );
+      if (
+        !requirement.success
+        || requirement.data.formId !== input.formId
+        || requirement.data.formVersionId !== input.formVersionId
+      ) return [];
+      return [{
+        nodeId: node.id,
+        policy: requirement.data.policy,
+      }];
+    });
 
-    const requirement = workflowFormRequirementSchema.safeParse(
-      rawNodeConfiguration(rawNode.configuration),
-    );
-    if (!requirement.success) continue;
-    if (
-      requirement.data.formId !== input.formId
-      || requirement.data.formVersionId !== input.formVersionId
-    ) continue;
+    // Replay após avanço: a evidência já persistida identifica de forma segura
+    // a etapa original mesmo que o currentNodeId/status tenham mudado.
+    const replayMatches = matchingFormNodes.filter(node => {
+      const existing = readWorkflowFormEvidence(execution.outputData, node.nodeId);
+      return existing?.submissionId === input.submissionId
+        && existing.formId === input.formId
+        && existing.formVersionId === input.formVersionId;
+    });
+    if (replayMatches.length > 1) {
+      throw new Error("Mais de uma etapa contém a mesma evidência D-008; correlação ambígua.");
+    }
+    if (replayMatches.length === 1) {
+      candidates.push({
+        executionId: execution.id,
+        nodeId: replayMatches[0].nodeId,
+        outputData: execution.outputData,
+        policy: replayMatches[0].policy,
+      });
+      continue;
+    }
+
+    // Evento novo só pode satisfazer a etapa atualmente aguardando.
+    if (execution.status !== "pendente" || !projection.currentNodeId) continue;
+    const currentMatch = matchingFormNodes.find(node => node.nodeId === projection.currentNodeId);
+    if (!currentMatch) continue;
 
     candidates.push({
       executionId: execution.id,
-      nodeId: projection.currentNodeId,
+      nodeId: currentMatch.nodeId,
       outputData: execution.outputData,
-      policy: requirement.data.policy,
+      policy: currentMatch.policy,
     });
   }
   return candidates;
