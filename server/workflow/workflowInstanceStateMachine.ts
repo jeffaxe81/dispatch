@@ -156,7 +156,8 @@ function moveToTarget(input: {
 
   const isTerminalTarget = !input.graph.edges.some(edge => edge.source === input.targetNodeId);
   const waitsForExternalEvent = targetNode.type === "wait.event";
-  const waitsForForm = targetNode.type === "form.d008" && Boolean(targetNode.formRequirement);
+  const waitsForForm = targetNode.type === "form.d008"
+    && targetNode.formRequirement?.policy !== "optional";
   const status: WorkflowInstanceStatus = targetNode.requiresHumanTask || waitsForExternalEvent || waitsForForm
     ? "waiting"
     : isTerminalTarget
