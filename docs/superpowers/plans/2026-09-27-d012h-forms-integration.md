@@ -72,3 +72,30 @@ Submissões válidas para satisfazer exigência obrigatória:
 3. Sem migration real, deploy, grants ou merge automático.
 4. Checkpoint após cada GREEN relevante.
 5. Integração em `main` somente com aprovação explícita.
+
+## Status final — 2026-09-27
+
+- H1 — GREEN — checkpoint `checkpoint/d012h-h1-green-20260927`
+- H2 — GREEN — checkpoint `checkpoint/d012h-h2-green-20260927`
+- H3 — GREEN — checkpoint `checkpoint/d012h-h3-green-20260927`
+- H4 — GREEN — checkpoint `checkpoint/d012h-h4-green-20260927`
+  - checkpoint intermediário: `checkpoint/d012h-h4-evidence-green-20260927`
+- H5 — GREEN — checkpoint `checkpoint/d012h-h5-green-20260927`
+
+### Evidências principais
+
+- RED H1: ausência inicial de `workflowFormRequirement.ts`; Qualidade falhou somente na nova suíte enquanto 291 arquivos/1332 testes anteriores passaram.
+- RED H5: 4 testes de hardening falharam como esperado, com 297 arquivos e 1361 testes anteriores passando.
+- GREEN final: Qualidade, segurança, TypeScript, testes, build, empacotamento Docker, GIS visual, NEO external compatibility e NEO workspace visual homologation concluídos com sucesso no head `bcd44d5aa3852ea393bd52986dac9bb57c37be2e`.
+
+### Resultado funcional
+
+- `form.d008` referencia somente `formId`/`formVersionId` e política; schema, respostas, anexos e revisões continuam sob ownership do D-008.
+- `required_before_task_completion` cria gate de tarefa humana e impede conclusão sem evidência válida.
+- `required_before_transition` aguarda evento D-008, persiste evidência mínima e retoma somente a saída congelada do nó.
+- `optional` não bloqueia o fluxo.
+- eventos `submitted`/`corrected` exigem tenant, correlação, formulário e versão compatíveis.
+- replay usa receipt persistente e evidência por `submissionId`; não troca submissão nem rebaixa `corrected` para `submitted`.
+- nenhuma leitura direta de tabelas/repositórios internos do D-008 foi adicionada ao Workflow.
+- nenhuma migration nova, deploy, grant ou merge automático foi executado.
+
