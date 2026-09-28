@@ -51,6 +51,7 @@ export function planWorkflowSlaEvents(input: {
   if (now === null) throw new Error("now é obrigatório.");
   const occurredAt = new Date(now).toISOString();
   const planned: WorkflowSlaPlannedEvent[] = [];
+  const claimedEventKeys = new Set(input.emittedEventKeys);
 
   for (const task of input.tasks) {
     validateTask(task);
@@ -69,7 +70,8 @@ export function planWorkflowSlaEvents(input: {
     for (const candidate of candidates) {
       const dueAt = utcInstant(candidate.at, `sla ${candidate.kind}`);
       const eventKey = `${task.taskId}:${candidate.kind}`;
-      if (dueAt === null || now < dueAt || input.emittedEventKeys.has(eventKey)) continue;
+      if (dueAt === null || now < dueAt || claimedEventKeys.has(eventKey)) continue;
+      claimedEventKeys.add(eventKey);
       planned.push({
         eventType: candidate.eventType,
         eventKey,

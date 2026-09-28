@@ -42,4 +42,24 @@ describe("D-012I I4 — planejamento seguro de eventos SLA", () => {
       emittedEventKeys: new Set(),
     })).toEqual([]);
   });
+
+  it("replay concorrente do mesmo snapshot não duplica uma intenção no lote", () => {
+    const events = planWorkflowSlaEvents({
+      tasks: [baseTask, { ...baseTask }],
+      now: "2026-09-28T11:30:00.000Z",
+      emittedEventKeys: new Set(),
+    });
+    expect(events.map(event => event.eventKey)).toEqual(["71:reminder", "71:overdue", "71:escalation"]);
+  });
+
+  it("respeita fronteiras exatas e mantém tenants distintos no resultado", () => {
+    const events = planWorkflowSlaEvents({
+      tasks: [{ ...baseTask, organizationId: 9 }, { ...baseTask, taskId: 72, organizationId: 10, correlationId: "corr-sla-0002" }],
+      now: "2026-09-28T10:45:00.000Z",
+      emittedEventKeys: new Set(),
+    });
+    expect(events).toHaveLength(2);
+    expect(events.every(event => event.eventType === "workflow.task.sla.reminder.v1")).toBe(true);
+    expect(events.map(event => event.organizationId)).toEqual([9, 10]);
+  });
 });
