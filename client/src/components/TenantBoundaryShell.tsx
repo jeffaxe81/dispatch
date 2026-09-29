@@ -20,7 +20,7 @@ export function TenantBoundaryShell({ children }: { children: React.ReactNode })
     staleTime: 30_000,
   });
   const [organization, setOrganization] = useState({ code: "", name: "" });
-  const initializeOrganization = trpc.access.createOrganization.useMutation({
+  const initializeOrganization = trpc.access.initializeOrganization.useMutation({
     onSuccess: async created => {
       window.localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, String(created.id));
       await Promise.all([
