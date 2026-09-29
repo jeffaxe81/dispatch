@@ -62,8 +62,8 @@ for (const sourceConfig of routerSources) {
   collectProcedures(fs.readFileSync(absolutePath, "utf8"), sourceConfig.prefix);
 }
 
-if (procedures.length !== 115) {
-  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 115.`);
+if (procedures.length !== 116) {
+  throw new Error(`Superfície tRPC inesperada: ${procedures.length} procedimentos encontrados; eram esperados 116.`);
 }
 
 const duplicatePaths = procedures.map(item => item.path).filter((pathName, index, all) => all.indexOf(pathName) !== index);

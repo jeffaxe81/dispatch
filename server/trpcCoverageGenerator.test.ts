@@ -37,7 +37,8 @@ describe("inventário de contratos tRPC", () => {
       expect(coverage).toContain("`workspace.getOwnScreen`");
       expect(coverage).toContain("`workspace.saveOwn`");
       expect(coverage).toContain("`workspace.resetOwn`");
-      expect(coverage).toContain("| Procedimentos inventariados | 115 |");
+      expect(coverage).toContain("`workflows.previewValidation`");
+      expect(coverage).toContain("| Procedimentos inventariados | 116 |");
       expect(coverage).toContain("D-010");
     } finally {
       fs.writeFileSync(coveragePath, originalCoverage);
