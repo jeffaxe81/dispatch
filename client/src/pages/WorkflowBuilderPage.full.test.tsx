@@ -73,4 +73,33 @@ describe("WorkflowBuilderPage com workflow reaberto", () => {
     expect(screen.getAllByText("notification.simulate").length).toBeGreaterThan(0);
     expect(screen.getByText("Notificação simulada registrada.")).toBeTruthy();
   });
+
+  it("deriva os destinos de uma decisão a partir de duas conexões distintas", async () => {
+    mocks.workflow.versions[0].definition = {
+      nodes: [
+        { id: "trigger-1", type: "trigger.manual", label: "Entrada", position: { x: 20, y: 20 }, configuration: { mode: "simulacao", inputLabel: "entrada" } },
+        { id: "decision-1", type: "decision.condition", label: "Decisão persistida", position: { x: 220, y: 20 }, configuration: { mode: "simulacao", condition: { field: "prioridade", operator: "equals", value: "alta" }, trueTargetNodeId: "", falseTargetNodeId: "" } },
+        { id: "yes-1", type: "notification.simulate", label: "Caminho sim", position: { x: 440, y: 20 }, configuration: { mode: "simulacao", channel: "painel_interno", messageTemplate: "sim" } },
+        { id: "no-1", type: "notification.simulate", label: "Caminho não", position: { x: 440, y: 180 }, configuration: { mode: "simulacao", channel: "painel_interno", messageTemplate: "não" } },
+      ],
+      edges: [
+        { id: "edge-trigger", source: "trigger-1", target: "decision-1" },
+        { id: "edge-yes", source: "decision-1", target: "yes-1" },
+        { id: "edge-no", source: "decision-1", target: "no-1" },
+      ],
+      metadata: { mode: "simulacao", definitionVersion: 1 },
+    } as any;
+    const user = userEvent.setup();
+    render(<WorkflowBuilderPage />);
+
+    await user.click(screen.getByRole("button", { name: /decisão persistida/i }));
+    const field = screen.getByDisplayValue("prioridade");
+    await user.clear(field);
+    await user.type(field, "criticidade");
+    await user.click(screen.getByRole("button", { name: /salvar versão/i }));
+
+    expect(mocks.saveWorkflow).toHaveBeenCalledWith(expect.objectContaining({ definition: expect.objectContaining({ nodes: expect.arrayContaining([
+      expect.objectContaining({ id: "decision-1", configuration: expect.objectContaining({ trueTargetNodeId: "yes-1", falseTargetNodeId: "no-1" }) }),
+    ]) }) }));
+  });
 });

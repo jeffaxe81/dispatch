@@ -105,6 +105,18 @@ function normalizeDefinition(value: unknown): FlowDefinition {
   return { nodes, edges, metadata: { mode: "simulacao", definitionVersion: 1, automation: { requestedMode, activationRule, targetConnection: typeof candidate.targetConnection === "string" && candidate.targetConnection ? candidate.targetConnection : "nenhuma", activationStatus: "bloqueada", requiresApproval: true } } };
 }
 
+export function synchronizeDecisionTargets(definition: FlowDefinition): FlowDefinition {
+  return {
+    ...definition,
+    nodes: definition.nodes.map(node => {
+      if (node.type !== "decision.condition") return node;
+      const targets = definition.edges.filter(edge => edge.source === node.id).map(edge => edge.target);
+      const [trueTargetNodeId, falseTargetNodeId] = targets.length === 2 && new Set(targets).size === 2 ? targets : ["", ""];
+      return { ...node, configuration: { ...node.configuration, trueTargetNodeId, falseTargetNodeId } };
+    }),
+  };
+}
+
 function validate(definition: FlowDefinition) {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -213,7 +225,7 @@ function BuilderContent({ workflowId }: { workflowId: number }) {
 
   const commit = (next: FlowDefinition) => {
     setHistory(previous => [...previous, definition].slice(-30));
-    setDefinition(next);
+    setDefinition(synchronizeDecisionTargets(next));
     setFuture([]);
   };
   const addNode = (item: typeof palette[number], position?: { x: number; y: number }) => {
@@ -298,7 +310,8 @@ function BuilderContent({ workflowId }: { workflowId: number }) {
   const saveDefinition = () => {
     if (!workflow.data) return;
     if (validation.errors.length) return toast.error("Corrija os erros de conexão antes de salvar.");
-    save.mutate({ workflowId, name: workflow.data.workflow.name, description: workflow.data.workflow.description, definition, changeSummary: "Atualização no editor visual" });
+    const synchronized = synchronizeDecisionTargets(definition);
+    save.mutate({ workflowId, name: workflow.data.workflow.name, description: workflow.data.workflow.description, definition: synchronized, changeSummary: "Atualização no editor visual" });
   };
   const publish = () => {
     if (dirty) return toast.info("Salve a versão atual antes de publicar.");
