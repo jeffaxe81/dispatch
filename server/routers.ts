@@ -19,6 +19,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { getSimulatedIntegrationsOverview } from "./integrations";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { requireActiveTenant } from "./tenantOperational";
+import { validateWorkflowDefinition } from "./dbLegacy";
 import {
   assignTeamToIncident,
   addIncidentEvidence,
@@ -343,6 +344,11 @@ export const appRouter = router({
     }),
   }),
   workflows: router({
+    previewValidation: operationalProcedure.input(z.object({ definition: z.unknown() })).query(async ({ ctx, input }) => {
+      await assertPermission(ctx.user, "workflow.edit");
+      await requireActiveTenant(ctx.user, ctx.req);
+      return validateWorkflowDefinition(input.definition, { forPublication: true });
+    }),
     list: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "workflow.view");
       const organizationId = await requireActiveTenant(ctx.user, ctx.req);

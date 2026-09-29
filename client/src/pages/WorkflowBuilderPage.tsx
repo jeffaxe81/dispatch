@@ -196,7 +196,12 @@ function BuilderContent({ workflowId }: { workflowId: number }) {
   const canExecute = access.data?.permissions.includes("workflow.execute") ?? false;
   const canViewHistory = access.data?.permissions.includes("logs.view") ?? false;
   const latestVersion = workflow.data?.versions[0];
-  const validation = useMemo(() => validate(definition), [definition]);
+  const localValidation = useMemo(() => validate(definition), [definition]);
+  const previewValidation = trpc.workflows.previewValidation.useQuery({ definition }, { enabled: canEdit, retry: false });
+  const validation = useMemo(() => ({
+    errors: [...new Set([...localValidation.errors, ...(previewValidation.data?.errors ?? [])])],
+    warnings: [...new Set([...localValidation.warnings, ...(previewValidation.data?.warnings ?? [])])],
+  }), [localValidation, previewValidation.data]);
   const selected = definition.nodes.find(node => node.id === selectedNodeId) ?? null;
   const dirty = JSON.stringify(definition) !== JSON.stringify(persistedDefinition);
   const executionHistory = trpc.workflows.executions.useQuery({ workflowId, limit: 12 }, { enabled: canViewHistory, retry: false });

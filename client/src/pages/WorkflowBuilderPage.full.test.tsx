@@ -24,6 +24,7 @@ vi.mock("@/lib/trpc", () => ({
     access: { me: { useQuery: () => ({ data: { permissions: ["workflow.view", "workflow.edit", "workflow.activate", "workflow.execute", "logs.view"] }, isLoading: false, error: null }) } },
     workflows: {
       get: { useQuery: () => ({ data: mocks.workflow, isLoading: false, error: null }) },
+      previewValidation: { useQuery: () => ({ data: { errors: [], warnings: [] }, isLoading: false, error: null }) },
       update: { useMutation: () => ({ mutate: mocks.saveWorkflow, isPending: false, error: null }) },
       setActive: { useMutation: () => ({ mutate: mocks.setActive, isPending: false, error: null }) },
       executions: { useQuery: () => ({ data: [{ execution: { id: 41, status: "concluida", attempts: 1, maxAttempts: 3, createdAt: new Date("2026-08-22T12:00:00.000Z"), errorData: null } }], isLoading: false, isFetching: false, error: null, refetch: vi.fn() }) },

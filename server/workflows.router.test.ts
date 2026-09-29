@@ -109,6 +109,17 @@ describe("procedures de Integrações & Workflows", () => {
     expect(result).toEqual([expect.objectContaining({ code: "occurrence.created", source: "AXE Dispatch interno", version: "v1", payloadSchema: { type: "object", required: ["id", "code"] } })]);
   });
 
+  it("antecipa a validação canônica do workflow sem persistir definição", async () => {
+    const result = await appRouter.createCaller(context()).workflows.previewValidation({
+      definition: { nodes: [{ id: "form-1", type: "form.d008", label: "Formulário", position: { x: 0, y: 0 }, configuration: { formId: 0, formVersionId: 0, policy: "invalid" } }], edges: [], metadata: { mode: "simulacao", definitionVersion: 1 } },
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(" ")).toMatch(/formulário D-008/i);
+    expect(mocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "workflow.edit");
+    expect(mocks.requireActiveTenant).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), expect.anything());
+  });
+
   it("aplica permissão e tenant ativo a cada ação de workflow", async () => {
     const ctx = context();
     const caller = appRouter.createCaller(ctx);
