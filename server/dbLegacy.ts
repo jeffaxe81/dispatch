@@ -1414,6 +1414,12 @@ export async function listOrganizationsAndUnits() {
   return { organizations: organizationRows, units: unitRows };
 }
 
+export async function hasAnyOrganization() {
+  const db = await requireDb();
+  const row = (await db.select({ id: organizations.id }).from(organizations).limit(1))[0];
+  return Boolean(row);
+}
+
 type OperationalMapSettings = {
   centerLatitude: number;
   centerLongitude: number;
