@@ -62,6 +62,7 @@ import {
   listFutureGeneralSettingEntries,
   listOperationLogs,
   getDashboardData,
+  hasAnyOrganization,
   getOperationalReport,
   auditOperationalReportExport,
   listDashboardSavedFilters,
@@ -612,6 +613,25 @@ export const appRouter = router({
   }),
   access: router({
     me: operationalProcedure.query(({ ctx }) => getEffectiveAccess(ctx.user)),
+    bootstrapState: operationalProcedure.query(async ({ ctx }) => {
+      const [organizationExists, access] = await Promise.all([
+        hasAnyOrganization(),
+        getEffectiveAccess(ctx.user),
+      ]);
+      return {
+        organizationExists,
+        canInitialize: !organizationExists && access.isSuperAdministrator,
+      };
+    }),
+    initializeOrganization: operationalProcedure
+      .input(z.object({ code: z.string().trim().regex(/^[a-z0-9_]+$/).min(2).max(48), name: z.string().trim().min(3).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertSuperAdministrator(ctx.user);
+        if (await hasAnyOrganization()) {
+          throw new TRPCError({ code: "CONFLICT", message: "A configuração inicial já foi concluída. Use Administração → Escopos organizacionais para gerenciar empresas." });
+        }
+        return createOrganization({ ...input, actorUserId: ctx.user.id });
+      }),
     roles: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "roles.view");
       return listAccessRoles();
