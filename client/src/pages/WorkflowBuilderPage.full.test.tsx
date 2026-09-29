@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   executeWorkflow: vi.fn(),
   retryExecution: vi.fn(),
   navigate: vi.fn(),
+  permissions: ["workflow.view", "workflow.edit", "workflow.activate", "workflow.execute", "logs.view"],
   workflow: {
     workflow: { id: 1, name: "Fluxo reaberto", description: "Fluxo persistido", currentVersion: 3, active: false },
     creatorName: "Administrador",
@@ -21,7 +22,7 @@ vi.mock("@/components/QueryState", () => ({ QueryState: () => null }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ workflows: { get: { invalidate: vi.fn() }, list: { invalidate: vi.fn() }, executions: { invalidate: vi.fn() } }, integrations: { overview: { invalidate: vi.fn() } } }),
-    access: { me: { useQuery: () => ({ data: { permissions: ["workflow.view", "workflow.edit", "workflow.activate", "workflow.execute", "logs.view"] }, isLoading: false, error: null }) } },
+    access: { me: { useQuery: () => ({ data: { permissions: mocks.permissions }, isLoading: false, error: null }) } },
     workflows: {
       get: { useQuery: () => ({ data: mocks.workflow, isLoading: false, error: null }) },
       previewValidation: { useQuery: () => ({ data: { errors: [], warnings: [] }, isLoading: false, error: null }) },
@@ -43,6 +44,7 @@ describe("WorkflowBuilderPage com workflow reaberto", () => {
   beforeEach(() => {
     cleanup();
     vi.clearAllMocks();
+    mocks.permissions = ["workflow.view", "workflow.edit", "workflow.activate", "workflow.execute", "logs.view"];
   });
 
   it("carrega, seleciona e salva uma configuração persistida do nó no editor completo", async () => {
@@ -102,5 +104,14 @@ describe("WorkflowBuilderPage com workflow reaberto", () => {
     expect(mocks.saveWorkflow).toHaveBeenCalledWith(expect.objectContaining({ definition: expect.objectContaining({ nodes: expect.arrayContaining([
       expect.objectContaining({ id: "decision-1", configuration: expect.objectContaining({ trueTargetNodeId: "yes-1", falseTargetNodeId: "no-1" }) }),
     ]) }) }));
+  });
+
+  it("mantém o editor em somente leitura e identifica a versão publicada", () => {
+    mocks.permissions = ["workflow.view"];
+    render(<WorkflowBuilderPage />);
+
+    expect(screen.getByText(/Versão publicada: 3/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /salvar versão/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /publicar/i })).toBeNull();
   });
 });
