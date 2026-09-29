@@ -12,7 +12,7 @@ import {
   assertOperation,
   assertOwnTeam,
 } from "./authorization";
-import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, hasPermission, resolveAuthorizedTeamFilter } from "./accessControl";
+import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, resolveAuthorizedTeamFilter } from "./accessControl";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername } from "./localAuth";
 import { systemRouter } from "./_core/systemRouter";
@@ -614,12 +614,24 @@ export const appRouter = router({
   access: router({
     me: operationalProcedure.query(({ ctx }) => getEffectiveAccess(ctx.user)),
     bootstrapState: operationalProcedure.query(async ({ ctx }) => {
-      const organizationExists = await hasAnyOrganization();
+      const [organizationExists, access] = await Promise.all([
+        hasAnyOrganization(),
+        getEffectiveAccess(ctx.user),
+      ]);
       return {
         organizationExists,
-        canInitialize: !organizationExists && (await hasPermission(ctx.user, "system.configure")),
+        canInitialize: !organizationExists && access.isSuperAdministrator,
       };
     }),
+    initializeOrganization: operationalProcedure
+      .input(z.object({ code: z.string().trim().regex(/^[a-z0-9_]+$/).min(2).max(48), name: z.string().trim().min(3).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertSuperAdministrator(ctx.user);
+        if (await hasAnyOrganization()) {
+          throw new TRPCError({ code: "CONFLICT", message: "A configuração inicial já foi concluída. Use Administração → Escopos organizacionais para gerenciar empresas." });
+        }
+        return createOrganization({ ...input, actorUserId: ctx.user.id });
+      }),
     roles: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "roles.view");
       return listAccessRoles();
