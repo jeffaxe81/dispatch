@@ -64,9 +64,11 @@ describe("fronteira multi-tenant do núcleo operacional", () => {
   it("oferece bootstrap seguro da primeira organização sem liberar usuários sem escopo", () => {
     expect(dbLegacy).toContain("export async function hasAnyOrganization");
     expect(routers).toContain("bootstrapState");
-    expect(routers).toContain('hasPermission(ctx.user, "system.configure")');
+    expect(routers).toContain("initializeOrganization");
+    expect(routers).toContain("assertSuperAdministrator(ctx.user)");
+    expect(routers).toContain('code: "CONFLICT"');
     expect(tenantShell).toContain("Configuração inicial");
-    expect(tenantShell).toContain("access.createOrganization");
+    expect(tenantShell).toContain("access.initializeOrganization");
     expect(tenantShell).toContain("bootstrapState.data?.canInitialize");
     expect(tenantShell).toContain("Nenhuma empresa autorizada");
   });
