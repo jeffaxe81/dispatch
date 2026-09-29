@@ -12,7 +12,7 @@ import {
   assertOperation,
   assertOwnTeam,
 } from "./authorization";
-import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, resolveAuthorizedTeamFilter } from "./accessControl";
+import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, hasPermission, resolveAuthorizedTeamFilter } from "./accessControl";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername } from "./localAuth";
 import { systemRouter } from "./_core/systemRouter";
@@ -62,6 +62,7 @@ import {
   listFutureGeneralSettingEntries,
   listOperationLogs,
   getDashboardData,
+  hasAnyOrganization,
   getOperationalReport,
   auditOperationalReportExport,
   listDashboardSavedFilters,
@@ -612,6 +613,13 @@ export const appRouter = router({
   }),
   access: router({
     me: operationalProcedure.query(({ ctx }) => getEffectiveAccess(ctx.user)),
+    bootstrapState: operationalProcedure.query(async ({ ctx }) => {
+      const organizationExists = await hasAnyOrganization();
+      return {
+        organizationExists,
+        canInitialize: !organizationExists && (await hasPermission(ctx.user, "system.configure")),
+      };
+    }),
     roles: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "roles.view");
       return listAccessRoles();
