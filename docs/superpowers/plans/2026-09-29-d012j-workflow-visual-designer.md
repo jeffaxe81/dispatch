@@ -197,15 +197,15 @@ git commit -m "feat: endurecer estado e permissões do designer"
 - Consumes: commits GREEN J1–J4 e resultados dos gates.
 - Produces: relatório com SHAs, escopo, exclusões, evidências, limitações e checkpoint.
 
-- [ ] **Step 1: Record final gates**
+- [x] **Step 1: Record final gates**
 
 Registrar `pnpm security:check`, `pnpm check`, `pnpm test`, `pnpm build`, `pnpm test:e2e`, `docker compose config --quiet` e `docker compose build api web`, distinguindo execução, não aplicável e bloqueio externo.
 
-- [ ] **Step 2: Run gates and inspect branch**
+- [x] **Step 2: Run gates and inspect branch**
 
 Run os gates e `git status --short && git diff --check <base>...HEAD`. Para sandbox sem TCP, registrar `EPERM` e arquivos afetados; não tratar como GREEN nem alterar código para contornar o ambiente.
 
-- [ ] **Step 3: Commit report and checkpoint**
+- [x] **Step 3: Commit report and checkpoint**
 
 ```bash
 git add docs/superpowers/reports/2026-09-29-d012j-verification.md docs/superpowers/plans/2026-09-29-d012j-workflow-visual-designer.md
