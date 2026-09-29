@@ -10,9 +10,11 @@ import { workflowConditionSchema } from "./workflowConditionEvaluator";
 import { resolveWorkflowDecisionFromExecutionInput } from "./workflowDecisionPersistence";
 import { readWorkflowFormEvidence } from "./workflowFormEventEvidence";
 import { workflowFormRequirementSchema } from "./workflowFormRequirement";
+import { workflowSlaConfigurationSchema } from "./workflowSla";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 import { workflowTasks } from "./workflowTaskSchema";
+import { buildWorkflowTaskSlaPersistenceValues } from "./workflowTaskPersistence";
 import {
   cancelWorkflowTaskState,
   createWorkflowTaskState,
@@ -90,6 +92,9 @@ export function toWorkflowInstanceGraph(definition: Record<string, unknown>): Wo
       : undefined;
     const requiresHumanTask = configuration.requiresHumanTask === true
       || formRequirement?.policy === "required_before_task_completion";
+    const slaConfiguration = requiresHumanTask && configuration.sla !== undefined
+      ? workflowSlaConfigurationSchema.parse(configuration.sla)
+      : undefined;
     const decision = nodeType === "decision.condition"
       ? {
           condition: workflowConditionSchema.parse(configuration.condition),
@@ -103,6 +108,7 @@ export function toWorkflowInstanceGraph(definition: Record<string, unknown>): Wo
       ...(requiresHumanTask ? {
         requiresHumanTask: true,
         assigneeUserId: taskAssignee(configuration),
+        ...(slaConfiguration ? { slaConfiguration } : {}),
       } : {}),
       ...(decision ? { decision } : {}),
       ...(formRequirement ? { formRequirement } : {}),
@@ -230,6 +236,7 @@ async function ensureWorkflowTaskForNode(tx: WorkflowTx, input: {
   workflowVersionId: number;
   nodeId: string;
   assigneeUserId: number | null;
+  slaConfiguration?: unknown;
   actorUserId: number;
   correlationId: string;
   occurredAt: string;
@@ -257,9 +264,13 @@ async function ensureWorkflowTaskForNode(tx: WorkflowTx, input: {
     correlationId: input.correlationId,
     occurredAt: input.occurredAt,
   });
+  const slaValues = buildWorkflowTaskSlaPersistenceValues(
+    input.slaConfiguration,
+    input.occurredAt,
+  );
   const [created] = await tx
     .insert(workflowTasks)
-    .values({ ...change.state, createdByUserId: input.actorUserId })
+    .values({ ...change.state, ...slaValues, createdByUserId: input.actorUserId })
     .$returningId();
   if (!created?.id) throw new Error("Falha ao persistir tarefa da etapa humana.");
   await auditWorkflowTask(tx, {
@@ -522,6 +533,7 @@ export async function advanceManualWorkflowInstance(input: {
           workflowVersionId: frozen.state.workflowVersionId,
           nodeId: waitingNode.id,
           assigneeUserId: waitingNode.assigneeUserId ?? null,
+          slaConfiguration: waitingNode.slaConfiguration,
           actorUserId: input.actorUserId,
           correlationId: input.correlationId,
           occurredAt,
@@ -607,6 +619,7 @@ export async function resolvePersistedWorkflowDecision(input: {
           workflowVersionId: frozen.state.workflowVersionId,
           nodeId: waitingNode.id,
           assigneeUserId: waitingNode.assigneeUserId ?? null,
+          slaConfiguration: waitingNode.slaConfiguration,
           actorUserId: input.actorUserId,
           correlationId: input.correlationId,
           occurredAt,
@@ -704,6 +717,7 @@ export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
           workflowVersionId: frozen.state.workflowVersionId,
           nodeId: waitingNode.id,
           assigneeUserId: waitingNode.assigneeUserId ?? null,
+          slaConfiguration: waitingNode.slaConfiguration,
           actorUserId: input.actorUserId,
           correlationId: input.correlationId,
           occurredAt,
@@ -1008,6 +1022,7 @@ export async function resumeFormWorkflowInstanceInTransaction(
         workflowVersionId: frozen.state.workflowVersionId,
         nodeId: waitingNode.id,
         assigneeUserId: waitingNode.assigneeUserId ?? null,
+        slaConfiguration: waitingNode.slaConfiguration,
         actorUserId: input.actorUserId,
         correlationId: input.correlationId,
         occurredAt,
@@ -1125,6 +1140,7 @@ export async function resumeEventWorkflowInstanceInTransaction(
         workflowVersionId: frozen.state.workflowVersionId,
         nodeId: waitingNode.id,
         assigneeUserId: waitingNode.assigneeUserId ?? null,
+        slaConfiguration: waitingNode.slaConfiguration,
         actorUserId: input.actorUserId,
         correlationId: input.correlationId,
         occurredAt,
