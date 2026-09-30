@@ -1,6 +1,8 @@
 import { eq } from "drizzle-orm";
-import { auditLogs } from "../../drizzle/schema";
+import { auditLogs, workflowExecutions, workflowVersions } from "../../drizzle/schema";
 import { getDb } from "../dbLegacy";
+import { readWorkflowFormEvidence } from "./workflowFormEventEvidence";
+import { workflowFormRequirementFromDefinition } from "./workflowFormRequirement";
 import { workflowTasks } from "./workflowTaskSchema";
 import {
   assignWorkflowTaskState,
@@ -127,9 +129,43 @@ export async function completeWorkflowTask(input: {
     await assertTaskTenant(tx, input.taskId, input.organizationId);
     const task = await loadTaskForUpdate(tx, input.taskId);
     const before = toState(task);
+    const execution = (
+      await tx
+        .select()
+        .from(workflowExecutions)
+        .where(eq(workflowExecutions.id, task.executionId))
+        .limit(1)
+    )[0];
+    if (!execution || execution.workflowVersionId !== task.workflowVersionId) {
+      throw new Error("Tarefa não corresponde à versão congelada da execução.");
+    }
+    const version = (
+      await tx
+        .select()
+        .from(workflowVersions)
+        .where(eq(workflowVersions.id, task.workflowVersionId))
+        .limit(1)
+    )[0];
+    if (!version || version.workflowId !== execution.workflowId) {
+      throw new Error("Versão congelada da tarefa não foi encontrada.");
+    }
+    const formRequirement = workflowFormRequirementFromDefinition(
+      version.definition,
+      task.nodeId,
+    );
+    const formSubmissionEvidence = formRequirement
+      ? readWorkflowFormEvidence(execution.outputData, task.nodeId)
+      : null;
+
     const now = new Date();
     const occurredAt = now.toISOString();
-    const change = completeWorkflowTaskState({ state: before, actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt });
+    const change = completeWorkflowTaskState({
+      state: before,
+      ...(formRequirement ? { formRequirement, formSubmissionEvidence } : {}),
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      occurredAt,
+    });
     await tx.update(workflowTasks).set({ status: change.state.status, completedAt: now }).where(eq(workflowTasks.id, input.taskId));
     await auditTask(tx, { taskId: input.taskId, action: "complete", actorUserId: input.actorUserId, correlationId: input.correlationId, occurredAt, before, after: change.state });
     return { id: input.taskId, ...change.state };

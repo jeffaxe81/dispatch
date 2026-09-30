@@ -37,6 +37,12 @@ function parseEnvelope(input: WorkflowEventEnvelope): WorkflowEventEnvelope {
   return workflowEventEnvelopeSchema.parse(input);
 }
 
+function parseFormSubmissionId(value: string): number | null {
+  if (!/^[1-9]\d*$/.test(value)) return null;
+  const submissionId = Number(value);
+  return Number.isSafeInteger(submissionId) && submissionId > 0 ? submissionId : null;
+}
+
 export function adaptFormEventToWorkflowEnvelope(
   event: FormDomainEvent,
   correlationId: string,
@@ -55,7 +61,12 @@ export function adaptFormEventToWorkflowEnvelope(
     correlationId,
     actorUserId: String(event.actorUserId),
     producer: "d008-forms",
-    payload: { ...event.payload },
+    payload: {
+      ...event.payload,
+      ...(parseFormSubmissionId(event.aggregateId) !== null
+        ? { submissionId: parseFormSubmissionId(event.aggregateId) }
+        : {}),
+    },
   });
 }
 

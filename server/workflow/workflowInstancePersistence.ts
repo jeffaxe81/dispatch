@@ -8,6 +8,8 @@ import {
 import { getDb, validateWorkflowDefinition } from "../dbLegacy";
 import { workflowConditionSchema } from "./workflowConditionEvaluator";
 import { resolveWorkflowDecisionFromExecutionInput } from "./workflowDecisionPersistence";
+import { readWorkflowFormEvidence } from "./workflowFormEventEvidence";
+import { workflowFormRequirementSchema } from "./workflowFormRequirement";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 import { workflowTasks } from "./workflowTaskSchema";
@@ -68,7 +70,7 @@ function taskAssignee(configuration: Record<string, unknown>) {
   return value;
 }
 
-function toWorkflowInstanceGraph(definition: Record<string, unknown>): WorkflowInstanceGraph {
+export function toWorkflowInstanceGraph(definition: Record<string, unknown>): WorkflowInstanceGraph {
   if (!Array.isArray(definition.nodes) || !Array.isArray(definition.edges)) {
     throw new Error("A definição publicada do workflow não possui grafo válido.");
   }
@@ -82,8 +84,12 @@ function toWorkflowInstanceGraph(definition: Record<string, unknown>): WorkflowI
     if (configuration.requiresHumanTask !== undefined && typeof configuration.requiresHumanTask !== "boolean") {
       throw new Error("requiresHumanTask deve ser boolean na definição do workflow.");
     }
-    const requiresHumanTask = configuration.requiresHumanTask === true;
     const nodeType = requireNonEmptyString(node.type, "node.type");
+    const formRequirement = nodeType === "form.d008"
+      ? workflowFormRequirementSchema.parse(configuration)
+      : undefined;
+    const requiresHumanTask = configuration.requiresHumanTask === true
+      || formRequirement?.policy === "required_before_task_completion";
     const decision = nodeType === "decision.condition"
       ? {
           condition: workflowConditionSchema.parse(configuration.condition),
@@ -99,6 +105,7 @@ function toWorkflowInstanceGraph(definition: Record<string, unknown>): WorkflowI
         assigneeUserId: taskAssignee(configuration),
       } : {}),
       ...(decision ? { decision } : {}),
+      ...(formRequirement ? { formRequirement } : {}),
     };
   });
 
@@ -519,7 +526,7 @@ export async function advanceManualWorkflowInstance(input: {
           correlationId: input.correlationId,
           occurredAt,
         });
-      } else if (waitingNode.type !== "wait.event") {
+      } else if (waitingNode.type !== "wait.event" && waitingNode.type !== "form.d008") {
         throw new Error("Estado waiting sem etapa humana ou wait.event válida.");
       }
     }
@@ -604,7 +611,7 @@ export async function resolvePersistedWorkflowDecision(input: {
           correlationId: input.correlationId,
           occurredAt,
         });
-      } else if (waitingNode.type !== "wait.event") {
+      } else if (waitingNode.type !== "wait.event" && waitingNode.type !== "form.d008") {
         throw new Error("Estado waiting sem etapa humana ou wait.event válida após decisão.");
       }
     }
@@ -678,6 +685,10 @@ export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
       state: frozen.state,
       graph: frozen.graph,
       targetNodeId: input.targetNodeId,
+      formSubmissionEvidence: readWorkflowFormEvidence(
+        frozen.execution.outputData,
+        frozen.state.currentNodeId,
+      ),
       actorUserId: input.actorUserId,
       correlationId: input.correlationId,
       occurredAt,
@@ -697,7 +708,7 @@ export async function resumeManualWorkflowInstanceFromCompletedTask(input: {
           correlationId: input.correlationId,
           occurredAt,
         });
-      } else if (waitingNode.type !== "wait.event") {
+      } else if (waitingNode.type !== "wait.event" && waitingNode.type !== "form.d008") {
         throw new Error("Estado waiting sem etapa humana ou wait.event válida.");
       }
     }
@@ -933,6 +944,118 @@ export async function startEventWorkflowInstanceInTransaction(
 }
 
 
+export async function resumeFormWorkflowInstanceInTransaction(
+  tx: WorkflowTx,
+  input: {
+    executionId: number;
+    organizationId: number;
+    actorUserId: number;
+    correlationId: string;
+  },
+): Promise<WorkflowInstanceResult> {
+  const frozen = await loadFrozenInstanceForTransition(
+    tx,
+    input.executionId,
+    input.organizationId,
+  );
+  if (frozen.state.status !== "waiting") {
+    throw new Error("Instância de formulário não está aguardando evidência.");
+  }
+
+  const currentNode = frozen.graph.nodes.find(
+    node => node.id === frozen.state.currentNodeId,
+  );
+  if (!currentNode || currentNode.type !== "form.d008" || !currentNode.formRequirement) {
+    throw new Error("Instância não está posicionada em um nó form.d008 válido.");
+  }
+  if (currentNode.formRequirement.policy !== "required_before_transition") {
+    throw new Error("Somente form.d008 required_before_transition pode ser retomado por evento.");
+  }
+
+  const formSubmissionEvidence = readWorkflowFormEvidence(
+    frozen.execution.outputData,
+    frozen.state.currentNodeId,
+  );
+  const outgoing = frozen.graph.edges.filter(
+    edge => edge.source === frozen.state.currentNodeId,
+  );
+  if (outgoing.length !== 1) {
+    throw new Error("Nó form.d008 deve possuir exatamente uma saída para retomada.");
+  }
+
+  const beforeStatus = frozen.execution.status as WorkflowExecutionDbStatus;
+  const now = new Date();
+  const occurredAt = now.toISOString();
+  const resumed = resumeWaitingWorkflowInstanceState({
+    state: frozen.state,
+    graph: frozen.graph,
+    targetNodeId: outgoing[0].target,
+    formSubmissionEvidence,
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt,
+  });
+  const status = dbStatusFromState(resumed.state.status);
+
+  if (resumed.state.status === "waiting") {
+    const waitingNode = frozen.graph.nodes.find(
+      node => node.id === resumed.state.currentNodeId,
+    );
+    if (!waitingNode) throw new Error("Estado waiting sem nó válido após formulário.");
+    if (waitingNode.requiresHumanTask) {
+      await ensureWorkflowTaskForNode(tx, {
+        executionId: input.executionId,
+        workflowVersionId: frozen.state.workflowVersionId,
+        nodeId: waitingNode.id,
+        assigneeUserId: waitingNode.assigneeUserId ?? null,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        occurredAt,
+      });
+    } else if (waitingNode.type !== "wait.event" && waitingNode.type !== "form.d008") {
+      throw new Error("Estado waiting inválido após retomada de formulário.");
+    }
+  }
+
+  await tx
+    .update(workflowExecutions)
+    .set({
+      status,
+      completedAt: resumed.state.status === "completed" ? now : null,
+    })
+    .where(eq(workflowExecutions.id, input.executionId));
+  await tx
+    .update(workflowInstanceExecutions)
+    .set({
+      currentNodeId: resumed.state.currentNodeId,
+      correlationId: input.correlationId,
+    })
+    .where(eq(workflowInstanceExecutions.id, input.executionId));
+  await tx.insert(auditLogs).values(
+    buildWorkflowInstanceAuditLog({
+      executionId: input.executionId,
+      workflowId: frozen.state.workflowId,
+      workflowVersionId: frozen.state.workflowVersionId,
+      actorUserId: input.actorUserId,
+      action: resumed.transition.action === "complete" ? "complete" : "advance",
+      fromNodeId: resumed.transition.fromNodeId,
+      toNodeId: resumed.transition.toNodeId,
+      correlationId: input.correlationId,
+      occurredAt,
+      beforeStatus,
+      afterStatus: status,
+    }),
+  );
+
+  return {
+    executionId: input.executionId,
+    workflowId: frozen.state.workflowId,
+    workflowVersionId: frozen.state.workflowVersionId,
+    currentNodeId: resumed.state.currentNodeId,
+    status,
+  };
+}
+
 export async function resumeEventWorkflowInstanceInTransaction(
   tx: WorkflowTx,
   input: {
@@ -1006,7 +1129,7 @@ export async function resumeEventWorkflowInstanceInTransaction(
         correlationId: input.correlationId,
         occurredAt,
       });
-    } else if (waitingNode.type !== "wait.event") {
+    } else if (waitingNode.type !== "wait.event" && waitingNode.type !== "form.d008") {
       throw new Error("Estado waiting sem etapa humana ou wait.event válida após evento.");
     }
   }
