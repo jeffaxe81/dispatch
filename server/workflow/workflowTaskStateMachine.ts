@@ -1,3 +1,9 @@
+import {
+  assertWorkflowFormRequirementForAction,
+  type WorkflowFormRequirement,
+  type WorkflowFormSubmissionEvidence,
+} from "./workflowFormRequirement";
+
 export type WorkflowTaskStatus = "open" | "in_progress" | "completed" | "cancelled";
 
 export type WorkflowTaskState = {
@@ -105,11 +111,22 @@ export function startWorkflowTaskState(input: Meta & { state: WorkflowTaskState 
   return result(state, "start", input.state.status, input);
 }
 
-export function completeWorkflowTaskState(input: Meta & { state: WorkflowTaskState }): WorkflowTaskStateChange {
+export function completeWorkflowTaskState(input: Meta & {
+  state: WorkflowTaskState;
+  formRequirement?: WorkflowFormRequirement;
+  formSubmissionEvidence?: WorkflowFormSubmissionEvidence | null;
+}): WorkflowTaskStateChange {
   assertMeta(input);
   assertMutable(input.state);
   if (input.state.status !== "in_progress") throw new Error("Tarefa deve estar in_progress.");
   if (input.state.assigneeUserId !== input.actorUserId) throw new Error("Usuario nao e o responsavel atual.");
+  if (input.formRequirement) {
+    assertWorkflowFormRequirementForAction(
+      input.formRequirement,
+      input.formSubmissionEvidence ?? null,
+      "task_completion",
+    );
+  }
   const state: WorkflowTaskState = { ...input.state, status: "completed" };
   return result(state, "complete", input.state.status, input);
 }

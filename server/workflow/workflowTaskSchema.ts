@@ -22,6 +22,10 @@ export const workflowTasks = mysqlTable(
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
     cancelledAt: timestamp("cancelled_at"),
+    slaStartedAt: timestamp("sla_started_at"),
+    slaReminderAt: timestamp("sla_reminder_at"),
+    slaDueAt: timestamp("sla_due_at"),
+    slaEscalationAt: timestamp("sla_escalation_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   },
@@ -29,5 +33,6 @@ export const workflowTasks = mysqlTable(
     uniqueIndex("workflow_tasks_execution_node_unique").on(table.executionId, table.nodeId),
     index("workflow_tasks_assignee_status_idx").on(table.assigneeUserId, table.status),
     index("workflow_tasks_execution_status_idx").on(table.executionId, table.status),
+    index("workflow_tasks_sla_due_idx").on(table.status, table.slaDueAt),
   ],
 );

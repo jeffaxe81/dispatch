@@ -10,6 +10,8 @@ import {
   resumeEventWorkflowInstanceInTransaction,
   startEventWorkflowInstanceInTransaction,
 } from "./workflowInstancePersistence";
+import { consumeWorkflowFormEvidencePersisted } from "./workflowFormPersistence";
+import { workflowFormRequirementSchema } from "./workflowFormRequirement";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 import { workflowPublicationPointers } from "./workflowPublicationSchema";
 import {
@@ -109,6 +111,64 @@ export function findWorkflowEventWaitTargetNodeId(
   const targetExists = nodes.some(node => node && node.id === target);
   if (!targetExists) {
     throw new Error("Nó wait.event aponta para destino inexistente.");
+  }
+  return target;
+}
+
+export function findWorkflowFormEventTargetNodeId(
+  definitionValue: unknown,
+  currentNodeId: string,
+  eventType: string,
+  payloadValue: unknown,
+): string | null {
+  if (
+    eventType !== "form.submission.submitted.v1"
+    && eventType !== "form.submission.corrected.v1"
+  ) return null;
+  if (!definitionValue || typeof definitionValue !== "object") return null;
+  if (!payloadValue || typeof payloadValue !== "object" || Array.isArray(payloadValue)) return null;
+
+  const definition = definitionValue as WorkflowEventDefinition;
+  const nodes = Array.isArray(definition.nodes) ? definition.nodes : [];
+  const edges = Array.isArray(definition.edges) ? definition.edges : [];
+  const currentNode = nodes.find(node =>
+    node && typeof node.id === "string" && node.id === currentNodeId
+  );
+  if (!currentNode || currentNode.type !== "form.d008") return null;
+
+  const configuration = currentNode.configuration && typeof currentNode.configuration === "object"
+    ? currentNode.configuration as Record<string, unknown>
+    : {};
+  const requirement = workflowFormRequirementSchema.safeParse(configuration);
+  if (!requirement.success) return null;
+
+  const payload = payloadValue as Record<string, unknown>;
+  const submissionId = payload.submissionId;
+  const formId = payload.formId;
+  const formVersionId = payload.formVersionId;
+  if (
+    !Number.isSafeInteger(submissionId)
+    || (submissionId as number) < 1
+    || !Number.isSafeInteger(formId)
+    || (formId as number) < 1
+    || !Number.isSafeInteger(formVersionId)
+    || (formVersionId as number) < 1
+  ) return null;
+  if (
+    formId !== requirement.data.formId
+    || formVersionId !== requirement.data.formVersionId
+  ) return null;
+
+  const outgoing = edges.filter(edge => edge && edge.source === currentNodeId);
+  if (outgoing.length !== 1) {
+    throw new Error("Nó form.d008 deve possuir exatamente uma saída; definição ambígua.");
+  }
+  const target = outgoing[0]?.target;
+  if (typeof target !== "string" || !target.trim()) {
+    throw new Error("Nó form.d008 possui saída inválida.");
+  }
+  if (!nodes.some(node => node && node.id === target)) {
+    throw new Error("Nó form.d008 aponta para destino inexistente.");
   }
   return target;
 }
@@ -323,8 +383,31 @@ export async function consumeWorkflowEventPersisted(
   input: WorkflowEventEnvelope,
   actorUserId: number,
 ): Promise<WorkflowEventTriggerResult> {
+  const isFormEvidenceEvent = input.producer === "d008-forms"
+    && (
+      input.eventType === "form.submission.submitted.v1"
+      || input.eventType === "form.submission.corrected.v1"
+    );
+
+  if (isFormEvidenceEvent) {
+    const formResult = await consumeWorkflowFormEvidencePersisted(input, actorUserId);
+    if (formResult.status === "processed") {
+      return {
+        status: "processed",
+        eventId: input.eventId,
+        executionIds: [formResult.executionId],
+      };
+    }
+    if (formResult.status === "duplicate") {
+      return {
+        status: "duplicate",
+        eventId: input.eventId,
+        executionIds: [],
+      };
+    }
+  }
+
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-
   return createWorkflowEventTriggerDatabasePersistence(db).consume(input, actorUserId);
 }
