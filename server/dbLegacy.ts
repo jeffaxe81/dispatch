@@ -48,6 +48,7 @@ import { parseOpenapiDocument } from "./openapi";
 import { storageGet, storagePut } from "./storage";
 import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
 import { workflowConditionSchema } from "./workflow/workflowConditionEvaluator";
+import { workflowFormRequirementSchema } from "./workflow/workflowFormRequirement";
 
 let cachedDb: ReturnType<typeof drizzle> | null = null;
 
@@ -1769,6 +1770,12 @@ export function getWorkflowNodeConfigurationErrors(node: WorkflowDefinition["nod
     if (!configurationText(configuration, "eventType")) errors.push("A entrada externa precisa informar o tipo de evento.");
     if (environment !== "homologacao") errors.push("A entrada externa só pode ser configurada para homologação nesta etapa.");
     return errors;
+  }
+  if (node.type === "form.d008") {
+    const parsedRequirement = workflowFormRequirementSchema.safeParse(configuration);
+    return parsedRequirement.success
+      ? []
+      : ["A etapa de formulário D-008 precisa conter referência e política válidas."];
   }
   if (node.type === "decision.condition") {
     const errors: string[] = [];

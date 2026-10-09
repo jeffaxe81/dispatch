@@ -1,0 +1,438 @@
+import { and, eq } from "drizzle-orm";
+import { auditLogs, workflowExecutions, workflowVersions } from "../../drizzle/schema";
+import type { WorkflowEventEnvelope } from "../../shared/workflowIntegration/v1";
+import { getDb } from "../dbLegacy";
+import {
+  claimWorkflowEventReceipt,
+  completeWorkflowEventReceipt,
+} from "./workflowEventReceiptStore";
+import {
+  readWorkflowFormEvidence,
+  workflowFormEvidenceFromEnvelope,
+  writeWorkflowFormEvidence,
+} from "./workflowFormEventEvidence";
+import { workflowFormRequirementSchema } from "./workflowFormRequirement";
+import { resumeFormWorkflowInstanceInTransaction } from "./workflowInstancePersistence";
+import { workflowInstanceExecutions } from "./workflowInstanceSchema";
+import {
+  resumeWaitingWorkflowInstanceState,
+  type WorkflowInstanceGraph,
+  type WorkflowInstanceState,
+} from "./workflowInstanceStateMachine";
+import { workflowExecutionTenantScopes } from "./workflowTenantScopeSchema";
+
+type WorkflowFormEvidenceCandidate = {
+  executionId: number;
+  nodeId: string;
+  outputData: unknown;
+  policy?: "optional" | "required_before_task_completion" | "required_before_transition";
+};
+
+type WorkflowFormEvidenceAdapter<TTransaction> = {
+  transaction<TResult>(callback: (transaction: TTransaction) => Promise<TResult>): Promise<TResult>;
+  findCandidates(
+    transaction: TTransaction,
+    input: {
+      organizationId: number;
+      correlationId: string;
+      formId: number;
+      formVersionId: number;
+      submissionId: number;
+    },
+  ): Promise<WorkflowFormEvidenceCandidate[]>;
+  persistEvidence(
+    transaction: TTransaction,
+    input: WorkflowFormEvidenceCandidate & {
+      evidence: ReturnType<typeof workflowFormEvidenceFromEnvelope>;
+      outputData: Record<string, unknown>;
+    },
+  ): Promise<void>;
+  auditEvidence(
+    transaction: TTransaction,
+    input: {
+      executionId: number;
+      nodeId: string;
+      actorUserId: number;
+      correlationId: string;
+      evidence: ReturnType<typeof workflowFormEvidenceFromEnvelope>;
+    },
+  ): Promise<void>;
+  afterPersist?(
+    transaction: TTransaction,
+    input: {
+      organizationId: number;
+      executionId: number;
+      nodeId: string;
+      policy?: "optional" | "required_before_task_completion" | "required_before_transition";
+      actorUserId: number;
+      correlationId: string;
+    },
+  ): Promise<void>;
+  claimReceipt?(
+    transaction: TTransaction,
+    envelope: WorkflowEventEnvelope,
+  ): Promise<
+    | { status: "claimed"; tenantId: string; eventId: string }
+    | { status: "duplicate"; tenantId: string; eventId: string }
+  >;
+  completeReceipt?(
+    transaction: TTransaction,
+    input: {
+      tenantId: string;
+      eventId: string;
+      status: "processed" | "ignored" | "failed";
+      workflowExecutionId?: number | null;
+      failureCode?: string | null;
+    },
+  ): Promise<void>;
+};
+
+export type WorkflowFormEvidenceConsumeResult =
+  | { status: "processed"; executionId: number; nodeId: string }
+  | { status: "duplicate"; executionId: number; nodeId: string }
+  | { status: "ignored" };
+
+function parseOrganizationId(tenantId: string): number {
+  if (!/^[1-9]\d*$/.test(tenantId)) {
+    throw new Error("tenantId D-008 inválido para correlação de formulário.");
+  }
+  const value = Number(tenantId);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error("tenantId D-008 fora do intervalo suportado.");
+  }
+  return value;
+}
+
+function assertActorUserId(actorUserId: number) {
+  if (!Number.isInteger(actorUserId) || actorUserId < 1) {
+    throw new Error("actorUserId inválido para evidência D-008.");
+  }
+}
+
+function sameEvidence(
+  left: ReturnType<typeof workflowFormEvidenceFromEnvelope>,
+  right: ReturnType<typeof workflowFormEvidenceFromEnvelope>,
+) {
+  return left.submissionId === right.submissionId
+    && left.formId === right.formId
+    && left.formVersionId === right.formVersionId
+    && left.status === right.status;
+}
+
+export function createWorkflowFormEvidencePersistence<TTransaction>(
+  adapter: WorkflowFormEvidenceAdapter<TTransaction>,
+) {
+  return {
+    async consume(
+      envelope: WorkflowEventEnvelope,
+      actorUserId: number,
+    ): Promise<WorkflowFormEvidenceConsumeResult> {
+      assertActorUserId(actorUserId);
+      const evidence = workflowFormEvidenceFromEnvelope(envelope);
+      const organizationId = parseOrganizationId(envelope.tenantId);
+
+      return adapter.transaction(async transaction => {
+        const candidates = await adapter.findCandidates(transaction, {
+          organizationId,
+          correlationId: envelope.correlationId,
+          formId: evidence.formId,
+          formVersionId: evidence.formVersionId,
+          submissionId: evidence.submissionId,
+        });
+
+        if (candidates.length === 0) return { status: "ignored" };
+        if (candidates.length > 1) {
+          throw new Error("Correlação ambígua: mais de uma instância aguarda a mesma evidência D-008.");
+        }
+
+        const candidate = candidates[0];
+        const claim = await adapter.claimReceipt?.(transaction, envelope);
+        if (claim?.status === "duplicate") {
+          return {
+            status: "duplicate",
+            executionId: candidate.executionId,
+            nodeId: candidate.nodeId,
+          };
+        }
+
+        const existing = readWorkflowFormEvidence(candidate.outputData, candidate.nodeId);
+        if (existing) {
+          if (existing.submissionId !== evidence.submissionId) {
+            throw new Error("A etapa de formulário já está vinculada a outra submissão.");
+          }
+          if (existing.status === "corrected" && evidence.status === "submitted") {
+            throw new Error("Evento submitted atrasado não pode rebaixar evidência corrected.");
+          }
+          if (sameEvidence(existing, evidence)) {
+            await adapter.completeReceipt?.(transaction, {
+              tenantId: envelope.tenantId,
+              eventId: envelope.eventId,
+              status: "processed",
+              workflowExecutionId: candidate.executionId,
+            });
+            return {
+              status: "duplicate",
+              executionId: candidate.executionId,
+              nodeId: candidate.nodeId,
+            };
+          }
+        }
+
+        const outputData = writeWorkflowFormEvidence(
+          candidate.outputData,
+          candidate.nodeId,
+          evidence,
+        );
+        await adapter.persistEvidence(transaction, {
+          ...candidate,
+          evidence,
+          outputData,
+        });
+        await adapter.auditEvidence(transaction, {
+          executionId: candidate.executionId,
+          nodeId: candidate.nodeId,
+          actorUserId,
+          correlationId: envelope.correlationId,
+          evidence,
+        });
+        await adapter.afterPersist?.(transaction, {
+          organizationId,
+          executionId: candidate.executionId,
+          nodeId: candidate.nodeId,
+          policy: candidate.policy,
+          actorUserId,
+          correlationId: envelope.correlationId,
+        });
+        await adapter.completeReceipt?.(transaction, {
+          tenantId: envelope.tenantId,
+          eventId: envelope.eventId,
+          status: "processed",
+          workflowExecutionId: candidate.executionId,
+        });
+
+        return {
+          status: "processed",
+          executionId: candidate.executionId,
+          nodeId: candidate.nodeId,
+        };
+      });
+    },
+  };
+}
+
+export function resolveWorkflowFormStepFromExecutionOutput(input: {
+  state: WorkflowInstanceState;
+  graph: WorkflowInstanceGraph;
+  outputData: unknown;
+  targetNodeId?: string;
+  actorUserId: number;
+  correlationId: string;
+  occurredAt: string;
+}) {
+  const currentNode = input.graph.nodes.find(node => node.id === input.state.currentNodeId);
+  if (!currentNode || currentNode.type !== "form.d008" || !currentNode.formRequirement) {
+    throw new Error("Instância não está posicionada em um nó form.d008 válido.");
+  }
+
+  const outgoing = input.graph.edges.filter(edge => edge.source === input.state.currentNodeId);
+  if (outgoing.length !== 1) {
+    throw new Error("Nó form.d008 deve possuir exatamente uma saída para retomada.");
+  }
+  const targetNodeId = input.targetNodeId ?? outgoing[0].target;
+  if (targetNodeId !== outgoing[0].target) {
+    throw new Error("Destino informado diverge da versão congelada do nó form.d008.");
+  }
+
+  return resumeWaitingWorkflowInstanceState({
+    state: input.state,
+    graph: input.graph,
+    targetNodeId,
+    formSubmissionEvidence: readWorkflowFormEvidence(input.outputData, input.state.currentNodeId),
+    actorUserId: input.actorUserId,
+    correlationId: input.correlationId,
+    occurredAt: input.occurredAt,
+  });
+}
+
+type WorkflowDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+type WorkflowFormTx = Parameters<Parameters<WorkflowDb["transaction"]>[0]>[0];
+
+function rawNodeConfiguration(raw: unknown): Record<string, unknown> {
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : {};
+}
+
+async function findCandidates(
+  tx: WorkflowFormTx,
+  input: {
+    organizationId: number;
+    correlationId: string;
+    formId: number;
+    formVersionId: number;
+    submissionId: number;
+  },
+): Promise<WorkflowFormEvidenceCandidate[]> {
+  const scopes = await tx
+    .select({ executionId: workflowExecutionTenantScopes.executionId })
+    .from(workflowExecutionTenantScopes)
+    .where(eq(workflowExecutionTenantScopes.organizationId, input.organizationId))
+    .limit(1000);
+
+  const candidates: WorkflowFormEvidenceCandidate[] = [];
+  for (const scope of scopes) {
+    const execution = (
+      await tx
+        .select()
+        .from(workflowExecutions)
+        .where(eq(workflowExecutions.id, scope.executionId))
+        .limit(1)
+        .for("update")
+    )[0];
+    if (!execution || execution.mode !== "simulacao" || !execution.workflowVersionId) continue;
+
+    const projection = (
+      await tx
+        .select({
+          currentNodeId: workflowInstanceExecutions.currentNodeId,
+          correlationId: workflowInstanceExecutions.correlationId,
+        })
+        .from(workflowInstanceExecutions)
+        .where(eq(workflowInstanceExecutions.id, execution.id))
+        .limit(1)
+    )[0];
+    if (!projection || projection.correlationId !== input.correlationId) continue;
+
+    const version = (
+      await tx
+        .select()
+        .from(workflowVersions)
+        .where(and(
+          eq(workflowVersions.id, execution.workflowVersionId),
+          eq(workflowVersions.workflowId, execution.workflowId),
+        ))
+        .limit(1)
+    )[0];
+    if (!version) continue;
+
+    const definition = rawNodeConfiguration(version.definition);
+    const nodes = Array.isArray(definition.nodes) ? definition.nodes : [];
+    const matchingFormNodes = nodes.flatMap(raw => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+      const node = raw as Record<string, unknown>;
+      if (node.type !== "form.d008" || typeof node.id !== "string" || !node.id.trim()) return [];
+      const requirement = workflowFormRequirementSchema.safeParse(
+        rawNodeConfiguration(node.configuration),
+      );
+      if (
+        !requirement.success
+        || requirement.data.formId !== input.formId
+        || requirement.data.formVersionId !== input.formVersionId
+      ) return [];
+      return [{
+        nodeId: node.id,
+        policy: requirement.data.policy,
+      }];
+    });
+
+    // Replay após avanço: a evidência já persistida identifica de forma segura
+    // a etapa original mesmo que o currentNodeId/status tenham mudado.
+    const replayMatches = matchingFormNodes.filter(node => {
+      const existing = readWorkflowFormEvidence(execution.outputData, node.nodeId);
+      return existing?.submissionId === input.submissionId
+        && existing.formId === input.formId
+        && existing.formVersionId === input.formVersionId;
+    });
+    if (replayMatches.length > 1) {
+      throw new Error("Mais de uma etapa contém a mesma evidência D-008; correlação ambígua.");
+    }
+    if (replayMatches.length === 1) {
+      candidates.push({
+        executionId: execution.id,
+        nodeId: replayMatches[0].nodeId,
+        outputData: execution.outputData,
+        policy: replayMatches[0].policy,
+      });
+      continue;
+    }
+
+    // Evento novo só pode satisfazer a etapa atualmente aguardando.
+    if (execution.status !== "pendente" || !projection.currentNodeId) continue;
+    const currentMatch = matchingFormNodes.find(node => node.nodeId === projection.currentNodeId);
+    if (!currentMatch) continue;
+
+    candidates.push({
+      executionId: execution.id,
+      nodeId: currentMatch.nodeId,
+      outputData: execution.outputData,
+      policy: currentMatch.policy,
+    });
+  }
+  return candidates;
+}
+
+async function persistEvidence(
+  tx: WorkflowFormTx,
+  input: WorkflowFormEvidenceCandidate & {
+    evidence: ReturnType<typeof workflowFormEvidenceFromEnvelope>;
+    outputData: Record<string, unknown>;
+  },
+) {
+  await tx
+    .update(workflowExecutions)
+    .set({ outputData: input.outputData })
+    .where(eq(workflowExecutions.id, input.executionId));
+}
+
+async function auditEvidence(
+  tx: WorkflowFormTx,
+  input: {
+    executionId: number;
+    nodeId: string;
+    actorUserId: number;
+    correlationId: string;
+    evidence: ReturnType<typeof workflowFormEvidenceFromEnvelope>;
+  },
+) {
+  await tx.insert(auditLogs).values({
+    resourceType: "workflow_instance",
+    resourceId: input.executionId,
+    action: "workflow_instance.form_evidence",
+    actorUserId: input.actorUserId,
+    beforeData: null,
+    afterData: {
+      nodeId: input.nodeId,
+      correlationId: input.correlationId,
+      formId: input.evidence.formId,
+      formVersionId: input.evidence.formVersionId,
+      submissionId: input.evidence.submissionId,
+      status: input.evidence.status,
+    },
+  });
+}
+
+export async function consumeWorkflowFormEvidencePersisted(
+  envelope: WorkflowEventEnvelope,
+  actorUserId: number,
+): Promise<WorkflowFormEvidenceConsumeResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+
+  return createWorkflowFormEvidencePersistence<WorkflowFormTx>({
+    transaction: callback => db.transaction(async tx => callback(tx)),
+    findCandidates,
+    persistEvidence,
+    auditEvidence,
+    claimReceipt: (tx, event) => claimWorkflowEventReceipt(tx, event),
+    completeReceipt: (tx, input) => completeWorkflowEventReceipt(tx, input),
+    afterPersist: async (tx, input) => {
+      if (input.policy !== "required_before_transition") return;
+      await resumeFormWorkflowInstanceInTransaction(tx, {
+        executionId: input.executionId,
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+      });
+    },
+  }).consume(envelope, actorUserId);
+}
