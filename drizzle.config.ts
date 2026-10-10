@@ -15,6 +15,7 @@ export default defineConfig({
     "./server/workflow/workflowTaskSchema.ts",
     "./server/workflow/workflowTenantScopeSchema.ts",
     "./server/workflow/workflowEventReceiptSchema.ts",
+    "./server/workflow/workflowSlaEventIntentSchema.ts",
   ],
   out: "./drizzle",
   dialect: "mysql",

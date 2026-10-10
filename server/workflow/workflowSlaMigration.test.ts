@@ -37,13 +37,17 @@ describe("D-012I I3-A — persistência temporal da tarefa", () => {
       entries: Array<{ idx: number; tag: string }>;
     };
 
-    expect(journal.entries.at(-2)).toMatchObject({
+    // A posição histórica deve permanecer estável mesmo com migrations posteriores.
+    expect(journal.entries[13]).toMatchObject({
       idx: 13,
       tag: "0013_d012f_workflow_event_receipts",
     });
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(journal.entries[14]).toMatchObject({
       idx: 14,
       tag: "0014_d012i_workflow_task_sla",
     });
+    expect(journal.entries.slice(0, 15).map(entry => entry.idx)).toEqual(
+      Array.from({ length: 15 }, (_, idx) => idx),
+    );
   });
 });
