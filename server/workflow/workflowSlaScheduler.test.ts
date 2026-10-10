@@ -62,4 +62,66 @@ describe("D-012I I4 — planejamento seguro de eventos SLA", () => {
     expect(events.every(event => event.eventType === "workflow.task.sla.reminder.v1")).toBe(true);
     expect(events.map(event => event.organizationId)).toEqual([9, 10]);
   });
+
+  it("falha fechado para datas UTC de calendário inválidas", () => {
+    expect(() => planWorkflowSlaEvents({
+      tasks: [baseTask],
+      now: "2026-02-30T11:30:00.000Z",
+      emittedEventKeys: new Set(),
+    })).toThrow(/now/);
+    expect(() => planWorkflowSlaEvents({
+      tasks: [{ ...baseTask, slaReminderAt: "2026-02-30T10:45:00.000Z" }],
+      now: "2026-09-28T11:30:00.000Z",
+      emittedEventKeys: new Set(),
+    })).toThrow(/sla reminder/);
+  });
+
+  it("rejeita timelines SLA parciais ou fora de ordem", () => {
+    for (const task of [
+      { ...baseTask, slaDueAt: null },
+      { ...baseTask, slaReminderAt: "2026-09-28T11:10:00.000Z" },
+      { ...baseTask, slaEscalationAt: "2026-09-28T10:50:00.000Z" },
+    ]) {
+      expect(() => planWorkflowSlaEvents({
+        tasks: [task],
+        now: "2026-09-28T11:30:00.000Z",
+        emittedEventKeys: new Set(),
+      })).toThrow(/Timeline SLA/);
+    }
+  });
+
+  it("falha fechado para tarefa repetida com tenant ou snapshot divergente", () => {
+    for (const conflicting of [
+      { ...baseTask, organizationId: 10 },
+      { ...baseTask, status: "completed" as const },
+      { ...baseTask, slaDueAt: "2026-09-28T11:15:00.000Z" },
+    ]) {
+      expect(() => planWorkflowSlaEvents({
+        tasks: [baseTask, conflicting],
+        now: "2026-09-28T11:30:00.000Z",
+        emittedEventKeys: new Set(),
+      })).toThrow(/duplicada/);
+    }
+  });
+
+  it("rejeita status e modo de escalonamento desconhecidos sem emitir intenção", () => {
+    for (const task of [
+      { ...baseTask, status: "paused" as typeof baseTask.status },
+      { ...baseTask, escalationMode: "execute_script" as typeof baseTask.escalationMode },
+    ]) {
+      expect(() => planWorkflowSlaEvents({
+        tasks: [task],
+        now: "2026-09-28T11:30:00.000Z",
+        emittedEventKeys: new Set(),
+      })).toThrow(/inválido/);
+    }
+  });
+
+  it("não agenda evento quando a tarefa não possui configuração SLA", () => {
+    expect(planWorkflowSlaEvents({
+      tasks: [{ ...baseTask, slaReminderAt: null, slaDueAt: null, slaEscalationAt: null }],
+      now: "2026-09-28T11:30:00.000Z",
+      emittedEventKeys: new Set(),
+    })).toEqual([]);
+  });
 });
