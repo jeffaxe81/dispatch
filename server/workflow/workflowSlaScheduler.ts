@@ -32,6 +32,10 @@ function utcInstant(value: string | null, field: string): number | null {
   }
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) throw new Error(`${field} inválido.`);
+  // Date.parse pode normalizar, por exemplo, 30/02 para março.
+  if (new Date(timestamp).toISOString().slice(0, 19) !== value.slice(0, 19)) {
+    throw new Error(`${field} contém data UTC inválida.`);
+  }
   return timestamp;
 }
 
@@ -39,7 +43,28 @@ function validateTask(task: WorkflowSlaOpenTask) {
   if (!Number.isInteger(task.taskId) || task.taskId < 1) throw new Error("taskId inválido.");
   if (!Number.isInteger(task.organizationId) || task.organizationId < 1) throw new Error("organizationId inválido.");
   if (!Number.isInteger(task.workflowVersionId) || task.workflowVersionId < 1) throw new Error("workflowVersionId inválido.");
-  if (!task.nodeId.trim() || !task.correlationId.trim()) throw new Error("Metadados da tarefa SLA inválidos.");
+  if (typeof task.nodeId !== "string" || !task.nodeId.trim()
+    || typeof task.correlationId !== "string" || !task.correlationId.trim()) {
+    throw new Error("Metadados da tarefa SLA inválidos.");
+  }
+  if (!["open", "in_progress", "completed", "cancelled"].includes(task.status)) {
+    throw new Error("Status da tarefa SLA inválido.");
+  }
+  if (!["notify_only", "reassign_task"].includes(task.escalationMode)) {
+    throw new Error("Modo de escalonamento SLA inválido.");
+  }
+
+  const values = [task.slaReminderAt, task.slaDueAt, task.slaEscalationAt];
+  if (values.every(value => value === null)) return;
+  if (values.some(value => value === null)) {
+    throw new Error("Timeline SLA parcial: as três datas devem estar presentes.");
+  }
+  const reminder = utcInstant(task.slaReminderAt, "sla reminder")!;
+  const due = utcInstant(task.slaDueAt, "sla due")!;
+  const escalation = utcInstant(task.slaEscalationAt, "sla escalation")!;
+  if (reminder > due || due > escalation) {
+    throw new Error("Timeline SLA inconsistente: reminder <= due <= escalation.");
+  }
 }
 
 export function planWorkflowSlaEvents(input: {
@@ -52,9 +77,30 @@ export function planWorkflowSlaEvents(input: {
   const occurredAt = new Date(now).toISOString();
   const planned: WorkflowSlaPlannedEvent[] = [];
   const claimedEventKeys = new Set(input.emittedEventKeys);
+  const seenTaskSnapshots = new Map<number, string>();
 
   for (const task of input.tasks) {
     validateTask(task);
+    // Uma mesma taskId nunca pode representar tenants ou estados diferentes.
+    const fingerprint = JSON.stringify({
+      organizationId: task.organizationId,
+      workflowVersionId: task.workflowVersionId,
+      nodeId: task.nodeId,
+      correlationId: task.correlationId,
+      status: task.status,
+      slaReminderAt: task.slaReminderAt,
+      slaDueAt: task.slaDueAt,
+      slaEscalationAt: task.slaEscalationAt,
+      escalationMode: task.escalationMode,
+    });
+    const previous = seenTaskSnapshots.get(task.taskId);
+    if (previous !== undefined) {
+      if (previous !== fingerprint) {
+        throw new Error("Tarefa SLA duplicada com metadados divergentes.");
+      }
+      continue;
+    }
+    seenTaskSnapshots.set(task.taskId, fingerprint);
     if (task.status === "completed" || task.status === "cancelled") continue;
 
     const candidates: Array<{
