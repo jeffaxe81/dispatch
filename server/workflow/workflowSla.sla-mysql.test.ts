@@ -56,6 +56,7 @@ type Input = {
   leaseToken: string;
   operatorApproved: boolean;
 };
+type QueryObserver = (sql: string, result: unknown) => void | Promise<void>;
 
 function mysqlErrorCode(error: unknown): string | undefined {
   const seen = new Set<object>();
@@ -66,6 +67,18 @@ function mysqlErrorCode(error: unknown): string | undefined {
     error = item.cause;
   }
   return undefined;
+}
+
+function errorMessages(error: unknown): string {
+  const messages: string[] = [];
+  const seen = new Set<object>();
+  while (error && typeof error === "object" && !seen.has(error)) {
+    seen.add(error);
+    const item = error as { message?: unknown; cause?: unknown };
+    if (typeof item.message === "string") messages.push(item.message);
+    error = item.cause;
+  }
+  return messages.join("\n");
 }
 
 async function expectMysqlRejection(promise: Promise<unknown>, code: string) {
@@ -85,17 +98,17 @@ async function connection() {
 }
 
 /** Every query reaches the REAL mysql2 connection. Hooks only observe/pause after real results. */
-function database(
-  client: Connection,
-  afterQuery?: (sql: string) => void | Promise<void>
-) {
+function database(client: Connection, afterQuery?: QueryObserver) {
   if (!afterQuery) return drizzle({ client });
   const observed = new Proxy(client, {
     get(target, property) {
       if (property === "query")
         return async (query: string | QueryOptions, values?: unknown[]) => {
           const result = await target.query(query as QueryOptions, values);
-          await afterQuery(typeof query === "string" ? query : query.sql);
+          await afterQuery(
+            typeof query === "string" ? query : query.sql,
+            result
+          );
           return result;
         };
       const value = Reflect.get(target, property, target);
@@ -130,6 +143,33 @@ async function deadline(promise: Promise<unknown>, stage: string) {
   }
 }
 
+async function observeTaskLockWait(threadId: number): Promise<number> {
+  const until = Date.now() + 5_000;
+  while (Date.now() < until) {
+    // SHOW FULL PROCESSLIST exposes this user's own connections without extra grants.
+    const [rows] = await control.query<RowDataPacket[]>(
+      "SHOW FULL PROCESSLIST"
+    );
+    const waiting = rows.find(
+      row =>
+        Number(row.Id) === threadId &&
+        row.Command === "Query" &&
+        String(row.Info ?? "")
+          .toLowerCase()
+          .includes("from `workflow_tasks`") &&
+        String(row.Info ?? "")
+          .toLowerCase()
+          .includes("for update") &&
+        Number(row.Time) >= 1
+    );
+    if (waiting) return Number(waiting.Time);
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw new Error(
+    "Contendor não observado no servidor esperando o lock de tarefa."
+  );
+}
+
 function barrier(parties: number) {
   const ready = deferred();
   const release = deferred();
@@ -162,7 +202,7 @@ async function insert(sql: string, values: (string | number | Date | null)[]) {
 
 async function seed(): Promise<Fixture> {
   const executionId = await insert(
-    "INSERT INTO workflow_executions (workflow_id, workflow_version_id, current_node_id, correlation_id, status) VALUES (?, ?, 'review', ?, 'em_execucao')",
+    "INSERT INTO workflow_executions (workflow_id, workflow_version_id, current_node_id, correlation_id, workflow_execution_status) VALUES (?, ?, 'review', ?, 'em_execucao')",
     [workflowId, workflowVersionId, randomUUID()]
   );
   const correlationId = `sla-execution-${executionId}`;
@@ -191,20 +231,13 @@ async function seed(): Promise<Fixture> {
   return { intentId, taskId, executionId, correlationId };
 }
 
-function coordinator(
-  client: Connection,
-  tap?: (sql: string) => void | Promise<void>
-) {
+function coordinator(client: Connection, tap?: QueryObserver) {
   return createWorkflowSlaDeliveryCoordinator(
     createWorkflowSlaMySqlDeliveryStorage(database(client, tap)),
     policy
   );
 }
-function service(
-  client: Connection,
-  tap?: (sql: string) => void | Promise<void>,
-  clock = () => now
-) {
+function service(client: Connection, tap?: QueryObserver, clock = () => now) {
   return createWorkflowSlaInternalNotificationService(
     createWorkflowSlaNotificationMySqlStore(database(client, tap)),
     clock
@@ -494,15 +527,18 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
       "SELECT id FROM workflow_tasks WHERE id = ? FOR UPDATE",
       [fixture.taskId]
     );
-    const gate = barrier(1);
+    await contender.query("SET SESSION innodb_lock_wait_timeout = 10");
+    const [ids] = await contender.query<RowDataPacket[]>(
+      "SELECT CONNECTION_ID() AS id"
+    );
     let clock = now;
-    const pending = service(contender, gate.tap(), () => clock).confirm(input);
+    const pending = service(contender, undefined, () => clock).confirm(input);
     const result = Promise.allSettled([pending]);
     try {
-      await deadline(gate.ready.promise, "descoberta anterior à espera");
+      const observedSeconds = await observeTaskLockWait(Number(ids[0].id));
+      expect(observedSeconds).toBeGreaterThanOrEqual(1);
       clock = "2026-10-18T18:01:00.000Z";
     } finally {
-      gate.release.resolve();
       await owner.commit();
     }
     const outcome = (await result)[0];
@@ -563,13 +599,24 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
     const fixture = await seed();
     const input = await claim(fixture);
     const client = await connection();
-    const tap = (sql: string) => {
+    let destroyedAfterSuccessfulCas = false;
+    const tap: QueryObserver = (sql, result) => {
       if (sql.startsWith("update `workflow_sla_event_intents`")) {
+        const [header] = result as [ResultSetHeader, unknown];
+        expect(header.affectedRows).toBe(1);
+        destroyedAfterSuccessfulCas = true;
         client.destroy();
-        throw new Error("Connection intentionally lost in disposable test");
       }
     };
-    await expect(service(client, tap).confirm(input)).rejects.toThrow();
+    const [outcome] = await Promise.allSettled([
+      service(client, tap).confirm(input),
+    ]);
+    expect(destroyedAfterSuccessfulCas).toBe(true);
+    expect(outcome.status).toBe("rejected");
+    if (outcome.status === "rejected")
+      expect(errorMessages(outcome.reason)).toMatch(
+        /connection.*closed state/i
+      );
     // A locking read waits for server-side rollback of the disconnected transaction.
     await control.execute(
       "SELECT id FROM workflow_sla_event_intents WHERE id = ? FOR UPDATE",

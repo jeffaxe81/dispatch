@@ -25,10 +25,10 @@ A execução fica no workflow `SLA MySQL homologation`, em uma instância MySQL 
 | Confirmação simultânea | Ambos abrem snapshot antes do primeiro commit; uma entrega interna e um replay, um recibo e uma auditoria |
 | Encerramento concorrente | Tarefa encerrada entre descoberta e lock vai para quarentena; nenhuma notificação |
 | Tenant/fencing | Organização incorreta, token e versão obsoletos não gravam |
-| Expiração | Instante avança durante espera controlada; lease vencida não confirma |
+| Expiração | Consulta bloqueante é observada no servidor por pelo menos um segundo antes de avançar o relógio; lease vencida não confirma |
 | Auditoria indisponível | CHECK descartável lança `ER_CHECK_CONSTRAINT_VIOLATED`; CAS e recibo sofrem rollback |
 | Flag desligada | Desligamento após SQL de auditoria reverte todas as escritas da transação |
-| Conexão perdida | Conexão destruída após CAS; leitura com lock confirma rollback no servidor |
+| Conexão perdida | Hook comprova CAS real com uma linha alterada e destrói a conexão; SQL seguinte falha por conexão fechada e leitura com lock confirma rollback |
 | Deadlock | Cancelador e notificador disputam locks em ordens opostas; erro `ER_LOCK_DEADLOCK`, sem estado parcial |
 | Integridade | Duplicação recebe `ER_DUP_ENTRY`; exclusão da tarefa referenciada recebe `ER_ROW_IS_REFERENCED_2` |
 | Datas e replay | Epoch-ms UTC preservado; nova correlação da execução mantém replay; recibo adulterado é recusado |
@@ -40,6 +40,10 @@ No ambiente dedicado configurado, executar `corepack pnpm test:sla-mysql`. Recri
 O workflow provisiona a instância e usa um usuário restrito ao schema do ensaio. As senhas presentes no YAML são valores públicos exclusivos da instância descartável, não segredos de implantação. O relatório JUnit é preservado como artifact `d012i-i5e-sla-mysql` por 14 dias. Não contém tokens de implantação; os tokens das fixtures são aleatórios e sem acesso externo.
 
 As suítes unitárias excluem arquivos `*.sla-mysql.test.ts`. O preparo global valida o opt-in antes de abrir conexões. A execução local sem as variáveis dedicadas deve bloquear, e esse bloqueio não é uma execução física bem-sucedida. O resultado físico deve ser consultado no check e no relatório do HEAD da PR.
+
+A espera é observada por `SHOW FULL PROCESSLIST` nas conexões do próprio usuário, sem novos grants de `PROCESS`/`SUPER`; veja a [documentação do MySQL 8.4](https://dev.mysql.com/doc/refman/8.4/en/show-processlist.html).
+
+O ensaio também protege o contrato entre schema e ORM: `workflow_tasks.status` deve apontar para a coluna `status` da migration 0011. O mapeamento anterior usava `workflow_task_status`, que não existe no schema versionado; a correção alinha o SQL gerado sem renomear ou migrar dados.
 
 ## Limites preservados
 
