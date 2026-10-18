@@ -35,6 +35,16 @@ export function hydrateWorkflowSlaIntent(row: IntentRow): WorkflowSlaDeliverySta
   if (!(row.scheduledAt instanceof Date) || !Number.isFinite(row.scheduledAt.getTime())) {
     throw new Error("Prazo original da intenção SLA inválido.");
   }
+  const expectedEventType = {
+    reminder: "workflow.task.sla.reminder.v1",
+    overdue: "workflow.task.sla.overdue.v1",
+    escalation: "workflow.task.escalation.requested.v1",
+  }[row.eventKind];
+  if (!expectedEventType || row.eventType !== expectedEventType
+    || !Number.isSafeInteger(row.workflowVersionId) || row.workflowVersionId < 1
+    || typeof row.nodeId !== "string" || !row.nodeId.trim()) {
+    throw new Error("Metadados congelados da intenção SLA inválidos.");
+  }
   const state: WorkflowSlaDeliveryState = {
     intentId: row.id,
     taskId: row.taskId,
