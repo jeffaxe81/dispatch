@@ -1,7 +1,7 @@
 import { index, int, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 import { users, workflowExecutions, workflowVersions } from "../../drizzle/schema";
 
-export const workflowTaskStatusEnum = mysqlEnum("workflow_task_status", [
+export const workflowTaskStatusEnum = mysqlEnum("status", [
   "open",
   "in_progress",
   "completed",

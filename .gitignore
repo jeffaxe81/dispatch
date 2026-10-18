@@ -54,6 +54,7 @@ recovery-report.private.json
 
 # Coverage directory used by tools like istanbul
 coverage/
+artifacts/sla-mysql/
 *.lcov
 
 # nyc test coverage

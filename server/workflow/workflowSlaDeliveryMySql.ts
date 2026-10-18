@@ -7,7 +7,8 @@ import {
   type WorkflowSlaDeliveryState,
 } from "./workflowSlaDeliveryState";
 
-type WorkflowDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+// Adapters use Drizzle operations, not the driver's Pool-specific $client.
+type WorkflowDb = Omit<NonNullable<Awaited<ReturnType<typeof getDb>>>, "$client">;
 type IntentRow = typeof workflowSlaEventIntents.$inferSelect;
 
 /** Convert UTC milliseconds into an ISO instant without relying on SQL session timezone. */

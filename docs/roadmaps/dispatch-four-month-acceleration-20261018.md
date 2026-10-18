@@ -104,3 +104,13 @@ O objetivo é concentrar a implementação verificável do primeiro mês neste c
 A I5D atual entrega **aceitação interna**, não envio externo. A tarefa é revalidada sob lock, e um recibo divergente bloqueia o replay. O runbook está em `docs/runbooks/d012i-i5d-internal-notifications.md`.
 
 O pacote do primeiro mês continua com gates abertos: scheduler operacional, tratamento administrativo da quarentena, autorização do ponto operacional e homologação real. O mês 2 (painel SLA/Kanban) segue no roteiro; não está declarado concluído pela antecipação de código deste ciclo.
+
+## I5E — homologação física de MySQL (continuidade de 18/10/2026)
+
+A continuidade da #126 acrescenta uma suíte dedicada ao gate de concorrência, com MySQL 8.4 descartável no CI. O ensaio usa o journal real, conexões físicas distintas e barreiras após consultas reais para reproduzir snapshots concorrentes, quarentena, rollback, perda de conexão, deadlock e restrições de integridade.
+
+- Execução: `corepack pnpm test:sla-mysql`, com configuração dedicada e opt-in explícito.
+- O preparo recusa banco não vazio, usuário root, endereço fora do loopback e qualquer fallback para `DATABASE_URL`.
+- Evidência exigida: checks `Qualidade` e `SLA MySQL homologation` aprovados no mesmo HEAD; resultado físico no relatório JUnit da PR.
+- Runbook: `docs/runbooks/d012i-i5e-mysql-homologation.md`.
+- A aprovação deste ensaio fecha o gate técnico correspondente em MySQL 8.4/UTC descartável; autorização operacional, infraestrutura do cliente, UI, scheduler e replay administrativo continuam com gates próprios.
