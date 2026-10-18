@@ -37,6 +37,8 @@ export function createWorkflowSlaManualCandidateMySql(
           eq(workflowSlaEventIntents.organizationId, organizationId),
           eq(workflowExecutionTenantScopes.organizationId, organizationId),
           inArray(workflowTasks.status, ["open", "in_progress"]),
+          eq(workflowTasks.workflowVersionId, workflowSlaEventIntents.workflowVersionId),
+          eq(workflowTasks.nodeId, workflowSlaEventIntents.nodeId),
           lte(workflowSlaEventIntents.scheduledAt, nowDate),
           or(
             and(
