@@ -53,12 +53,12 @@ describe("D-012I I5C — seleção MySQL de intents vencidas", () => {
     }
     expect(where.params.filter(param => param === 9)).toHaveLength(2);
     expect(where.params).toContain(Date.parse(now));
-    expect(where.sql).toContain("pending");
-    expect(where.sql).toContain("leased");
-    expect(where.sql).toContain("open");
-    expect(where.sql).toContain("in_progress");
-    expect(where.sql).not.toContain("delivered");
-    expect(where.sql).not.toContain("dead_letter");
+    expect(where.params).toContain("pending");
+    expect(where.params).toContain("leased");
+    expect(where.params).toContain("open");
+    expect(where.params).toContain("in_progress");
+    expect(where.params).not.toContain("delivered");
+    expect(where.params).not.toContain("dead_letter");
   });
 
   it("bloqueia tenant inválido, limite acima de 20 e datas UTC impossíveis", async () => {
