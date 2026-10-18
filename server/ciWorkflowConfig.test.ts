@@ -21,9 +21,9 @@ describe("workflow de qualidade do GitHub", () => {
     expect(workflow.name).toBe("Qualidade");
   });
 
-  it("valida propostas e alterações da main, além da execução manual", () => {
+  it("valida PRs da main e empilhadas D-012I, mantendo pushes na main e execução manual", () => {
     expect(workflow.on).toEqual({
-      pull_request: { branches: ["main"] },
+      pull_request: { branches: ["main", "feat/d012i-*"] },
       push: { branches: ["main"] },
       workflow_dispatch: {},
     });

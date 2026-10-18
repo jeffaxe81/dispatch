@@ -148,7 +148,7 @@ describe("D-012I I5B — CAS persistido no MySQL", () => {
     const journal = JSON.parse(rawJournal) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(journal.entries.find(entry => entry.idx === 16)).toMatchObject({
       idx: 16, tag: "0016_d012i_workflow_sla_delivery_cas",
     });
     for (const name of [
