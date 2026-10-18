@@ -18,14 +18,17 @@ import {
  */
 export async function runWorkflowSlaI5cHomologationBatch(input: {
   organizationId: number;
-  now: string;
   limit: number;
   workerId: string;
   mode: "preview" | "lease_probe";
   operatorApproved: boolean;
 }) {
+  // Do not trust operator-supplied wall-clock values when reserving real rows.
+  // The pure worker accepts an injected UTC instant for deterministic tests,
+  // but this MySQL entrypoint always uses the server clock.
+  const batch = { ...input, now: new Date().toISOString() };
   // Gate before opening a DB connection.
-  validateWorkflowSlaManualBatchInput(input);
+  validateWorkflowSlaManualBatchInput(batch);
 
   const db = await getDb();
   if (!db) throw new Error("Banco indisponível para homologação I5C.");
@@ -42,5 +45,5 @@ export async function runWorkflowSlaI5cHomologationBatch(input: {
   return createWorkflowSlaManualWorker({
     candidates: createWorkflowSlaManualCandidateMySql(db),
     coordinator,
-  }).run(input);
+  }).run(batch);
 }
