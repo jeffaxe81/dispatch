@@ -76,6 +76,9 @@ describe("D-012I I5B — CAS persistido no MySQL", () => {
     expect(() => hydrateWorkflowSlaIntent({
       ...row, scheduledAt: new Date("invalid"),
     } as typeof row)).toThrow(/Prazo original/);
+    expect(() => hydrateWorkflowSlaIntent({
+      ...row, eventType: "workflow.task.sla.reminder.v1",
+    } as typeof row)).toThrow(/Metadados congelados/);
   });
 
   it("consultas e UPDATE têm tenant explícito; CAS compara versão e metadados congelados", async () => {
