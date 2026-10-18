@@ -15,7 +15,7 @@
 ## Mês 1 — 18/10 a 17/11/2026: Workflow SLA operacional seguro
 
 1. **I5A** — máquina de estados pura e testes (branch/PR; sem infraestrutura).
-2. **I5B** — migração *aditiva* proposta (não executar), repositório de leases com `UPDATE ... WHERE version = ? AND organization_id = ?`, retorno de affected rows e transação. Impedir claims simultâneos e status incompatíveis.
+2. **I5B** — schema, migration 0016, adaptador Drizzle e testes em PR Draft (CI e migração real pendentes): repositório de leases com `UPDATE ... WHERE version = ? AND organization_id = ?`, retorno de affected rows e transação. Impedir claims simultâneos e status incompatíveis.
 3. **I5C** — worker desabilitado por padrão, execução manual em homologação isolada, checkpoint/retomada, DLQ e reprocessamento administrativo autorizado.
 4. **I5D** — adapters de notificação idempotentes, `eventKey` de deduplicação de ponta a ponta, trilhas e alertas. Nenhum escalonamento automático de tarefa sem validação da regra de negócio.
 5. **Gate:** 100% dos fluxos críticos de concorrência, tenant e idempotência em teste; evidência externa da integração antes do GO.
@@ -64,3 +64,15 @@ corepack pnpm build
 ```
 
 **Estado da execução nesta branch:** código e testes publicados para revisão. Os comandos acima **não foram executados neste ambiente**; o status CI deve ser consultado no SHA da PR.
+
+## I5B — Gate da migração e do CAS (18/10/2026)
+
+A migração `0016_d012i_workflow_sla_delivery_cas.sql` é **aditiva em colunas e índice**, mas altera o enum de status para admitir `leased` e `dead_letter`. Avaliar janela de DDL e bloqueio de metadados em cópia de homologação, dimensionar o tempo da alteração e documentar reversão de aplicação. **Não executar automaticamente nem em produção.**
+
+- Aplicação planejada somente após `0014` e `0015` no ambiente autorizado; verificar cópia de segurança e prontidão de rollback.
+- Após DDL de teste, validar registros `pending` pré-existentes com `delivery_version=0` e `delivery_attempts=0`.
+- Ensaiar duas tentativas de `claim` simultâneas em conexões físicas distintas, esperando exatamente uma atualização CAS; a segunda deve receber conflito de versão.
+- Executar negativa tenant A/B, metadados congelados, expiração de reserva, controle UTC em epoch-milliseconds, perdas de conexão e rollback de transação.
+- Não executar `claim` por agendamento, nem disponibilizar endpoint ou worker neste ciclo.
+- **Limite de confirmação:** o registro `delivered` só poderá ser usado no futuro com evidência de confirmação do adapter externo; o banco sozinho não confirma entrega ponta a ponta.
+- Migração revertida somente após avaliação de risco: nunca remover colunas com dados `leased`, `dead_letter` ou receipts. Reversão operacional preferida: desligar o futuro worker e restaurar o release anterior após verificação da compatibilidade do schema.
