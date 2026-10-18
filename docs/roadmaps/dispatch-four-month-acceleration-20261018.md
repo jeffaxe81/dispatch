@@ -88,3 +88,19 @@ A microentrega I5C inicia o fluxo de descoberta e reserva manual de SLA, **sem n
 - Registro de execução e critérios de validação: `docs/runbooks/d012i-i5c-manual-worker.md`.
 - **Gates ainda não comprovados:** CI nesta PR, MySQL real com duas conexões, migrações em homologação, autenticação operacional no futuro ponto de entrada e corrida de encerramento de tarefa entre listagem e claim.
 - Reprocessamento da DLQ e envio idempotente ficam para I5D e dependem de aprovação técnica específica.
+
+## Aceleração solicitada — um mês concentrado em um dia (18/10/2026)
+
+O objetivo é concentrar a implementação verificável do primeiro mês neste ciclo. A meta não transforma testes locais em homologação de campo nem altera os gates de integração e produção.
+
+| Bloco | Entrega concreta | Estado deste ciclo |
+| --- | --- | --- |
+| Base | Recuperar e validar I5A/I5B/I5C | 31 testes da base aprovados; erro de discriminação TypeScript herdado da I5A corrigido |
+| I5D | Aceitação interna com recibo, deduplicação, CAS, quarentena e auditoria atômicos | Implementada em branch sobre #125; DDL 0017 versionado, sem aplicação em base operacional |
+| Regressão | Validar o conjunto de SLA, TypeScript, segurança e build | Evidências locais registradas na PR desta entrega |
+| Revisão | Revisão independente e tratamento dos achados relevantes | Concluída; correção do cenário cancelamento/retomada comprovada com dois testes de regressão |
+| Homologação | Duas conexões MySQL, concorrência física, DDL e cenários operacionais | Pendente de ambiente descartável configurado |
+
+A I5D atual entrega **aceitação interna**, não envio externo. A tarefa é revalidada sob lock, e um recibo divergente bloqueia o replay. O runbook está em `docs/runbooks/d012i-i5d-internal-notifications.md`.
+
+O pacote do primeiro mês continua com gates abertos: scheduler operacional, tratamento administrativo da quarentena, autorização do ponto operacional e homologação real. O mês 2 (painel SLA/Kanban) segue no roteiro; não está declarado concluído pela antecipação de código deste ciclo.

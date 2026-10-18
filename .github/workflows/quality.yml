@@ -2,7 +2,7 @@ name: Qualidade
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "feat/d012i-*"]
   push:
     branches: [main]
   workflow_dispatch: {}

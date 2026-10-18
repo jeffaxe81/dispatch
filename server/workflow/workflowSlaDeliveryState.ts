@@ -47,7 +47,8 @@ type LeasePrincipal = Principal & {
 };
 export type WorkflowSlaDeliveryAction =
   | (Principal & { type: "claim"; workerId: string; leaseToken: string })
-  | (LeasePrincipal & { type: "renew" | "delivered" })
+  | (LeasePrincipal & { type: "renew" })
+  | (LeasePrincipal & { type: "delivered" })
   | (LeasePrincipal & { type: "failed"; failureCode: WorkflowSlaFailureCode });
 
 export type WorkflowSlaDeliveryOutcome =
