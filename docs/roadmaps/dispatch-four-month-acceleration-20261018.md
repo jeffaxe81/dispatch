@@ -16,7 +16,7 @@
 
 1. **I5A** — máquina de estados pura e testes (branch/PR; sem infraestrutura).
 2. **I5B** — schema, migration 0016, adaptador Drizzle e testes em PR Draft (CI e migração real pendentes): repositório de leases com `UPDATE ... WHERE version = ? AND organization_id = ?`, retorno de affected rows e transação. Impedir claims simultâneos e status incompatíveis.
-3. **I5C** — worker desabilitado por padrão, execução manual em homologação isolada, checkpoint/retomada, DLQ e reprocessamento administrativo autorizado.
+3. **I5C** — código inicial em PR Draft: consulta de fila por tenant/tarefa ativa, preview somente leitura, lease_probe limitado a 20 e desabilitado por padrão; checkpoint pela persistência de lease. Homologação MySQL real, replay administrativo de DLQ e worker automático permanecem pendentes.
 4. **I5D** — adapters de notificação idempotentes, `eventKey` de deduplicação de ponta a ponta, trilhas e alertas. Nenhum escalonamento automático de tarefa sem validação da regra de negócio.
 5. **Gate:** 100% dos fluxos críticos de concorrência, tenant e idempotência em teste; evidência externa da integração antes do GO.
 
@@ -76,3 +76,15 @@ A migração `0016_d012i_workflow_sla_delivery_cas.sql` é **aditiva em colunas 
 - Não executar `claim` por agendamento, nem disponibilizar endpoint ou worker neste ciclo.
 - **Limite de confirmação:** o registro `delivered` só poderá ser usado no futuro com evidência de confirmação do adapter externo; o banco sozinho não confirma entrega ponta a ponta.
 - Migração revertida somente após avaliação de risco: nunca remover colunas com dados `leased`, `dead_letter` ou receipts. Reversão operacional preferida: desligar o futuro worker e restaurar o release anterior após verificação da compatibilidade do schema.
+
+## I5C — Worker manual (18/10/2026)
+
+A microentrega I5C inicia o fluxo de descoberta e reserva manual de SLA, **sem notificações, confirmação de entrega ou atualização de Ocorrências**. A implementação não registra timer, cron, HTTP route ou CLI. Apenas chamadas internas explicitamente autorizadas em ambiente de homologação podem usar o adaptador.
+
+- Flags obrigatórias: `AXE_RUNTIME_ENV=homologation` e `AXE_SLA_I5C_ENABLED=true`. Padrão: desligado.
+- Modo `preview`: somente leitura da fila; filtra organização no ledger e no vínculo da execução, aceita tarefas `open/in_progress`, exige versão/nó congelados, verifica SLA vencido e política de tentativa.
+- Modo `lease_probe`: grava exclusivamente a reserva de lease via CAS, sem emitir evento ou marcar como entregue. Usar apenas dados descartáveis de homologação; a reserva expira e o contador de tentativas pode chegar a quarentena.
+- Limite por execução: 20 intents; horário UTC obtido do servidor no ponto de entrada MySQL; conflitos CAS de outras tentativas são contabilizados.
+- Registro de execução e critérios de validação: `docs/runbooks/d012i-i5c-manual-worker.md`.
+- **Gates ainda não comprovados:** CI nesta PR, MySQL real com duas conexões, migrações em homologação, autenticação operacional no futuro ponto de entrada e corrida de encerramento de tarefa entre listagem e claim.
+- Reprocessamento da DLQ e envio idempotente ficam para I5D e dependem de aprovação técnica específica.
