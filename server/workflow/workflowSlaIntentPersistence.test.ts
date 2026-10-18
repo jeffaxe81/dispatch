@@ -13,7 +13,7 @@ describe("D-012I I4 — contrato de persistência segura", () => {
     expect(schema).toContain('"workflow_sla_event_intents"');
     expect(schema).toContain("workflow_sla_intents_task_kind_unique");
     expect(schema).toContain("workflow_sla_intents_tenant_status_idx");
-    expect(schema).toContain('status: mysqlEnum("status", ["pending", "delivered"])');
+    expect(schema).toContain('status: mysqlEnum("status", ["pending", "leased", "delivered", "dead_letter"])');
     expect(migration).toContain("CREATE TABLE `workflow_sla_event_intents`");
     expect(migration).toMatch(/CREATE UNIQUE INDEX `workflow_sla_intents_task_kind_unique`/);
     expect(migration).toContain("FOREIGN KEY (`task_id`)");
