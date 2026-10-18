@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "server/test/slaMysqlEnvironment.ts",
+    "server/test/slaMysqlEnvironment.test.ts",
+    "server/workflow/workflowSla.sla-mysql.test.ts",
+    "vitest.sla-mysql.config.ts",
+    "vitest.sla-mysql.global-setup.ts"
+  ],
+  "exclude": ["node_modules", "dist", "build"],
+  "compilerOptions": { "incremental": false }
+}

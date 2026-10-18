@@ -19,7 +19,8 @@ import { workflowTasks } from "./workflowTaskSchema";
 import { workflowExecutionTenantScopes } from "./workflowTenantScopeSchema";
 import { workflowInstanceExecutions } from "./workflowInstanceSchema";
 
-type WorkflowDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+// Accept a Drizzle database backed by either a pool or an independent connection.
+type WorkflowDb = Omit<NonNullable<Awaited<ReturnType<typeof getDb>>>, "$client">;
 
 function isoFromMillis(value: number): string {
   if (!Number.isSafeInteger(value) || value < 0 || value > 253402300799999) {
