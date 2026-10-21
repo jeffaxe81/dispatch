@@ -149,7 +149,7 @@ describe("D-012I I5F — replay administrativo MySQL", () => {
 
   it("falha de auditoria reverte a reabertura", async () => {
     const f = fixture({ failAudit: true });
-    await expect(f.service.replay(input)).rejects.toThrow(/audit offline/);
+    await expect(f.service.replay(input)).rejects.toThrow(/audit_logs/i);
     expect(f.queries.at(-1)!.sql).toBe("rollback");
     expect(f.queries.some(q => q.sql === "commit")).toBe(false);
   });
