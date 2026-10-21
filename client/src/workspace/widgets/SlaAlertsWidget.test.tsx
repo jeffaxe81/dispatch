@@ -17,6 +17,7 @@ const base: SlaAlertRow = {
   timing: "due",
 };
 
+// J2 keeps filtering client-side over the already tenant-scoped J1 read model.
 describe("D-012J J2 SlaAlertsWidget", () => {
   it("classifica semáforo por quarentena, vencimento e proximidade", () => {
     expect(slaOperationalSeverity({ ...base, deliveryStatus: "dead_letter" })).toBe("quarantine");
