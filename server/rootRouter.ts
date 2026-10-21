@@ -12,6 +12,7 @@ import { createWorkShiftOperationsRouter } from "./workShiftOperationsRouter";
 import { workShiftOperationsRouterDependencies } from "./workShiftOperationsRuntime";
 import { workspaceRouterDependencies } from "./workspace/workspaceRuntime";
 import { createWorkflowSlaAdminReplayRouter } from "./workflow/workflowSlaAdminReplayRouter";
+import { createWorkflowSlaOperationalRouter } from "./workflow/workflowSlaOperationalRouter";
 
 const workShiftSchedulesRoot = router({ workShiftSchedules: createWorkShiftSchedulesRouter(workShiftSchedulesRouterDependencies) });
 const dispatchRoot = router({ dispatch: createDispatchRouter(dispatchRouterDependencies) });
@@ -20,6 +21,7 @@ const formsRoot = router({ forms: createFormsTrpcRouter(formsRuntimeContextFacto
 const workspaceRoot = router({ workspace: createWorkspaceRouter(workspaceRouterDependencies) });
 const assetInventoryRoot = router({ assetInventory: assetInventoryRouter });
 const workflowSlaAdminReplayRoot = router({ workflowSlaAdminReplay: createWorkflowSlaAdminReplayRouter() });
+const workflowSlaOperationalRoot = router({ workflowSlaOperational: createWorkflowSlaOperationalRouter() });
 
 export const rootRouter = mergeRouters(
   typedTenantAwareAppRouter,
@@ -30,5 +32,6 @@ export const rootRouter = mergeRouters(
   workspaceRoot,
   assetInventoryRoot,
   workflowSlaAdminReplayRoot,
+  workflowSlaOperationalRoot,
 );
 export type RootRouter = typeof rootRouter;
