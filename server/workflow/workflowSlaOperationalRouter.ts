@@ -5,7 +5,7 @@ import type { TrpcContext } from "../_core/context";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../dbLegacy";
 import { requireActiveTenant } from "../tenantOperational";
-import { createWorkflowSlaOperationalReadModel } from "./workflowSlaOperationalReadModel";
+import { createWorkflowSlaOperationalReadModel, type WorkflowSlaOperationalItem } from "./workflowSlaOperationalReadModel";
 import { createWorkflowSlaOperationalReadMySql } from "./workflowSlaOperationalReadMySql";
 
 type User = NonNullable<TrpcContext["user"]>;
@@ -13,7 +13,7 @@ type User = NonNullable<TrpcContext["user"]>;
 export type WorkflowSlaOperationalRouterDependencies = {
   assertPermission(user: User, permission: string): Promise<void>;
   requireActiveTenant(user: User, req: TrpcContext["req"]): Promise<number>;
-  list(input: { organizationId: number; limit: number; now: string }): Promise<unknown[]>;
+  list(input: { organizationId: number; limit: number; now: string }): Promise<WorkflowSlaOperationalItem[]>;
   now(): string;
 };
 
