@@ -16,6 +16,15 @@ export type SlaAlertRow = {
   timing: "future" | "due";
 };
 
+export type SlaOperationalSeverity = "normal" | "attention" | "critical" | "quarantine";
+
+export type SlaOperationalFilters = {
+  eventKinds?: SlaAlertRow["eventKind"][];
+  deliveryStatuses?: SlaAlertRow["deliveryStatus"][];
+  taskId?: number;
+  assigneeUserId?: number;
+};
+
 const eventLabels: Record<SlaAlertRow["eventKind"], string> = {
   reminder: "Lembrete",
   overdue: "Vencimento",
@@ -28,10 +37,38 @@ const deliveryLabels: Record<SlaAlertRow["deliveryStatus"], string> = {
   dead_letter: "Quarentena",
 };
 
+const severityLabels: Record<SlaOperationalSeverity, string> = {
+  normal: "normal",
+  attention: "atenção",
+  critical: "crítica",
+  quarantine: "quarentena",
+};
+
 function timingLabel(row: SlaAlertRow) {
   if (row.minutesFromNow > 0) return `em ${row.minutesFromNow} min`;
   if (row.minutesFromNow < 0) return `${Math.abs(row.minutesFromNow)} min vencido`;
   return "agora";
+}
+
+export function slaOperationalSeverity(row: SlaAlertRow): SlaOperationalSeverity {
+  if (row.deliveryStatus === "dead_letter") return "quarantine";
+  if (row.timing === "due" && (row.eventKind === "overdue" || row.eventKind === "escalation")) {
+    return "critical";
+  }
+  if (row.timing === "due" || row.eventKind === "reminder") return "attention";
+  if (row.minutesFromNow <= 15) return "attention";
+  return "normal";
+}
+
+export function filterSlaOperationalRows(
+  rows: SlaAlertRow[],
+  filters: SlaOperationalFilters,
+): SlaAlertRow[] {
+  return rows
+    .filter(row => !filters.eventKinds?.length || filters.eventKinds.includes(row.eventKind))
+    .filter(row => !filters.deliveryStatuses?.length || filters.deliveryStatuses.includes(row.deliveryStatus))
+    .filter(row => filters.taskId === undefined || row.taskId === filters.taskId)
+    .filter(row => filters.assigneeUserId === undefined || row.assigneeUserId === filters.assigneeUserId);
 }
 
 export function SlaAlertsWidgetView({ rows }: { rows: SlaAlertRow[] }) {
@@ -41,32 +78,46 @@ export function SlaAlertsWidgetView({ rows }: { rows: SlaAlertRow[] }) {
 
   return (
     <div className="space-y-2">
-      {rows.map(row => (
-        <article key={row.intentId} className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-xs font-semibold text-amber-800">
-                Tarefa #{row.taskId} · {eventLabels[row.eventKind]}
+      {rows.map(row => {
+        const severity = slaOperationalSeverity(row);
+        return (
+          <article
+            key={row.intentId}
+            aria-label={`Severidade ${severityLabels[severity]}`}
+            data-sla-severity={severity}
+            className="rounded-xl border border-amber-200 bg-amber-50/60 p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold text-amber-800">
+                  Tarefa #{row.taskId} · {eventLabels[row.eventKind]}
+                </div>
+                <div className="mt-1 text-sm font-semibold text-slate-950">
+                  {deliveryLabels[row.deliveryStatus]}
+                </div>
               </div>
-              <div className="mt-1 text-sm font-semibold text-slate-950">
-                {deliveryLabels[row.deliveryStatus]}
-              </div>
+              <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                {timingLabel(row)}
+              </span>
             </div>
-            <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
-              {timingLabel(row)}
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-slate-600">
-            {row.assigneeUserId ? `Responsável #${row.assigneeUserId}` : "Sem responsável"} · tentativas {row.attempts}
-          </p>
-        </article>
-      ))}
+            <p className="mt-2 text-xs text-slate-600">
+              {row.assigneeUserId ? `Responsável #${row.assigneeUserId}` : "Sem responsável"} · tentativas {row.attempts}
+            </p>
+          </article>
+        );
+      })}
     </div>
   );
 }
 
 export function SlaAlertsWidget({ widget }: { widget: WorkspaceWidgetInstance }) {
-  const settings = widget.settings as { limit?: number };
+  const settings = widget.settings as {
+    limit?: number;
+    eventKinds?: SlaAlertRow["eventKind"][];
+    deliveryStatuses?: SlaAlertRow["deliveryStatus"][];
+    taskId?: number;
+    assigneeUserId?: number;
+  };
   const requestedLimit = settings.limit ?? 50;
   const limit = Number.isInteger(requestedLimit) && requestedLimit >= 1 && requestedLimit <= 100
     ? requestedLimit
@@ -89,9 +140,16 @@ export function SlaAlertsWidget({ widget }: { widget: WorkspaceWidgetInstance })
     timing: row.timing,
   }));
 
+  const filteredRows = filterSlaOperationalRows(rows, {
+    eventKinds: settings.eventKinds,
+    deliveryStatuses: settings.deliveryStatuses,
+    taskId: settings.taskId,
+    assigneeUserId: settings.assigneeUserId,
+  });
+
   return (
     <WorkspaceWidgetFrame title="Alertas e SLA">
-      <SlaAlertsWidgetView rows={rows} />
+      <SlaAlertsWidgetView rows={filteredRows} />
     </WorkspaceWidgetFrame>
   );
 }
