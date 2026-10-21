@@ -52,12 +52,7 @@ describe("D-012J — MySQL SLA operational read store", () => {
     expect(sql).toContain("organization_id");
     expect(sql).toContain("workflow_version_id");
     expect(sql).toContain("node_id");
-    expect(sql).toContain("open");
-    expect(sql).toContain("in_progress");
-    expect(sql).toContain("pending");
-    expect(sql).toContain("leased");
-    expect(sql).toContain("dead_letter");
-    expect(f.queries[0].params.filter(value => value === 9)).toHaveLength(2);
+    expect(f.queries[0].params.filter(value => value === 9)).toHaveLength(2);\n    expect(f.queries[0].params).toEqual(expect.arrayContaining([\n      "open", "in_progress", "pending", "leased", "dead_letter",\n    ]));
   });
 
   it("rejeita parâmetros inválidos antes de consultar o banco", async () => {
