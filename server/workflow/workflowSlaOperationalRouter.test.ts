@@ -27,7 +27,20 @@ function deps() {
   return {
     assertPermission: vi.fn(async () => undefined),
     requireActiveTenant: vi.fn(async () => 9),
-    list: vi.fn(async () => [{ intentId: 11 }]),
+    list: vi.fn(async () => [{
+      intentId: 11,
+      taskId: 21,
+      organizationId: 9,
+      eventKind: "reminder" as const,
+      deliveryStatus: "pending" as const,
+      taskStatus: "open" as const,
+      assigneeUserId: 77,
+      scheduledAt: "2026-10-21T20:15:00.000Z",
+      correlationId: "corr-11",
+      attempts: 0,
+      minutesFromNow: 15,
+      timing: "future" as const,
+    }]),
     now: vi.fn(() => "2026-10-21T20:00:00.000Z"),
   };
 }
@@ -36,7 +49,7 @@ describe("D-012J — SLA operational router", () => {
   it("resolve permissão, tenant e relógio no servidor", async () => {
     const d = deps();
     const caller = createWorkflowSlaOperationalRouter(d).createCaller(context());
-    expect(await caller.list({ limit: 20 })).toEqual([{ intentId: 11 }]);
+    expect(await caller.list({ limit: 20 })).toEqual([expect.objectContaining({ intentId: 11, minutesFromNow: 15 })]);
 
     expect(d.assertPermission).toHaveBeenCalledWith(
       expect.objectContaining({ id: 77 }),
