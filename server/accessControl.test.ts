@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluatePermission, evaluateTeamScope, hasAdministratorAssignment, hasSuperAdministratorAssignment, requiresExplicitTeamSelection, resolveEffectivePermissions } from "./accessControl";
+import { evaluatePermission, evaluateTeamScope, hasAdministratorAssignment, hasAdministratorAssignmentForOrganization, hasSuperAdministratorAssignment, requiresExplicitTeamSelection, resolveEffectivePermissions } from "./accessControl";
 
 describe("decisão de permissões RBAC", () => {
   it("mantém a compatibilidade de administrador legado durante a transição", () => {
@@ -78,5 +78,18 @@ describe("decisão de permissões RBAC", () => {
   it("reconhece somente o perfil Administrador como aprovador de integração produtiva", () => {
     expect(hasAdministratorAssignment([{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }])).toBe(true);
     expect(hasAdministratorAssignment([{ roleCode: "supervisor", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }])).toBe(false);
+  });
+
+  it("limita aprovação dinâmica de integração ao tenant autorizado", () => {
+    const globalAdmin = [{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }] as const;
+    const tenantAdmin = [{ roleCode: "administrador", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: null, teamId: null }] as const;
+    const otherTenantAdmin = [{ roleCode: "administrador", defaultScope: "organizacao", organizationId: 11, organizationalUnitId: null, teamId: null }] as const;
+    const supervisor = [{ roleCode: "supervisor", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: null, teamId: null }] as const;
+
+    expect(hasAdministratorAssignmentForOrganization(globalAdmin as any, 10)).toBe(true);
+    expect(hasAdministratorAssignmentForOrganization(tenantAdmin as any, 10)).toBe(true);
+    expect(hasAdministratorAssignmentForOrganization(otherTenantAdmin as any, 10)).toBe(false);
+    expect(hasAdministratorAssignmentForOrganization(supervisor as any, 10)).toBe(false);
+    expect(hasAdministratorAssignmentForOrganization(tenantAdmin as any, 0)).toBe(false);
   });
 });
