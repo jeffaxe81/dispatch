@@ -71,7 +71,7 @@ beforeAll(async () => {
     "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE()",
   );
   assertEmptyIntegrationOutboxMysqlDatabase(info[0].db, Number(count[0].n));
-  expect(String(info[0].version)).toMatch(/^8\\.4\\./);
+  expect(String(info[0].version)).toMatch(/^8\.4\./);
   // Uses the REAL migration journal through 0018 on this disposable schema.
   await migrate(drizzle({ client: control }), { migrationsFolder: "drizzle" });
   const [tables] = await control.query<RowDataPacket[]>(
