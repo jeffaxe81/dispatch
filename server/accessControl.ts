@@ -32,6 +32,15 @@ export function hasAdministratorAssignment(assignments: AccessAssignment[]) {
   return assignments.some(assignment => assignment.roleCode === "administrador");
 }
 
+export function hasAdministratorAssignmentForOrganization(assignments: AccessAssignment[], organizationId: number) {
+  if (!Number.isInteger(organizationId) || organizationId <= 0) return false;
+  return assignments.some(assignment => {
+    if (assignment.roleCode !== "administrador") return false;
+    if (assignment.defaultScope === "global") return true;
+    return assignment.organizationId === organizationId;
+  });
+}
+
 export function evaluatePermission(input: { active: boolean; operationalRole: OperationalRole; hasDynamicAssignments: boolean; dynamicPermissions: Iterable<PermissionCode> }, permission: PermissionCode) {
   if (!input.active) return false;
   const dynamicPermissions = new Set(input.dynamicPermissions);
@@ -169,9 +178,17 @@ export async function assertSuperAdministrator(user: CurrentUser) {
   throw new TRPCError({ code: "FORBIDDEN", message: "Configurações gerais disponíveis somente para o perfil Super Administrador." });
 }
 
-export async function assertIntegrationApprovalAdministrator(user: CurrentUser) {
-  if (user.operationalRole === "administrador") return;
+export async function assertIntegrationApprovalAdministrator(user: CurrentUser, organizationId?: number) {
+  if (!user.active) throw new TRPCError({ code: "FORBIDDEN", message: "Usuário operacional inativo." });
   const snapshot = await getAccessSnapshot(user.id);
+
+  if (organizationId !== undefined) {
+    if (hasAdministratorAssignmentForOrganization(snapshot.assignments, organizationId)) return;
+    if (snapshot.assignments.length === 0 && user.operationalRole === "administrador") return;
+    throw new TRPCError({ code: "FORBIDDEN", message: "O Administrador não possui escopo para a organização da integração." });
+  }
+
+  if (user.operationalRole === "administrador") return;
   if (hasAdministratorAssignment(snapshot.assignments)) return;
   throw new TRPCError({ code: "FORBIDDEN", message: "A pré-aprovação de integrações produtivas é permitida somente ao perfil Administrador." });
 }
