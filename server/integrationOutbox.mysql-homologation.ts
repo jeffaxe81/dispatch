@@ -44,9 +44,9 @@ function recovery(client: Connection) {
 async function insertDelivery(organizationId: number, idempotencyKey: string = randomUUID()) {
   const [res] = await control.execute<ResultSetHeader>(
     `INSERT INTO integration_delivery_outbox
-      (`organization_id`, `system`, `contract_version`, `mode`, `operation`,
-       `message_id`, `idempotency_key`, `correlation_id`,
-       `max_attempts`, `failure_threshold`, `cooldown_seconds`, `payload_reference`)
+      (\`organization_id\`, \`system\`, \`contract_version\`, \`mode\`, \`operation\`,
+       \`message_id\`, \`idempotency_key\`, \`correlation_id\`,
+       \`max_attempts\`, \`failure_threshold\`, \`cooldown_seconds\`, \`payload_reference\`)
      VALUES (?, 'neo', 1, 'event', 'interaction.updated', ?, ?, ?, 5, 3, 30, ?)`,
     [organizationId, randomUUID(), idempotencyKey, randomUUID(), "vault:fixture"],
   );
@@ -113,8 +113,8 @@ describe("D-012J J18 — MySQL 8.4 físico da outbox", () => {
     });
     const [other] = await control.execute<ResultSetHeader>(
       `INSERT INTO integration_delivery_outbox
-        (`organization_id`, `system`, `mode`, `operation`, `message_id`,
-         `idempotency_key`, `correlation_id`, `max_attempts`, `failure_threshold`, `cooldown_seconds`)
+        (\`organization_id\`, \`system\`, \`mode\`, \`operation\`, \`message_id\`,
+         \`idempotency_key\`, \`correlation_id\`, \`max_attempts\`, \`failure_threshold\`, \`cooldown_seconds\`)
        VALUES (?, 'neo', 'event', 'interaction.updated', 'other', ?, ?, 5, 3, 30)`,
       [tenantB, key, randomUUID()],
     );
