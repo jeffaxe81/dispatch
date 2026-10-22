@@ -125,6 +125,7 @@ export function SlaAlertsWidget({ widget }: { widget: WorkspaceWidgetInstance })
     : 50;
   const query = trpc.workflowSlaOperational.list.useQuery({ limit });
   const diagnosticQuery = trpc.workflowSlaOperational.diagnostic.useQuery({});
+  const metricsQuery = trpc.workflowSlaOperational.metrics.useQuery({});
 
   if (query.isLoading) return <WorkspaceWidgetFrame title="Alertas e SLA" state="loading" />;
   if (query.error) return <WorkspaceWidgetFrame title="Alertas e SLA" state="error" error={query.error} />;
@@ -157,6 +158,9 @@ export function SlaAlertsWidget({ widget }: { widget: WorkspaceWidgetInstance })
         diagnostic={diagnosticQuery.data ?? null}
         diagnosticLoading={diagnosticQuery.isLoading}
         diagnosticError={Boolean(diagnosticQuery.error)}
+        metrics={metricsQuery.data ?? null}
+        metricsLoading={metricsQuery.isLoading}
+        metricsError={Boolean(metricsQuery.error)}
       />
       <SlaAlertsWidgetView rows={filteredRows} />
     </WorkspaceWidgetFrame>
