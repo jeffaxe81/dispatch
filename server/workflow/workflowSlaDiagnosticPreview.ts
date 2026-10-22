@@ -82,7 +82,13 @@ export async function evaluateSlaDiagnosticPreview(input: {
   }
   if (input.mode !== "manual_homologation") throw new Error("Modo SLA inválido.");
   const parameters = { organizationId: input.organizationId, now: input.now };
-  const metrics = await input.dependencies.metrics(parameters);
+  let metrics: WorkflowSlaOperationalMetrics;
+  try {
+    metrics = await input.dependencies.metrics(parameters);
+  } catch {
+    // Do not serialize driver messages, SQL, connection details or credentials.
+    throw new Error("Métricas SLA indisponíveis.");
+  }
   const [scheduler, adapter] = await Promise.all([
     safelyReadProbe(input.dependencies.schedulerProbe, parameters),
     safelyReadProbe(input.dependencies.adapterProbe, parameters),
