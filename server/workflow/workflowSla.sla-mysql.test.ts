@@ -24,6 +24,7 @@ import {
 import { createWorkflowSlaMySqlDeliveryStorage } from "./workflowSlaDeliveryMySql";
 import { createWorkflowSlaInternalNotificationService } from "./workflowSlaInternalNotification";
 import { createWorkflowSlaNotificationMySqlStore } from "./workflowSlaNotificationMySql";
+import { createWorkflowSlaOperationalMetricsMySql } from "./workflowSlaOperationalMetricsMySql";
 
 const now = "2026-10-18T18:00:00.000Z";
 const nowMs = Date.parse(now);
@@ -750,4 +751,25 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
       audits: 1,
     });
   });
+  it("J6B: agregação real sem LIMIT respeita organização e escopo de execução", async () => {
+    const metrics = createWorkflowSlaOperationalMetricsMySql(database(control));
+    const tenantBefore = await metrics.summarize({ organizationId: tenantA, now });
+    const otherBefore = await metrics.summarize({ organizationId: tenantB, now });
+    const fixture = await seed();
+    const afterSeed = await metrics.summarize({ organizationId: tenantA, now });
+    expect(afterSeed.pending).toBe(tenantBefore.pending + 1);
+    expect(afterSeed.overdue).toBe(tenantBefore.overdue + 1);
+    expect(afterSeed.generatedAt).toBe(now);
+    expect(await metrics.summarize({ organizationId: tenantB, now })).toEqual(otherBefore);
+
+    // Even if intent metadata is accidentally mislabeled, execution scope wins.
+    await control.execute(
+      "UPDATE workflow_sla_event_intents SET organization_id = ? WHERE id = ?",
+      [tenantB, fixture.intentId]
+    );
+    const afterMismatch = await metrics.summarize({ organizationId: tenantA, now });
+    expect(afterMismatch.pending).toBe(tenantBefore.pending);
+    expect(await metrics.summarize({ organizationId: tenantB, now })).toEqual(otherBefore);
+  });
+
 });
