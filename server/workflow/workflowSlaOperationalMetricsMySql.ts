@@ -5,7 +5,7 @@ import type { WorkflowSlaOperationalMetrics } from "./workflowSlaOperationalMetr
 import { workflowExecutionTenantScopes as scopes } from "./workflowTenantScopeSchema";
 import { workflowTasks as tasks } from "./workflowTaskSchema";
 
-type WorkflowDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+type WorkflowDb = Omit<NonNullable<Awaited<ReturnType<typeof getDb>>>, "$client">;
 type CountValue = string | number | null;
 
 function strictUtc(value: string): number {
