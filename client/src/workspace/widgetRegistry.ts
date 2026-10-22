@@ -85,7 +85,7 @@ export const workspaceWidgetRegistry: Record<WorkspaceWidgetType, WorkspaceWidge
   "sla-alerts": {
     type: "sla-alerts",
     title: "Alertas e SLA",
-    requiredPermissions: ["occurrences.view"],
+    requiredPermissions: ["workflow_tasks.view"],
     defaultSize: { w: 4, h: 4 },
     minSize: { w: 3, h: 3 },
     defaultSettings: { riskMinutes: 15 },
