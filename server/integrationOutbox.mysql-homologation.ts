@@ -41,7 +41,7 @@ function recovery(client: Connection) {
   return createExpiredIntegrationLeaseRecoveryStorage(drizzle({ client }));
 }
 
-async function insertDelivery(organizationId: number, idempotencyKey = randomUUID()) {
+async function insertDelivery(organizationId: number, idempotencyKey: string = randomUUID()) {
   const [res] = await control.execute<ResultSetHeader>(
     `INSERT INTO integration_delivery_outbox
       (organization_id, system, contract_version, mode, operation,
