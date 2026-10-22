@@ -41,6 +41,41 @@ describe("D-012J J6 — supervisão SLA sem inferência de saúde", () => {
     expect(screen.queryByText(/prontidão diagnóstica: pronta/i)).toBeNull();
   });
 
+  it("exibe totais globais do tenant separados da amostra de uma linha", () => {
+    render(<SlaSupervisionSummary
+      rows={[base]} limit={1}
+      diagnostic={{ status: "disabled" }}
+      metrics={{
+        pending: 125, leased: 2, deadLetter: 1, expiredLeases: 0,
+        waitingRetries: 0, overdue: 8, maxLagMinutes: 34,
+        generatedAt: "2026-10-22T19:00:00.000Z",
+      }}
+    />);
+    expect(screen.getByText(/recorte filtrado: 1 registro/i)).toBeTruthy();
+    expect(screen.getByText("125")).toBeTruthy();
+    expect(screen.getByText(/agregação completa das intenções/i)).toBeTruthy();
+    expect(screen.getByText(/prontidão não habilitada/i)).toBeTruthy();
+  });
+
+  it("não apresenta zeros enganosos quando o agregado falha ou retorna números inválidos", () => {
+    const { rerender } = render(
+      <SlaSupervisionSummary rows={[base]} limit={10} diagnostic={{ status: "disabled" }}
+        metrics={null} metricsError />,
+    );
+    expect(screen.getByText(/totais operacionais indisponíveis/i)).toBeTruthy();
+    rerender(<SlaSupervisionSummary rows={[base]} limit={10}
+      diagnostic={{ status: "disabled" }} metrics={null} metricsLoading />);
+    expect(screen.getByText(/calculando totais operacionais/i)).toBeTruthy();
+    rerender(<SlaSupervisionSummary rows={[base]} limit={10}
+      diagnostic={{ status: "disabled" }}
+      metrics={{
+        pending: -1, leased: 0, deadLetter: 0, expiredLeases: 0,
+        waitingRetries: 0, overdue: 0, maxLagMinutes: 0,
+        generatedAt: "2026-10-22T19:00:00.000Z",
+      }} />);
+    expect(screen.getByText(/totais operacionais indisponíveis/i)).toBeTruthy();
+  });
+
   it("mantém o widget restrito à permissão exigida pela API", () => {
     const allowed = new Set(["occurrences.view"]);
     expect(listAllowedWorkspaceWidgets(allowed).some(widget => widget.type === "sla-alerts")).toBe(false);
