@@ -42,14 +42,19 @@ describe("workspace widget registry", () => {
       "kanban",
       "incident-detail",
       "resources",
-      "sla-alerts",
       "operational-timeline",
       "configurable-dashboard",
     ]));
+    expect(widgets.some(widget => widget.type === "sla-alerts")).toBe(false);
     expect(widgets.some(widget => widget.type === "work-shift")).toBe(false);
     expect(widgets.some(widget => widget.type === "neo-communication")).toBe(false);
     expect(widgets.some(widget => widget.type === "authorized-iframe")).toBe(false);
     expect(widgets.some(widget => widget.type === "dynamic-form")).toBe(false);
+  });
+
+  it("requires workflow_tasks.view for the operational SLA widget", () => {
+    expect(listAllowedWorkspaceWidgets(new Set(["workflow_tasks.view"])).map(widget => widget.type)).toContain("sla-alerts");
+    expect(listAllowedWorkspaceWidgets(new Set(["occurrences.view"])).map(widget => widget.type)).not.toContain("sla-alerts");
   });
 
   it("requires embedded_apps.view for NEO and authorized iframe", () => {
