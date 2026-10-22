@@ -173,7 +173,7 @@ describe("D-012J J16 — outbox tenant-scoped com CAS/fencing", () => {
       nowEpochMs: NOW, workerId: "w", leaseToken: "opaque", leaseDurationMs: 1000,
     });
     expect(await store.compareAndSwap({
-      organizationId: 9, deliveryId: 44, expectedVersion: 0, current, next,
+      organizationId: 9, deliveryId: 44, expectedVersion: 0, nowEpochMs: NOW, current, next,
     })).toBe(false);
   });
 
@@ -184,13 +184,13 @@ describe("D-012J J16 — outbox tenant-scoped com CAS/fencing", () => {
       nowEpochMs: NOW, workerId: "w", leaseToken: "opaque", leaseDurationMs: 1000,
     });
     await expect(store.compareAndSwap({
-      organizationId: 10, deliveryId: 44, expectedVersion: 0, current, next,
+      organizationId: 10, deliveryId: 44, expectedVersion: 0, nowEpochMs: NOW, current, next,
     })).rejects.toThrow(/escopo/i);
     await expect(store.compareAndSwap({
-      organizationId: 9, deliveryId: 44, expectedVersion: 1, current, next,
+      organizationId: 9, deliveryId: 44, expectedVersion: 1, nowEpochMs: NOW, current, next,
     })).rejects.toThrow(/versão/i);
     await expect(store.compareAndSwap({
-      organizationId: 9, deliveryId: 44, expectedVersion: 0, current,
+      organizationId: 9, deliveryId: 44, expectedVersion: 0, nowEpochMs: NOW, current,
       next: { ...next, correlationId: "other-tenant" },
     })).rejects.toThrow(/imutáv/i);
     expect(patches).toHaveLength(0);
