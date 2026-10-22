@@ -8,6 +8,8 @@ import { requireActiveTenant } from "../tenantOperational";
 import { createWorkflowSlaOperationalReadModel, type WorkflowSlaOperationalItem } from "./workflowSlaOperationalReadModel";
 import { createWorkflowSlaOperationalReadMySql } from "./workflowSlaOperationalReadMySql";
 import { evaluateWorkflowSlaReadiness } from "./workflowSlaReadiness";
+import { createWorkflowSlaOperationalMetricsMySql } from "./workflowSlaOperationalMetricsMySql";
+import type { WorkflowSlaOperationalMetrics } from "./workflowSlaOperationalMetrics";
 
 type User = NonNullable<TrpcContext["user"]>;
 
@@ -16,6 +18,7 @@ export type WorkflowSlaOperationalRouterDependencies = {
   requireActiveTenant(user: User, req: TrpcContext["req"]): Promise<number>;
   list(input: { organizationId: number; limit: number; now: string }): Promise<WorkflowSlaOperationalItem[]>;
   now(): string;
+  metrics?(input: { organizationId: number; now: string }): Promise<WorkflowSlaOperationalMetrics>;
 };
 
 export const workflowSlaOperationalRouterDependencies: WorkflowSlaOperationalRouterDependencies = {
@@ -29,6 +32,11 @@ export const workflowSlaOperationalRouterDependencies: WorkflowSlaOperationalRou
     ).list(input);
   },
   now: () => new Date().toISOString(),
+  async metrics(input) {
+    const db = await getDb();
+    if (!db) throw new Error("Banco indisponível para métricas SLA.");
+    return createWorkflowSlaOperationalMetricsMySql(db).summarize(input);
+  },
 };
 
 export function createWorkflowSlaOperationalRouter(
@@ -48,6 +56,17 @@ export function createWorkflowSlaOperationalRouter(
           limit: input.limit,
           now: deps.now(),
         });
+      }),
+    metrics: protectedProcedure
+      .input(z.object({}).strict())
+      .query(async ({ ctx }) => {
+        if (!ctx.user?.active) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Usuário operacional inativo." });
+        }
+        await deps.assertPermission(ctx.user, "workflow_tasks.view");
+        const organizationId = await deps.requireActiveTenant(ctx.user, ctx.req);
+        if (!deps.metrics) throw new Error("Agregador SLA indisponível.");
+        return deps.metrics({ organizationId, now: deps.now() });
       }),
     diagnostic: protectedProcedure
       .input(z.object({}).strict())

@@ -6,6 +6,16 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     workflowSlaOperational: {
+      metrics: {
+        useQuery: vi.fn(() => ({
+          isLoading: false, error: null,
+          data: {
+            pending: 125, leased: 2, deadLetter: 1, expiredLeases: 0,
+            waitingRetries: 0, overdue: 8, maxLagMinutes: 34,
+            generatedAt: "2026-10-22T19:00:00.000Z",
+          },
+        })),
+      },
       diagnostic: {
         useQuery: vi.fn(() => ({
           isLoading: false,
@@ -54,5 +64,7 @@ describe("D-012J SlaAlertsWidget runtime", () => {
     expect(screen.getByText(/em 15 min/i)).toBeTruthy();
     expect(screen.getByText(/prontidão não habilitada/i)).toBeTruthy();
     expect(screen.getByText(/recorte filtrado/i)).toBeTruthy();
+    expect(screen.getByText(/totais operacionais por empresa/i)).toBeTruthy();
+    expect(screen.getByText("125")).toBeTruthy();
   });
 });
