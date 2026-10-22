@@ -26,7 +26,7 @@ export const SLA_DIAGNOSTIC_PREVIEW_POLICY: WorkflowSlaReadinessPolicy = Object.
 
 /** Homologation preview: never enabled in production or by client input. */
 export function slaDiagnosticPreviewMode(
-  env: Pick<NodeJS.ProcessEnv, "NODE_ENV" | "AXE_RUNTIME_ENV" | "AXE_SLA_READINESS_PREVIEW_ENABLED">,
+  env: Record<string, string | undefined>,
 ): "disabled" | "manual_homologation" {
   return env.NODE_ENV !== "production" &&
     env.AXE_RUNTIME_ENV === "homologation" &&
