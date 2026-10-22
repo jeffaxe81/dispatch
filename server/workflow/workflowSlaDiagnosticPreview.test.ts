@@ -112,7 +112,7 @@ describe("D-012J J6C — passive SLA diagnostic preview", () => {
     d.metrics = vi.fn(async () => { throw new Error("MySQL indisponível"); });
     await expect(evaluateSlaDiagnosticPreview({
       organizationId: 9, now, mode: "manual_homologation", dependencies: d,
-    })).rejects.toThrow(/MySQL indisponível/i);
+    })).rejects.toThrow(/métricas SLA indisponíveis/i);
     d.metrics = vi.fn(async () => ({ ...metrics, pending: -1 }));
     await expect(evaluateSlaDiagnosticPreview({
       organizationId: 9, now, mode: "manual_homologation", dependencies: d,
