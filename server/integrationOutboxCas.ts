@@ -392,3 +392,6 @@ export function createIntegrationOutboxMySqlStorage(db: IntegrationDb) {
     },
   };
 }
+
+// Read-only invariant validation reused by fenced administrative recovery.
+export { validateIntegrationOutboxSnapshot as assertIntegrationOutboxSnapshot };
