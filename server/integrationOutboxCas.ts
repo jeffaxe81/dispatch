@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
 import { integrationDeliveryOutbox } from "../drizzle/integrationDeliverySchema";
 import { assertIntegrationContractCompatibility, type IntegrationMode, type IntegrationSystem } from "../shared/integrationContracts";
 import type { getDb } from "./dbLegacy";
@@ -320,12 +320,14 @@ export function createIntegrationOutboxMySqlStorage(db: IntegrationDb) {
       organizationId: number;
       deliveryId: number;
       expectedVersion: number;
+      nowEpochMs: number;
       current: IntegrationOutboxSnapshot;
       next: IntegrationOutboxSnapshot;
     }): Promise<boolean> {
       assertInteger(input.organizationId, "Organização");
       assertInteger(input.deliveryId, "ID da entrega");
       assertInteger(input.expectedVersion, "Versão", 0);
+      assertEpoch(input.nowEpochMs, "relógio CAS");
       if (input.current.organizationId !== input.organizationId
         || input.next.organizationId !== input.organizationId
         || input.current.deliveryId !== input.deliveryId
@@ -335,6 +337,27 @@ export function createIntegrationOutboxMySqlStorage(db: IntegrationDb) {
       assertAllowedCasTransition(input.current, input.next, input.expectedVersion);
       const current = input.current;
       const next = input.next;
+      // Defense in depth: the storage layer independently checks readiness and
+      // lease expiry, even when a caller bypasses the pure transition builders.
+      if (current.status === "pending") {
+        if (current.nextAttemptAtMs !== null && current.nextAttemptAtMs > input.nowEpochMs) {
+          throw new Error("Claim ainda não elegível para execução.");
+        }
+        if (next.leaseExpiresAtMs === null || next.leaseExpiresAtMs <= input.nowEpochMs) {
+          throw new Error("Lease de claim precisa expirar após o relógio do servidor.");
+        }
+      } else if (current.leaseExpiresAtMs === null || current.leaseExpiresAtMs <= input.nowEpochMs) {
+        throw new Error("Lease expirado não pode confirmar transição CAS.");
+      }
+      const eligibilityCondition = current.status === "pending"
+        ? or(
+          isNull(integrationDeliveryOutbox.nextAttemptAtMs),
+          lte(integrationDeliveryOutbox.nextAttemptAtMs, input.nowEpochMs),
+        )
+        : and(
+          eq(integrationDeliveryOutbox.leaseExpiresAtMs, current.leaseExpiresAtMs!),
+          gt(integrationDeliveryOutbox.leaseExpiresAtMs, input.nowEpochMs),
+        );
       const leaseCondition = current.leaseToken === null
         ? isNull(integrationDeliveryOutbox.leaseToken)
         : eq(integrationDeliveryOutbox.leaseToken, current.leaseToken);
@@ -355,6 +378,7 @@ export function createIntegrationOutboxMySqlStorage(db: IntegrationDb) {
         eq(integrationDeliveryOutbox.deliveryVersion, input.expectedVersion),
         eq(integrationDeliveryOutbox.status, current.status),
         leaseCondition,
+        eligibilityCondition,
         eq(integrationDeliveryOutbox.system, current.system),
         eq(integrationDeliveryOutbox.contractVersion, current.contractVersion),
         eq(integrationDeliveryOutbox.idempotencyKey, current.idempotencyKey),
