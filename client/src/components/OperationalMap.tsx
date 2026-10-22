@@ -41,10 +41,12 @@ const priorityColor: Record<MapIncident["priority"], string> = {
   critica: "#c52d45",
 };
 
-export function resolveOperationalMapMode(fallbackMode: OperationalMapSettings["fallbackMode"], googleUnavailable: boolean) {
+export function resolveOperationalMapMode(fallbackMode: OperationalMapSettings["fallbackMode"], googleUnavailable: boolean, openStreetMapUnavailable = false) {
+  const useOpenStreetMap = fallbackMode === "openstreetmap" || fallbackMode === "automatic";
   return {
-    useOpenStreetMap: fallbackMode === "openstreetmap" || fallbackMode === "automatic",
+    useOpenStreetMap,
     showGoogleOnlyUnavailable: fallbackMode === "google_only" && googleUnavailable,
+    degraded: (useOpenStreetMap && openStreetMapUnavailable) || (fallbackMode === "google_only" && googleUnavailable),
   };
 }
 
@@ -60,6 +62,7 @@ function markerElement(label: string, color: string, symbol: string) {
 export function OperationalMap({ incidents, teams, settings, route }: { incidents: MapIncident[]; teams: MapTeam[]; settings?: OperationalMapSettings; route?: GeoJsonLineString | null }) {
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [mapUnavailable, setMapUnavailable] = useState(false);
+  const [openStreetMapUnavailable, setOpenStreetMapUnavailable] = useState(false);
   const [mapAttempt, setMapAttempt] = useState(0);
   const markerRefs = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
 
@@ -105,7 +108,7 @@ export function OperationalMap({ incidents, teams, settings, route }: { incident
   }, [incidents, map, teams]);
 
   const fallbackMode = settings?.fallbackMode ?? "automatic";
-  const { useOpenStreetMap, showGoogleOnlyUnavailable: googleOnlyUnavailable } = resolveOperationalMapMode(fallbackMode, mapUnavailable);
+  const { useOpenStreetMap, showGoogleOnlyUnavailable: googleOnlyUnavailable, degraded } = resolveOperationalMapMode(fallbackMode, mapUnavailable, openStreetMapUnavailable);
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
@@ -122,7 +125,8 @@ export function OperationalMap({ incidents, teams, settings, route }: { incident
         }}
         onMapError={() => { setMap(null); setMapUnavailable(true); }}
       />}
-      {useOpenStreetMap && <Suspense fallback={<div role="status" className="flex h-[430px] w-full items-center justify-center bg-slate-100 text-sm text-slate-500">Carregando mapa OpenStreetMap...</div>}><LeafletOperationalMap center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} incidents={incidents} teams={teams.map(team => ({ id: team.id, latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name, status: team.status }))} route={route} /></Suspense>}
+      {useOpenStreetMap && <Suspense fallback={<div role="status" className="flex h-[430px] w-full items-center justify-center bg-slate-100 text-sm text-slate-500">Carregando mapa OpenStreetMap...</div>}><LeafletOperationalMap center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} incidents={incidents} teams={teams.map(team => ({ id: team.id, latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name, status: team.status }))} route={route} onTileError={() => setOpenStreetMapUnavailable(true)} /></Suspense>}
+      {degraded && <div role="alert" className="absolute left-4 top-16 max-w-sm rounded-lg border border-amber-300/90 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur"><p className="font-semibold">GIS degradado</p><p className="mt-0.5 leading-4">O mapa base externo apresentou falha. Ocorrências, equipes e demais funções operacionais continuam disponíveis; valide rotas externas antes de usá-las para decisão.</p></div>}
       {googleOnlyUnavailable && <div role="status" className="absolute right-4 top-4 max-w-xs rounded-lg border border-amber-200/90 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur"><p className="font-semibold">Google Maps indisponível</p><p className="mt-0.5 leading-4">Modo somente Google ativo. Altere a contingência nas Configurações.</p></div>}
       <div className="pointer-events-none absolute left-4 top-4 rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm backdrop-blur">
         <p className="font-semibold text-slate-900">Mapa operacional</p>

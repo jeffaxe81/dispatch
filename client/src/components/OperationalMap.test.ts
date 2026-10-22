@@ -20,4 +20,10 @@ describe("modo de mapa operacional", () => {
     expect(result.useOpenStreetMap).toBe(false);
     expect(result.showGoogleOnlyUnavailable).toBe(true);
   });
+  it("marca GIS degradado quando o provider OSM sinaliza falha de tiles", () => {
+    const result = resolveOperationalMapMode("automatic", false, true);
+    expect(result.useOpenStreetMap).toBe(true);
+    expect(result.degraded).toBe(true);
+  });
+
 });
