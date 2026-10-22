@@ -127,6 +127,13 @@
       "when": 1792346400000,
       "tag": "0017_d012i_workflow_sla_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1792700000000,
+      "tag": "0018_d012j_sla_component_heartbeats",
+      "breakpoints": true
     }
   ]
 }

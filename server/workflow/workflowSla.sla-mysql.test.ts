@@ -25,6 +25,8 @@ import { createWorkflowSlaMySqlDeliveryStorage } from "./workflowSlaDeliveryMySq
 import { createWorkflowSlaInternalNotificationService } from "./workflowSlaInternalNotification";
 import { createWorkflowSlaNotificationMySqlStore } from "./workflowSlaNotificationMySql";
 import { createWorkflowSlaOperationalMetricsMySql } from "./workflowSlaOperationalMetricsMySql";
+import { createSlaHeartbeatMySqlStore } from "./workflowSlaHeartbeatMySql";
+import { createSlaHeartbeatService, signSlaHeartbeat } from "./workflowSlaSignedHeartbeat";
 
 const now = "2026-10-18T18:00:00.000Z";
 const nowMs = Date.parse(now);
@@ -770,6 +772,60 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
     const afterMismatch = await metrics.summarize({ organizationId: tenantA, now });
     expect(afterMismatch.pending).toBe(tenantBefore.pending);
     expect(await metrics.summarize({ organizationId: tenantB, now })).toEqual(otherBefore);
+  });
+
+  it("J6D: heartbeat físico com HMAC, tenant e CAS entre duas conexões", async () => {
+    const key = "private-key-".repeat(4);
+    const sourceId = "scheduler-sla-homologation";
+    const signer = async ({ organizationId, component }: {
+      organizationId: number; component: "scheduler" | "adapter";
+    }) => organizationId === tenantA && component === "scheduler"
+      ? { sourceId, secret: key } : null;
+    const environment = {
+      NODE_ENV: "test", AXE_RUNTIME_ENV: "homologation",
+      AXE_SLA_HEARTBEAT_INGEST_ENABLED: "true",
+    };
+    const make = (db: Connection) => createSlaHeartbeatService({
+      store: createSlaHeartbeatMySqlStore(database(db)), resolveSigner: signer,
+      environment,
+    });
+    const primary = make(control);
+    const baseline = signSlaHeartbeat({
+      version: "v1", organizationId: tenantA, component: "scheduler",
+      sourceId, sequence: 1, state: "healthy", sentAt: now,
+    }, key);
+    await primary.ingest(baseline, now);
+    await expect(primary.ingest(baseline, now)).rejects.toThrow(/rejeitado/i);
+    expect(await primary.probe({ organizationId: tenantA, component: "scheduler", now }))
+      .toEqual({ organizationId: tenantA, state: "healthy", checkedAt: now });
+    expect(await primary.probe({ organizationId: tenantB, component: "scheduler", now }))
+      .toEqual({ organizationId: tenantB, state: "unknown", checkedAt: null });
+    expect(await primary.probe({ organizationId: tenantA, component: "adapter", now }))
+      .toEqual({ organizationId: tenantA, state: "unknown", checkedAt: null });
+
+    const next = new Date(nowMs + 10_000).toISOString();
+    const duplicate = signSlaHeartbeat({
+      ...baseline, sequence: 2, state: "degraded", sentAt: next,
+    }, key);
+    const one = make(await connection());
+    const two = make(await connection());
+    const results = await Promise.allSettled([
+      one.ingest(duplicate, next),
+      two.ingest(duplicate, next),
+    ]);
+    expect(results.filter(item => item.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(item => item.status === "rejected")).toHaveLength(1);
+    expect(await primary.probe({ organizationId: tenantA, component: "scheduler", now: next }))
+      .toEqual({ organizationId: tenantA, state: "degraded", checkedAt: next });
+    expect(await primary.probe({
+      organizationId: tenantA, component: "scheduler",
+      now: new Date(nowMs + 70_001).toISOString(),
+    })).toEqual({ organizationId: tenantA, state: "unknown", checkedAt: null });
+
+    // Signed source metadata must not leak cross-tenant even with a forged HMAC.
+    await expect(primary.ingest(signSlaHeartbeat({
+      ...baseline, organizationId: tenantB,
+    }, key), now)).rejects.toThrow(/rejeitado/i);
   });
 
 });
