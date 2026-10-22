@@ -64,6 +64,6 @@ describe("D-012J J6C — tRPC diagnostic preview", () => {
     const d = deps();
     const { metrics: _metrics, ...noMetrics } = d;
     await expect(createWorkflowSlaOperationalRouter(noMetrics).createCaller(context()).diagnostic({}))
-      .rejects.toThrow(/indisponível/i);
+      .rejects.toThrow(/métricas SLA indisponíveis/i);
   });
 });
