@@ -2,6 +2,7 @@ import React from "react";
 import { trpc } from "@/lib/trpc";
 import type { WorkspaceWidgetInstance } from "@shared/workspaceLayout";
 import { WorkspaceWidgetFrame } from "../WorkspaceWidgetFrame";
+import { SlaSupervisionSummary } from "./SlaSupervisionSummary";
 
 export type SlaAlertRow = {
   intentId: number;
@@ -123,6 +124,7 @@ export function SlaAlertsWidget({ widget }: { widget: WorkspaceWidgetInstance })
     ? requestedLimit
     : 50;
   const query = trpc.workflowSlaOperational.list.useQuery({ limit });
+  const diagnosticQuery = trpc.workflowSlaOperational.diagnostic.useQuery({});
 
   if (query.isLoading) return <WorkspaceWidgetFrame title="Alertas e SLA" state="loading" />;
   if (query.error) return <WorkspaceWidgetFrame title="Alertas e SLA" state="error" error={query.error} />;
@@ -149,6 +151,13 @@ export function SlaAlertsWidget({ widget }: { widget: WorkspaceWidgetInstance })
 
   return (
     <WorkspaceWidgetFrame title="Alertas e SLA">
+      <SlaSupervisionSummary
+        rows={filteredRows}
+        limit={limit}
+        diagnostic={diagnosticQuery.data ?? null}
+        diagnosticLoading={diagnosticQuery.isLoading}
+        diagnosticError={Boolean(diagnosticQuery.error)}
+      />
       <SlaAlertsWidgetView rows={filteredRows} />
     </WorkspaceWidgetFrame>
   );
