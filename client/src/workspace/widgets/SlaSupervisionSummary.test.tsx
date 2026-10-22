@@ -76,6 +76,22 @@ describe("D-012J J6 — supervisão SLA sem inferência de saúde", () => {
     expect(screen.getByText(/totais operacionais indisponíveis/i)).toBeTruthy();
   });
 
+  it("mostra razões de falta de evidência sem revelar payload arbitrário", () => {
+    render(<SlaSupervisionSummary
+      rows={[]} limit={20}
+      diagnostic={{
+        status: "not_ready",
+        components: { scheduler: "unknown", adapter: "unknown" },
+        reasons: ["scheduler_unavailable", "adapter_unavailable", "secret-token"],
+      }}
+    />);
+    expect(screen.getByText(/evidências da prontidão/i)).toBeTruthy();
+    expect(screen.getByText(/scheduler sem evidência de disponibilidade/i)).toBeTruthy();
+    expect(screen.getByText(/adapter de entrega sem evidência/i)).toBeTruthy();
+    expect(screen.getByText(/não constitui aprovação de produção/i)).toBeTruthy();
+    expect(screen.queryByText(/secret-token/i)).toBeNull();
+  });
+
   it("mantém o widget restrito à permissão exigida pela API", () => {
     const allowed = new Set(["occurrences.view"]);
     expect(listAllowedWorkspaceWidgets(allowed).some(widget => widget.type === "sla-alerts")).toBe(false);
