@@ -148,7 +148,7 @@ describe("D-012J J16 — outbox tenant-scoped com CAS/fencing", () => {
       nowEpochMs: NOW, workerId: "worker-9", leaseToken: "opaque", leaseDurationMs: 30_000,
     });
     expect(await store.compareAndSwap({
-      organizationId: 9, deliveryId: 44, expectedVersion: 0, current: current!, next,
+      organizationId: 9, deliveryId: 44, expectedVersion: 0, nowEpochMs: NOW, current: current!, next,
     })).toBe(true);
     const [read, write] = queries;
     expect(read.sql).toContain("organization_id");
@@ -159,6 +159,7 @@ describe("D-012J J16 — outbox tenant-scoped com CAS/fencing", () => {
     expect(write.params).toContain(9);
     expect(write.params).toContain(44);
     expect(write.params).toContain(0);
+    expect(write.sql).toContain("next_attempt_at_ms");
     expect(patches[0]).toMatchObject({
       status: "leased", deliveryVersion: 1, deliveryAttempts: 1,
       leaseToken: "opaque", leaseExpiresAtMs: NOW + 30_000,
@@ -192,6 +193,26 @@ describe("D-012J J16 — outbox tenant-scoped com CAS/fencing", () => {
       organizationId: 9, deliveryId: 44, expectedVersion: 0, current,
       next: { ...next, correlationId: "other-tenant" },
     })).rejects.toThrow(/imutáv/i);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("defesa em profundidade recusa claim prematuro ou conclusão com lease expirado no CAS", async () => {
+    const { store, patches } = fakeDb();
+    const current = hydrateIntegrationOutbox(row);
+    const leased = buildIntegrationOutboxClaim(current, {
+      nowEpochMs: NOW, workerId: "w", leaseToken: "opaque", leaseDurationMs: 1000,
+    });
+    await expect(store.compareAndSwap({
+      organizationId: 9, deliveryId: 44, expectedVersion: 0, nowEpochMs: NOW,
+      current: { ...current, nextAttemptAtMs: NOW + 1000 }, next: leased,
+    })).rejects.toThrow(/elegível/i);
+    const done = buildIntegrationOutboxResolution(leased, {
+      nowEpochMs: NOW + 500, leaseToken: "opaque", outcome: "delivered",
+    });
+    await expect(store.compareAndSwap({
+      organizationId: 9, deliveryId: 44, expectedVersion: 1, nowEpochMs: NOW + 1000,
+      current: leased, next: done,
+    })).rejects.toThrow(/expirado/i);
     expect(patches).toHaveLength(0);
   });
 });
