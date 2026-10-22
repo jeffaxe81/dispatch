@@ -29,14 +29,14 @@ export async function probeSlaRuntimeHeartbeat(input: {
     !["scheduler", "adapter"].includes(input.component)) {
     throw new Error("Escopo SLA inválido.");
   }
-  if (!slaHeartbeatReadAllowed(environment)) return unknown();
+  if (!slaHeartbeatReadAllowed(environment)) return unknown;
   const targetTenant = Number(environment.AXE_SLA_HEARTBEAT_TENANT_ID);
   const approvedSource = environment[sources[input.component]];
   if (!Number.isSafeInteger(targetTenant) || targetTenant !== input.organizationId ||
-    !approvedSource) return unknown();
+    !approvedSource) return unknown;
   try {
     const db = await getDb();
-    if (!db) return unknown();
+    if (!db) return unknown;
     return createSlaAuthenticatedHeartbeatProbe({
       store: createSlaHeartbeatMySqlStore(db),
       environment,
@@ -44,6 +44,6 @@ export async function probeSlaRuntimeHeartbeat(input: {
         organizationId === targetTenant ? environment[sources[component]] ?? null : null,
     })(input);
   } catch {
-    return unknown();
+    return unknown;
   }
 }
