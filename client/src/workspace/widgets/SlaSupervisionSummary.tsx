@@ -2,7 +2,32 @@ import React from "react";
 import type { SlaAlertRow } from "./SlaAlertsWidget";
 
 type DiagnosticStatus = "disabled" | "ready" | "degraded" | "not_ready";
-export type SlaReadinessDisplay = { status: DiagnosticStatus };
+export type SlaReadinessDisplay = {
+  status: DiagnosticStatus;
+  components?: { scheduler: "healthy" | "degraded" | "unhealthy" | "unknown";
+    adapter: "healthy" | "degraded" | "unhealthy" | "unknown" };
+  reasons?: string[];
+};
+
+const slaHealthLabels = {
+  healthy: "saudável", degraded: "degradado", unhealthy: "indisponível",
+  unknown: "sem evidência",
+} as const;
+
+const slaReasonLabels: Record<string, string> = {
+  scheduler_unavailable: "Scheduler sem evidência de disponibilidade",
+  scheduler_degraded: "Scheduler degradado",
+  adapter_unavailable: "Adapter de entrega sem evidência de disponibilidade",
+  adapter_degraded: "Adapter de entrega degradado",
+  metrics_stale: "Métricas desatualizadas",
+  pending_warning: "Fila pendente acima do limite de atenção",
+  pending_critical: "Fila pendente acima do limite crítico",
+  lag_warning: "Atraso acima do limite de atenção",
+  lag_critical: "Atraso acima do limite crítico",
+  expired_leases: "Existem reservas expiradas",
+  dead_letter: "Existem eventos em quarentena",
+};
+
 
 export type SlaAggregateMetrics = {
   pending: number;
@@ -75,6 +100,25 @@ export function SlaSupervisionSummary({
       <div role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-800">
         {message}
       </div>
+      {diagnostic && diagnostic.status !== "disabled" && (
+        <div className="rounded-lg border border-slate-200 p-3 text-xs text-slate-700">
+          <p className="font-semibold text-slate-900">Evidências da prontidão (homologação)</p>
+          <p className="mt-1">
+            Scheduler: {diagnostic.components ? slaHealthLabels[diagnostic.components.scheduler] ?? "sem evidência" : "sem evidência"}
+            {" · "}
+            Adapter: {diagnostic.components ? slaHealthLabels[diagnostic.components.adapter] ?? "sem evidência" : "sem evidência"}
+          </p>
+          {Boolean(diagnostic.reasons?.length) && (
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              {diagnostic.reasons?.filter(reason => Object.hasOwn(slaReasonLabels, reason))
+                .map(reason => <li key={reason}>{slaReasonLabels[reason]}</li>)}
+            </ul>
+          )}
+          <p className="mt-2 text-slate-500">
+            Este diagnóstico não constitui aprovação de produção nem habilita notificações.
+          </p>
+        </div>
+      )}
       <div className="rounded-lg border border-slate-200 p-3">
         <h3 className="text-sm font-semibold text-slate-900">Totais operacionais por empresa</h3>
         {metricsError || (!metricsLoading && !validSlaAggregateMetrics(metrics)) ? (

@@ -7,7 +7,11 @@ import { getDb } from "../dbLegacy";
 import { requireActiveTenant } from "../tenantOperational";
 import { createWorkflowSlaOperationalReadModel, type WorkflowSlaOperationalItem } from "./workflowSlaOperationalReadModel";
 import { createWorkflowSlaOperationalReadMySql } from "./workflowSlaOperationalReadMySql";
-import { evaluateWorkflowSlaReadiness } from "./workflowSlaReadiness";
+import {
+  evaluateSlaDiagnosticPreview,
+  slaDiagnosticPreviewMode,
+  type ScopedSlaProbeEvidence,
+} from "./workflowSlaDiagnosticPreview";
 import { createWorkflowSlaOperationalMetricsMySql } from "./workflowSlaOperationalMetricsMySql";
 import type { WorkflowSlaOperationalMetrics } from "./workflowSlaOperationalMetrics";
 
@@ -19,6 +23,9 @@ export type WorkflowSlaOperationalRouterDependencies = {
   list(input: { organizationId: number; limit: number; now: string }): Promise<WorkflowSlaOperationalItem[]>;
   now(): string;
   metrics?(input: { organizationId: number; now: string }): Promise<WorkflowSlaOperationalMetrics>;
+  readinessPreviewMode?(): "disabled" | "manual_homologation";
+  schedulerProbe?(input: { organizationId: number; now: string }): Promise<ScopedSlaProbeEvidence>;
+  adapterProbe?(input: { organizationId: number; now: string }): Promise<ScopedSlaProbeEvidence>;
 };
 
 export const workflowSlaOperationalRouterDependencies: WorkflowSlaOperationalRouterDependencies = {
@@ -32,6 +39,7 @@ export const workflowSlaOperationalRouterDependencies: WorkflowSlaOperationalRou
     ).list(input);
   },
   now: () => new Date().toISOString(),
+  readinessPreviewMode: () => slaDiagnosticPreviewMode(process.env),
   async metrics(input) {
     const db = await getDb();
     if (!db) throw new Error("Banco indisponível para métricas SLA.");
@@ -76,12 +84,20 @@ export function createWorkflowSlaOperationalRouter(
         }
         await deps.assertPermission(ctx.user, "workflow_tasks.view");
         const organizationId = await deps.requireActiveTenant(ctx.user, ctx.req);
-        // No attested scheduler/adapter evidence or complete tenant metrics
-        // yet. Never fabricate health from sampled operational rows.
-        return evaluateWorkflowSlaReadiness({
+        const mode = deps.readinessPreviewMode?.() ?? "disabled";
+        return evaluateSlaDiagnosticPreview({
           organizationId,
           now: deps.now(),
-          mode: "disabled",
+          mode,
+          dependencies: {
+            // The complete tenant aggregate is the only authorized metrics source.
+            metrics: async input => {
+              if (!deps.metrics) throw new Error("Agregador SLA indisponível.");
+              return deps.metrics(input);
+            },
+            schedulerProbe: deps.schedulerProbe,
+            adapterProbe: deps.adapterProbe,
+          },
         });
       }),
   });
