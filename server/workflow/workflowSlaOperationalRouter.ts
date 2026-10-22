@@ -13,6 +13,7 @@ import {
   type ScopedSlaProbeEvidence,
 } from "./workflowSlaDiagnosticPreview";
 import { createWorkflowSlaOperationalMetricsMySql } from "./workflowSlaOperationalMetricsMySql";
+import { probeSlaRuntimeHeartbeat } from "./workflowSlaHeartbeatRuntime";
 import type { WorkflowSlaOperationalMetrics } from "./workflowSlaOperationalMetrics";
 
 type User = NonNullable<TrpcContext["user"]>;
@@ -40,6 +41,10 @@ export const workflowSlaOperationalRouterDependencies: WorkflowSlaOperationalRou
   },
   now: () => new Date().toISOString(),
   readinessPreviewMode: () => slaDiagnosticPreviewMode(process.env),
+  schedulerProbe: input =>
+    probeSlaRuntimeHeartbeat({ ...input, component: "scheduler" }),
+  adapterProbe: input =>
+    probeSlaRuntimeHeartbeat({ ...input, component: "adapter" }),
   async metrics(input) {
     const db = await getDb();
     if (!db) throw new Error("Banco indisponível para métricas SLA.");

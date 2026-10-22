@@ -27,6 +27,8 @@ import { createWorkflowSlaNotificationMySqlStore } from "./workflowSlaNotificati
 import { createWorkflowSlaOperationalMetricsMySql } from "./workflowSlaOperationalMetricsMySql";
 import { createSlaHeartbeatMySqlStore } from "./workflowSlaHeartbeatMySql";
 import { createSlaHeartbeatService, signSlaHeartbeat } from "./workflowSlaSignedHeartbeat";
+import { createSlaAuthenticatedHeartbeatProbe, createSlaVerifiedComponentEmitter } from "./workflowSlaHeartbeatBridge";
+import { evaluateSlaDiagnosticPreview } from "./workflowSlaDiagnosticPreview";
 
 const now = "2026-10-18T18:00:00.000Z";
 const nowMs = Date.parse(now);
@@ -826,6 +828,78 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
     await expect(primary.ingest(signSlaHeartbeat({
       ...baseline, organizationId: tenantB,
     }, key), now)).rejects.toThrow(/rejeitado/i);
+  });
+
+  it("J6E: leitura/E2E no MySQL real requer as DUAS evidências frescas, tenant e autorização", async () => {
+    const actor = "trusted-".repeat(5);
+    const environment = {
+      NODE_ENV: "test", AXE_RUNTIME_ENV: "homologation",
+      AXE_SLA_READINESS_PREVIEW_ENABLED: "true",
+      AXE_SLA_HEARTBEAT_READ_ENABLED: "true",
+      AXE_SLA_HEARTBEAT_INGEST_ENABLED: "true",
+    };
+    // Only a verified, explicitly invoked test callback may claim liveness.
+    const candidates = {
+      scheduler: "scheduler-tenant-b-e2e",
+      adapter: "adapter-tenant-b-e2e",
+    } as const;
+    const store = createSlaHeartbeatMySqlStore(database(control));
+    const reader = createSlaAuthenticatedHeartbeatProbe({
+      store, environment,
+      resolveSource: async ({ organizationId, component }) =>
+        organizationId === tenantB ? candidates[component] : null,
+    });
+    const params = { organizationId: tenantB, now };
+    const preview = () => evaluateSlaDiagnosticPreview({
+      ...params,
+      mode: "manual_homologation",
+      dependencies: {
+        metrics: ({ organizationId, now }) => createWorkflowSlaOperationalMetricsMySql(database(control))
+          .summarize({ organizationId, now }),
+        schedulerProbe: input => reader({ ...input, component: "scheduler" }),
+        adapterProbe: input => reader({ ...input, component: "adapter" }),
+      },
+    });
+    const before = await preview();
+    expect(before.status).toBe("not_ready");
+    expect(before.components).toEqual({ scheduler: "unknown", adapter: "unknown" });
+
+    const emitter = (component: "scheduler" | "adapter", checkLive: () => Promise<"healthy" | "degraded">) =>
+      createSlaVerifiedComponentEmitter({
+        store,
+        environment,
+        signer: { sourceId: candidates[component], secret: actor },
+        organizationId: tenantB,
+        component,
+        checkLive,
+      });
+    await emitter("scheduler", async () => "healthy").checkAndEmit(now);
+    const onlyScheduler = await preview();
+    expect(onlyScheduler.status).toBe("not_ready");
+    expect(onlyScheduler.components).toEqual({ scheduler: "healthy", adapter: "unknown" });
+
+    await emitter("adapter", async () => "healthy").checkAndEmit(now);
+    const both = await preview();
+    expect(both.status).toBe("ready");
+    expect(both.components).toEqual({ scheduler: "healthy", adapter: "healthy" });
+
+    const tenantAFacts = await reader({ organizationId: tenantA, component: "scheduler", now });
+    expect(tenantAFacts.state).toBe("unknown");
+    const aged = new Date(nowMs + 60_001).toISOString();
+    const stale = await evaluateSlaDiagnosticPreview({
+      organizationId: tenantB,
+      now: aged,
+      mode: "manual_homologation",
+      dependencies: {
+        metrics: async ({ organizationId, now }) =>
+          createWorkflowSlaOperationalMetricsMySql(database(control)).summarize({ organizationId, now }),
+        schedulerProbe: input => reader({ ...input, component: "scheduler" }),
+        adapterProbe: input => reader({ ...input, component: "adapter" }),
+      },
+    });
+    expect(stale.status).toBe("not_ready");
+    expect(stale.components).toEqual({ scheduler: "unknown", adapter: "unknown" });
+    expect(JSON.stringify(stale)).not.toContain(actor);
   });
 
 });
