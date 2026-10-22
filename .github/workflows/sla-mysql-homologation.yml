@@ -2,7 +2,9 @@ name: SLA MySQL homologation
 
 on:
   pull_request:
-    branches: [main, "feat/d012i-*"]
+    branches: [main, "feat/d012i-*", "feat/d012j-*"]
+  push:
+    branches: ["feat/d012j-*"]
   workflow_dispatch: {}
 
 permissions:
