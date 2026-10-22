@@ -7,6 +7,7 @@ import { getDb } from "../dbLegacy";
 import { requireActiveTenant } from "../tenantOperational";
 import { createWorkflowSlaOperationalReadModel, type WorkflowSlaOperationalItem } from "./workflowSlaOperationalReadModel";
 import { createWorkflowSlaOperationalReadMySql } from "./workflowSlaOperationalReadMySql";
+import { evaluateWorkflowSlaReadiness } from "./workflowSlaReadiness";
 
 type User = NonNullable<TrpcContext["user"]>;
 
@@ -46,6 +47,22 @@ export function createWorkflowSlaOperationalRouter(
           organizationId,
           limit: input.limit,
           now: deps.now(),
+        });
+      }),
+    diagnostic: protectedProcedure
+      .input(z.object({}).strict())
+      .query(async ({ ctx }) => {
+        if (!ctx.user?.active) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Usuário operacional inativo." });
+        }
+        await deps.assertPermission(ctx.user, "workflow_tasks.view");
+        const organizationId = await deps.requireActiveTenant(ctx.user, ctx.req);
+        // No attested scheduler/adapter evidence or complete tenant metrics
+        // yet. Never fabricate health from sampled operational rows.
+        return evaluateWorkflowSlaReadiness({
+          organizationId,
+          now: deps.now(),
+          mode: "disabled",
         });
       }),
   });
