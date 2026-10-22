@@ -155,11 +155,11 @@ export function evaluateWorkflowSlaReadiness(
   const scheduler = classifyEvidence(input.scheduler, nowMs, policy.evidenceMaxAgeMs);
   const adapter = classifyEvidence(input.adapter, nowMs, policy.evidenceMaxAgeMs);
   const reasons: WorkflowSlaReadinessReason[] = [];
-  let level: 0 | 1 | 2 = 0; // ready, degraded, not_ready
+  const criticalReasons = new Set<WorkflowSlaReadinessReason>();
 
   const add = (reason: WorkflowSlaReadinessReason, severity: 1 | 2) => {
     reasons.push(reason);
-    if (severity > level) level = severity;
+    if (severity === 2) criticalReasons.add(reason);
   };
 
   if (scheduler === "unhealthy" || scheduler === "unknown") add("scheduler_unavailable", 2);
@@ -177,7 +177,7 @@ export function evaluateWorkflowSlaReadiness(
   if (backlog.deadLetter > 0) add("dead_letter", 1);
 
   const status: WorkflowSlaReadinessStatus =
-    level === 2 ? "not_ready" : level === 1 ? "degraded" : "ready";
+    criticalReasons.size > 0 ? "not_ready" : reasons.length > 0 ? "degraded" : "ready";
   return {
     organizationId: input.organizationId,
     status,
