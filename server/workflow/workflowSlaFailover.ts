@@ -43,6 +43,7 @@ function utcMs(value: string): number {
 export function createSlaManualFailover(deps: {
   store: SlaFailoverStore;
   environment: Environment;
+  clock?: () => string;
   approvedSources(input: {
     organizationId: number;
     component: SlaHeartbeatComponent;
@@ -52,7 +53,6 @@ export function createSlaManualFailover(deps: {
     async transfer(input: {
       organizationId: number;
       component: SlaHeartbeatComponent;
-      now: string;
       operatorApproved: boolean;
     }): Promise<{ status: "fenced"; organizationId: number; component: SlaHeartbeatComponent }> {
       // Deny before DB or policy lookup when outside controlled homologation.
@@ -62,7 +62,8 @@ export function createSlaManualFailover(deps: {
         !["scheduler", "adapter"].includes(input.component)) {
         throw new Error("Transferência SLA não autorizada.");
       }
-      const nowMs = utcMs(input.now);
+      // Never trust an operator-supplied timestamp for fencing eligibility.
+      const nowMs = utcMs(deps.clock?.() ?? new Date().toISOString());
       let sources: SlaFailoverAuthorizedSources | null;
       try {
         sources = await deps.approvedSources({
