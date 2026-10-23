@@ -51,9 +51,9 @@ describe("D-012J J31 — intenção one-shot em MySQL 8.4", () => {
     const execution = "exec-" + randomUUID();
     await control.execute(
       `INSERT INTO integration_circuit_state
-        (organization_id, system, state, circuit_version, consecutive_failures,
+        (`organization_id`, `system`, `state`, `circuit_version`, `consecutive_failures`,
          opened_at_ms, cooldown_until_ms, probe_lease_owner, probe_lease_token, probe_lease_expires_at_ms,
-         probe_execution_token, probe_execution_expires_at_ms, probe_execution_consumed_at_ms)
+         `probe_execution_token`, `probe_execution_expires_at_ms`, `probe_execution_consumed_at_ms`)
        VALUES (?, 'neo', 'half_open', 6, 3, ?, ?, 'j31-worker', ?, ?, NULL, NULL, NULL)`,
       [tenantId, NOW - 30_000, NOW - 1_000, lease, NOW + 60_000],
     );
