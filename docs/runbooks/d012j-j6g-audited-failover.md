@@ -7,8 +7,10 @@ J6G mantém J6F restrito à troca da **autoridade de evidências de heartbeat**,
 A chamada exige:
 - um **operador já autenticado**, ativo, com papel Super Administrador verificado em `assertSuperAdministrator`, autorizado ao tenant em `listAuthorizedTenants`;
 - um **aprovador diferente** do operador, também ativo, Super Administrador e autorizado ao mesmo tenant, consultado novamente no banco;
-- aprovação HMAC-SHA256 separada, de validade **máxima 5 minutos**, ligada a organização, componente, operador, aprovador e identificador aleatório único; verificada com chave de 32 bytes ou mais;
+- aprovação HMAC-SHA256 separada, de validade **máxima 5 minutos**, ligada a organização, componente, operador, aprovador, identificador aleatório único **e ao par exato de fontes esperada → sucessora**; verificada com chave de 32 bytes ou mais;
 - fontes antiga/nova aprovadas **apenas na configuração server-side** e relógio UTC controlado pelo servidor;
+- comparação obrigatória entre o par de fontes assinado e o par resolvido da configuração server-side antes de abrir o storage;
+- o par validado é mantido como snapshot durante a promoção, evitando nova resolução de configuração e drift/TOCTOU entre aprovação e fencing;
 - `operatorApproved=true` apenas como registro adicional, **nunca** substituindo autenticação/RBAC/aprovação.
 
 ## Configuração de homologação
@@ -23,7 +25,8 @@ A promoção ainda falha fechado se houver heartbeat atual saudável, fonte dife
 
 ## Testes e limitações
 
-- unitários: autenticação e dupla autorização antes da consulta, assinaturas alteradas/expiradas, operador/aprovador iguais, tenant cruzado, erro sanitizado;
+- unitários: autenticação e dupla autorização antes da consulta, assinaturas alteradas/expiradas, operador/aprovador iguais, tenant cruzado, erro sanitizado, adulteração das fontes e mudança da configuração após emissão da aprovação;
+- TDD do hardening de fontes: o contrato foi observado em RED antes da correção e depois revalidado em GREEN;
 - MySQL 8.4 descartável: provocação de FK inválida na auditoria provoca rollback da fonte, disputa concorrente entre conexões deixa uma única auditoria, dados confidenciais não aparecem em JSON e outro tenant fica intacto;
 - nenhum cadastro de emissor, ativação de scheduler/adapters, deploy, migração de produção, alteração de Ocorrências ou merge na main;
 - ativação operacional depende de revisão do fluxo humano de aprovação, registros reais dos processos, credenciais gerenciadas, teste HA real e política de permissões dedicada.
