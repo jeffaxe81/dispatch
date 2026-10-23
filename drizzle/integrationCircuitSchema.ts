@@ -1,4 +1,4 @@
-import { bigint, index, int, mysqlEnum, mysqlTable, timestamp, uniqueIndex } from "drizzle-orm/mysql-core";
+import { bigint, index, int, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 import { organizations } from "./schema";
 
 const integrationSystemValues = ["neo", "inventory", "crm"] as const;
@@ -15,6 +15,9 @@ export const integrationCircuitState = mysqlTable(
     consecutiveFailures: int("consecutive_failures").notNull().default(0),
     openedAtMs: bigint("opened_at_ms", { mode: "number", unsigned: true }),
     cooldownUntilMs: bigint("cooldown_until_ms", { mode: "number", unsigned: true }),
+    probeLeaseOwner: varchar("probe_lease_owner", { length: 120 }),
+    probeLeaseToken: varchar("probe_lease_token", { length: 160 }),
+    probeLeaseExpiresAtMs: bigint("probe_lease_expires_at_ms", { mode: "number", unsigned: true }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   },
