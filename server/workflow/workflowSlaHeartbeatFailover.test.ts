@@ -72,10 +72,12 @@ describe("D-012J J6F — controlled manual SLA failover", () => {
   it("checks operator authorization for the exact tenant and component before takeover", async () => {
     const f = deps();
     await f.failover.handover(input);
-    expect(f.authorize).toHaveBeenCalledExactlyOnceWith({
+    expect(f.authorize).toHaveBeenCalledOnce();
+    expect(f.authorize).toHaveBeenCalledWith({
       organizationId: 9, actorUserId: 77, component: "scheduler",
     });
-    expect(f.store.handover).toHaveBeenCalledExactlyOnceWith(valid);
+    expect(f.store.handover).toHaveBeenCalledOnce();
+    expect(f.store.handover).toHaveBeenCalledWith(valid);
   });
 
   it("rejects conflicts and sanitizes errors without revealing tenant-specific credentials", async () => {
