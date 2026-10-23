@@ -197,3 +197,89 @@ describe("D-012J J29 — resolução fenced do probe em MySQL 8.4", () => {
     });
   });
 });
+
+
+describe("D-012J J30 — ciclo completo persistente em MySQL 8.4", () => {
+  it("percorre closed → open → half_open → lease → closed sem liberar efeitos externos", async () => {
+    const system = "neo";
+    await control.execute(
+      `DELETE FROM integration_circuit_state WHERE \`organization_id\` = ? AND \`system\` = ?`,
+      [tenantId, system],
+    );
+    await control.execute(
+      `INSERT INTO integration_circuit_state
+        (\`organization_id\`, \`system\`, \`state\`, \`circuit_version\`, \`consecutive_failures\`,
+         \`opened_at_ms\`, \`cooldown_until_ms\`, \`probe_lease_owner\`, \`probe_lease_token\`, \`probe_lease_expires_at_ms\`)
+       VALUES (?, ?, 'closed', 1, 0, NULL, NULL, NULL, NULL, NULL)`,
+      [tenantId, system],
+    );
+
+    let now = NOW;
+    const coordinator = createIntegrationCircuitCoordinator(
+      circuitStorage(await connection()), () => now,
+    );
+
+    await coordinator.recordFailure({
+      organizationId: tenantId, system, expectedVersion: 1,
+      failureThreshold: 2, cooldownSeconds: 30,
+    });
+    await coordinator.recordFailure({
+      organizationId: tenantId, system, expectedVersion: 2,
+      failureThreshold: 2, cooldownSeconds: 30,
+    });
+    expect(await circuitRow(system)).toMatchObject({
+      state: "open", version: 3, failures: 2,
+      openedAtMs: NOW, cooldownUntilMs: NOW + 30_000,
+    });
+
+    now = NOW + 30_000;
+    const halfOpen = await coordinator.advanceCooldown({
+      organizationId: tenantId, system, expectedVersion: 3,
+    });
+    expect(halfOpen).toMatchObject({ state: "half_open", version: 4, permitsProbe: false });
+
+    now = NOW + 31_000;
+    const token = "j30-lifecycle-" + randomUUID();
+    const leased = await coordinator.claimProbeLease({
+      organizationId: tenantId, system, expectedVersion: 4,
+      leaseOwner: "j30-trusted-runner", leaseToken: token, leaseDurationMs: 5_000,
+    });
+    expect(leased).toMatchObject({
+      state: "half_open", version: 5, leaseOwner: "j30-trusted-runner",
+      leaseToken: token, permitsProbe: false,
+    });
+
+    now = NOW + 32_000;
+    const resolved = await coordinator.resolveProbe({
+      organizationId: tenantId, system, expectedVersion: 5,
+      leaseToken: token, outcome: "success", cooldownSeconds: 30,
+    });
+    expect(resolved).toMatchObject({
+      state: "closed", version: 6, consecutiveFailures: 0,
+      leaseOwner: null, leaseToken: null, leaseExpiresAtMs: null,
+      permitsExternalCall: false, permitsProbe: false, permitsAutomaticReplay: false,
+    });
+    expect(await circuitRow(system)).toMatchObject({
+      state: "closed", version: 6, failures: 0,
+      openedAtMs: null, cooldownUntilMs: null, leaseToken: null,
+    });
+
+    const [audits] = await control.execute<RowDataPacket[]>(
+      `SELECT action FROM audit_logs
+         WHERE resource_type = 'integration_circuit_state'
+           AND resource_id = (
+             SELECT id FROM integration_circuit_state
+              WHERE \`organization_id\` = ? AND \`system\` = ?
+           )
+         ORDER BY id ASC`,
+      [tenantId, system],
+    );
+    expect(audits.map(row => row.action)).toEqual([
+      "integration.circuit.failure.recorded",
+      "integration.circuit.failure.recorded",
+      "integration.circuit.cooldown.expired",
+      "integration.circuit.probe_lease.claimed",
+      "integration.circuit.probe.succeeded",
+    ]);
+  });
+});
