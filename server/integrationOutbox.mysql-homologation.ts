@@ -16,6 +16,7 @@ import {
 import { createIntegrationRecoveryAuditedMySqlService } from "./integrationOutboxRecoveryAuditedMySql";
 import { createIntegrationRecoveryAuditVerifier } from "./integrationOutboxRecoveryAuditVerifier";
 import { createIntegrationOutboxCasCoordinator } from "./integrationOutboxCoordinator";
+import { planIntegrationFailureResolution } from "./integrationFailurePolicy";
 import {
   buildExpiredIntegrationLeaseQuarantine,
   createExpiredIntegrationLeaseRecoveryStorage,
@@ -645,5 +646,140 @@ describe("D-012J J23 — provas físicas MySQL do coordenador CAS", () => {
       expectedVersion: 2, outcome: "delivered",
     })).rejects.toThrow(/conflito/i);
     expect(await state(deliveryId)).toMatchObject({ status: "leased", version: 1 });
+  });
+});
+
+describe("D-012J J25 — homologação MySQL da decisão unificada de falha", () => {
+  it("persiste rate limit comprovadamente não aceito somente via fencing CAS e cooldown", async () => {
+    enableJ23();
+    const deliveryId = await insertDelivery(tenantA);
+    const claimService = createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW,
+    );
+    const leased = await claimService.claim({
+      organizationId: tenantA, deliveryId, workerId: "j25-worker",
+      leaseToken: "j25-rate-limit-token", leaseDurationMs: 120_000,
+    });
+    const decision = planIntegrationFailureResolution({
+      organizationId: tenantA,
+      current: leased, expectedVersion: leased.version,
+      nowEpochMs: NOW + 1_000, failureKind: "rate_limited",
+      remoteAcceptance: "confirmed_not_accepted",
+      circuit: { state: "closed", openedAtEpochMs: null },
+      consecutiveFailures: 1, baseDelayMs: 1_000,
+    });
+    expect(decision).toMatchObject({
+      disposition: "schedule_retry", permitsExternalCall: false,
+      transition: { outcome: "retry", nextAttemptAtMs: NOW + 31_000 },
+    });
+    const resolution = await createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW + 1_000,
+    ).resolve({
+      organizationId: tenantA, deliveryId,
+      workerId: "j25-worker", leaseToken: "j25-rate-limit-token",
+      expectedVersion: leased.version, ...decision.transition,
+    });
+    expect(resolution).toMatchObject({
+      status: "pending", version: 2, attempts: 1,
+      nextAttemptAtMs: NOW + 31_000, lastFailureKind: "rate_limited",
+    });
+    expect(await state(deliveryId)).toMatchObject({
+      status: "pending", version: 2, attempts: 1, leaseToken: null,
+    });
+    await expect(createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW + 30_999,
+    ).claim({
+      organizationId: tenantA, deliveryId, workerId: "j25-early-worker",
+      leaseToken: "j25-too-early", leaseDurationMs: 1000,
+    })).rejects.toThrow(/elegível|agendada/i);
+    expect(await state(deliveryId)).toMatchObject({
+      status: "pending", version: 2, attempts: 1,
+    });
+  });
+
+  it("registra resultado remoto incerto como DLQ sem reenvio ou atualização em outro tenant", async () => {
+    enableJ23();
+    const deliveryId = await insertDelivery(tenantA);
+    const leased = await createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW,
+    ).claim({
+      organizationId: tenantA, deliveryId, workerId: "j25-uncertain-worker",
+      leaseToken: "j25-uncertain-token", leaseDurationMs: 120_000,
+    });
+    expect(() => planIntegrationFailureResolution({
+      organizationId: tenantB, current: leased, expectedVersion: leased.version,
+      nowEpochMs: NOW + 1_000, failureKind: "timeout",
+      remoteAcceptance: "outcome_unknown",
+      circuit: { state: "closed", openedAtEpochMs: null },
+      consecutiveFailures: 1, baseDelayMs: 1_000,
+    })).toThrow(/tenant/i);
+    const decision = planIntegrationFailureResolution({
+      organizationId: tenantA, current: leased, expectedVersion: leased.version,
+      nowEpochMs: NOW + 1_000, failureKind: "timeout",
+      remoteAcceptance: "outcome_unknown",
+      circuit: { state: "closed", openedAtEpochMs: null },
+      consecutiveFailures: 1, baseDelayMs: 1_000,
+    });
+    expect(decision).toMatchObject({
+      disposition: "quarantine", reason: "outcome_uncertain",
+      permitsAutomaticReplay: false,
+      transition: { outcome: "dead_letter", failureKind: "unknown" },
+    });
+    const committed = await createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW + 1_000,
+    ).resolve({
+      organizationId: tenantA, deliveryId,
+      workerId: "j25-uncertain-worker", leaseToken: "j25-uncertain-token",
+      expectedVersion: 1, ...decision.transition,
+    });
+    expect(committed).toMatchObject({
+      status: "dead_letter", version: 2, attempts: 1,
+      lastFailureKind: "unknown",
+    });
+    expect(await state(deliveryId)).toMatchObject({
+      organizationId: tenantA, status: "dead_letter", version: 2, attempts: 1,
+    });
+    await expect(createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW + 3_000,
+    ).claim({
+      organizationId: tenantA, deliveryId,
+      workerId: "j25-retry-forbidden", leaseToken: "j25-forbidden",
+      leaseDurationMs: 1000,
+    })).rejects.toThrow(/pending/i);
+  });
+
+  it("falha a resolução ao perder a versão CAS após planejamento; sem mutação adicional", async () => {
+    enableJ23();
+    const deliveryId = await insertDelivery(tenantA);
+    const token = randomUUID();
+    const leased = await createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW,
+    ).claim({
+      organizationId: tenantA, deliveryId, workerId: "j25-version-worker",
+      leaseToken: token, leaseDurationMs: 120_000,
+    });
+    const decision = planIntegrationFailureResolution({
+      organizationId: tenantA, current: leased, expectedVersion: 1,
+      nowEpochMs: NOW + 1_000, failureKind: "unavailable",
+      remoteAcceptance: "confirmed_not_accepted",
+      circuit: { state: "closed", openedAtEpochMs: null },
+      consecutiveFailures: 1, baseDelayMs: 1000,
+    });
+    const coordinator = createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW + 1_000,
+    );
+    await coordinator.resolve({
+      organizationId: tenantA, deliveryId,
+      workerId: "j25-version-worker", leaseToken: token,
+      expectedVersion: 1, ...decision.transition,
+    });
+    await expect(coordinator.resolve({
+      organizationId: tenantA, deliveryId,
+      workerId: "j25-version-worker", leaseToken: token,
+      expectedVersion: 1, ...decision.transition,
+    })).rejects.toThrow(/conflito/i);
+    expect(await state(deliveryId)).toMatchObject({
+      status: "pending", version: 2, attempts: 1,
+    });
   });
 });
