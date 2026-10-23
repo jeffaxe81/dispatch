@@ -44,6 +44,8 @@ export function createSlaManualFailover(deps: {
   store: SlaFailoverStore;
   environment: Environment;
   clock?: () => string;
+  /** Trusted server-side audit context, not a tRPC or user-supplied field. */
+  audit?: { actorUserId: number; approverUserId: number; approvalRef: string };
   approvedSources(input: {
     organizationId: number;
     component: SlaHeartbeatComponent;
@@ -83,6 +85,7 @@ export function createSlaManualFailover(deps: {
           organizationId: input.organizationId, component: input.component,
           expectedSourceId: sources.expectedSourceId,
           nextSourceId: sources.nextSourceId, nowMs,
+          ...(deps.audit ? { audit: deps.audit } : {}),
         });
       } catch {
         // The DB may include credentials or internal topology in its errors.
