@@ -141,6 +141,13 @@
       "when": 1792753200000,
       "tag": "0019_d012j_integration_circuit_state",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1792756800000,
+      "tag": "0020_d012j_circuit_probe_lease",
+      "breakpoints": true
     }
   ]
 }
