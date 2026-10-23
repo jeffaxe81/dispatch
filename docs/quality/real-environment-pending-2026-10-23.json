@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "project": "AXE Dispatch",
+  "review_date": "2026-10-23",
+  "policy": {
+    "development_may_continue_without_external_environment": true,
+    "automated_code_security_tests_required": true,
+    "manual_environment_tests_required_before_production_go": true,
+    "do_not_claim_unperformed_tests_as_passed": true,
+    "do_not_disable_technical_security_gates": true
+  },
+  "release_status": "NOT_APPROVED_FOR_PRODUCTION",
+  "risk_note": "Probes/replay externos e alterações em sistemas externos não estão habilitados pela pilha J31-J33.",
+  "external_environment_tests": [
+    {
+      "id": "DISPATCH-REAL-01",
+      "area": "Banco e concorrência",
+      "status": "PENDING_REAL_ENVIRONMENT",
+      "gate": "PRODUCTION_GO",
+      "procedure": "Reexecutar fluxos de SLA, outbox/DLQ, leasing fenced e failover sobre MySQL do ambiente homologação com migrações verificadas e rollback.",
+      "evidence_required": "logs sanitizados, versões CAS, métricas por tenant e evidência de recuperação",
+      "owner": "to_be_assigned",
+      "executed_at": null,
+      "evidence_url": null
+    },
+    {
+      "id": "DISPATCH-REAL-02",
+      "area": "Integrações",
+      "status": "PENDING_REAL_ENVIRONMENT",
+      "gate": "PRODUCTION_GO",
+      "procedure": "Testar adapters reais NEO/CRM/Inventário somente em homologação opt-in e sob credenciais limitadas; confirmar resultado de probe one-shot sem replay indevido.",
+      "evidence_required": "grant/auditoria sanitizados e comparação com sistema externo",
+      "owner": "to_be_assigned",
+      "executed_at": null,
+      "evidence_url": null
+    },
+    {
+      "id": "DISPATCH-REAL-03",
+      "area": "Operação",
+      "status": "PENDING_REAL_ENVIRONMENT",
+      "gate": "PRODUCTION_GO",
+      "procedure": "Validar RBAC, isolamento entre organizações, mapas, SLA sob carga, reinício de workers e restore/rollback.",
+      "evidence_required": "matriz negativa de acesso, perfis, eventos e relatório operacional",
+      "owner": "to_be_assigned",
+      "executed_at": null,
+      "evidence_url": null
+    }
+  ],
+  "references": [
+    "https://github.com/jeffaxe81/dispatch/issues/133",
+    "https://github.com/jeffaxe81/dispatch/pull/175"
+  ]
+}
