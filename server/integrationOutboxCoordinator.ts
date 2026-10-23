@@ -10,6 +10,8 @@ type OutboxStorage = Pick<
   "loadByTenant" | "compareAndSwap"
 >;
 type Resolution = Parameters<typeof buildIntegrationOutboxResolution>[1];
+type WithoutClock<T> = T extends unknown ? Omit<T, "nowEpochMs"> : never;
+type ResolutionRequest = WithoutClock<Resolution>;
 
 export class IntegrationOutboxCoordinatorConflictError extends Error {
   constructor() {
@@ -81,7 +83,6 @@ export function createIntegrationOutboxCasCoordinator(
         current, next,
       });
       if (!changed) throw new IntegrationOutboxCoordinatorConflictError();
-      assertEnabled();
       return next;
     },
 
@@ -90,7 +91,7 @@ export function createIntegrationOutboxCasCoordinator(
       deliveryId: number;
       workerId: string;
       expectedVersion: number;
-    } & Resolution): Promise<IntegrationOutboxSnapshot> {
+    } & ResolutionRequest): Promise<IntegrationOutboxSnapshot> {
       assertEnabled();
       assertIdentifier(input.organizationId, "Organização");
       assertIdentifier(input.deliveryId, "Entrega");
