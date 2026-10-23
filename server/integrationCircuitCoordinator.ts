@@ -11,6 +11,11 @@ import {
   buildIntegrationCircuitProbeLeaseRelease,
   type IntegrationCircuitProbeLeaseSnapshot,
 } from "./integrationCircuitProbeLease";
+import {
+  buildProbeExecutionIntent,
+  consumeProbeExecutionIntent as consumeProbeExecutionPlan,
+  type IntegrationProbeExecutionSnapshot,
+} from "./integrationCircuitProbeExecutionIntent";
 import type {
   IntegrationCircuitAuditProjection,
   IntegrationCircuitPersistenceSnapshot,
@@ -41,6 +46,16 @@ function leaseView(current:IntegrationCircuitPersistenceSnapshot):IntegrationCir
     organizationId:current.organizationId, system:current.system, circuitState:current.state,
     circuitVersion:current.version, leaseOwner:current.leaseOwner,
     leaseToken:current.leaseToken, leaseExpiresAtMs:current.leaseExpiresAtMs,
+  };
+}
+function executionView(current:IntegrationCircuitPersistenceSnapshot):IntegrationProbeExecutionSnapshot {
+  return {
+    organizationId:current.organizationId, system:current.system, circuitState:current.state,
+    circuitVersion:current.version, leaseOwner:current.leaseOwner ?? null,
+    leaseToken:current.leaseToken ?? null, leaseExpiresAtMs:current.leaseExpiresAtMs ?? null,
+    executionToken:current.executionToken ?? null,
+    executionExpiresAtMs:current.executionExpiresAtMs ?? null,
+    executionConsumedAtMs:current.executionConsumedAtMs ?? null,
   };
 }
 function audit(current:IntegrationCircuitPersistenceSnapshot,next:IntegrationCircuitPersistenceSnapshot):IntegrationCircuitAuditProjection {
@@ -112,8 +127,55 @@ export function createIntegrationCircuitCoordinator(
       const next:IntegrationCircuitPersistenceSnapshot={
         ...before,version:planned.circuitVersion,leaseOwner:planned.leaseOwner,
         leaseToken:planned.leaseToken,leaseExpiresAtMs:planned.leaseExpiresAtMs,
+        executionToken:null,executionExpiresAtMs:null,executionConsumedAtMs:null,
       };
       return Object.freeze({...await commit(before,next,"integration.circuit.probe_lease.claimed"),permitsProbe:false as const});
+    },
+
+    async issueProbeExecutionIntent(input:{
+      organizationId:number;system:IntegrationSystem;expectedVersion:number;
+      leaseToken:string;executionToken:string;executionDurationMs:number;
+    }){
+      const before=await current(input);
+      const planned=buildProbeExecutionIntent(executionView(before),{
+        nowEpochMs:clock(),expectedVersion:input.expectedVersion,leaseToken:input.leaseToken,
+        executionToken:input.executionToken,executionDurationMs:input.executionDurationMs,
+      });
+      const next:IntegrationCircuitPersistenceSnapshot={
+        ...before,version:planned.circuitVersion,
+        executionToken:planned.executionToken,
+        executionExpiresAtMs:planned.executionExpiresAtMs,
+        executionConsumedAtMs:planned.executionConsumedAtMs,
+      };
+      return Object.freeze({
+        ...await commit(before,next,"integration.circuit.probe_intent.issued"),
+        permitsProbe:false as const,
+        permitsExternalCall:false as const,
+        permitsAutomaticReplay:false as const,
+      });
+    },
+
+    async consumeProbeExecutionIntent(input:{
+      organizationId:number;system:IntegrationSystem;expectedVersion:number;
+      leaseToken:string;executionToken:string;
+    }){
+      const before=await current(input);
+      const planned=consumeProbeExecutionPlan(executionView(before),{
+        nowEpochMs:clock(),expectedVersion:input.expectedVersion,
+        leaseToken:input.leaseToken,executionToken:input.executionToken,
+      });
+      const next:IntegrationCircuitPersistenceSnapshot={
+        ...before,version:planned.circuitVersion,
+        executionToken:planned.executionToken,
+        executionExpiresAtMs:planned.executionExpiresAtMs,
+        executionConsumedAtMs:planned.executionConsumedAtMs,
+      };
+      return Object.freeze({
+        ...await commit(before,next,"integration.circuit.probe_intent.consumed"),
+        permitsProbe:true as const,
+        permitsExternalCall:false as const,
+        permitsAutomaticReplay:false as const,
+      });
     },
 
     async releaseProbeLease(input:{
@@ -125,6 +187,7 @@ export function createIntegrationCircuitCoordinator(
       });
       const next:IntegrationCircuitPersistenceSnapshot={
         ...before,version:planned.circuitVersion,leaseOwner:null,leaseToken:null,leaseExpiresAtMs:null,
+        executionToken:null,executionExpiresAtMs:null,executionConsumedAtMs:null,
       };
       return Object.freeze({...await commit(before,next,"integration.circuit.probe_lease.released"),permitsProbe:false as const});
     },
@@ -156,6 +219,9 @@ export function createIntegrationCircuitCoordinator(
         leaseOwner:null,
         leaseToken:null,
         leaseExpiresAtMs:null,
+        executionToken:null,
+        executionExpiresAtMs:null,
+        executionConsumedAtMs:null,
       };
       const action=input.outcome==="success"
         ?"integration.circuit.probe.succeeded"
