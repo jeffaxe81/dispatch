@@ -36,7 +36,7 @@ beforeAll(async () => {
 
   const [circuit] = await control.execute<ResultSetHeader>(
     `INSERT INTO integration_circuit_state
-      (organization_id, system, state, circuit_version, consecutive_failures,
+      (organization_id, \`system\`, state, circuit_version, consecutive_failures,
        probe_execution_consumed_at_ms)
      VALUES (?, 'neo', 'closed', 9, 0, NULL)`,
     [tenantId],
