@@ -33,8 +33,8 @@ function circuitStorage(client: Connection) {
 async function seedLeasedHalfOpen(system: "neo" | "inventory" | "crm", token: string) {
   const [res] = await control.execute<ResultSetHeader>(
     `INSERT INTO integration_circuit_state
-      (organization_id, system, state, circuit_version, consecutive_failures,
-       opened_at_ms, cooldown_until_ms, probe_lease_owner, probe_lease_token, probe_lease_expires_at_ms)
+      (\`organization_id\`, \`system\`, \`state\`, \`circuit_version\`, \`consecutive_failures\`,
+       \`opened_at_ms\`, \`cooldown_until_ms\`, \`probe_lease_owner\`, \`probe_lease_token\`, \`probe_lease_expires_at_ms\`)
      VALUES (?, ?, 'half_open', 6, 3, ?, ?, 'j29-worker', ?, ?)`,
     [tenantId, system, NOW - 30_000, NOW - 1_000, token, NOW + 60_000],
   );
@@ -44,12 +44,12 @@ async function seedLeasedHalfOpen(system: "neo" | "inventory" | "crm", token: st
 
 async function circuitRow(system: string) {
   const [rows] = await control.execute<RowDataPacket[]>(
-    `SELECT state, circuit_version AS version, consecutive_failures AS failures,
-            opened_at_ms AS openedAtMs, cooldown_until_ms AS cooldownUntilMs,
-            probe_lease_owner AS leaseOwner, probe_lease_token AS leaseToken,
-            probe_lease_expires_at_ms AS leaseExpiresAtMs
+    `SELECT \`state\`, \`circuit_version\` AS version, \`consecutive_failures\` AS failures,
+            \`opened_at_ms\` AS openedAtMs, \`cooldown_until_ms\` AS cooldownUntilMs,
+            \`probe_lease_owner\` AS leaseOwner, \`probe_lease_token\` AS leaseToken,
+            \`probe_lease_expires_at_ms\` AS leaseExpiresAtMs
        FROM integration_circuit_state
-      WHERE organization_id = ? AND system = ?`,
+      WHERE \`organization_id\` = ? AND \`system\` = ?`,
     [tenantId, system],
   );
   return rows[0];
