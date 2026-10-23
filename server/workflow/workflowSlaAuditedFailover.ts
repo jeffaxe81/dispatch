@@ -66,25 +66,33 @@ export function createSlaAuditedFailoverCoordinator(deps: {
       let sources: { expectedSourceId: string; nextSourceId: string };
       try {
         now = deps.clock();
-        await deps.authorizeOperator(input.actor);
-        await deps.authorizeTenant(input.actor, input.organizationId);
-        const resolvedSources = await deps.approvedSources({
-          organizationId: input.organizationId,
-          component: input.component,
-        });
-        if (!resolvedSources) throw refused();
-        sources = resolvedSources;
+        // First authenticate the signed artifact itself with no policy/database I/O.
+        // Source fields are part of the HMAC; the trusted server-side pair is
+        // compared after the operator and tenant have been authorized.
         const checked = verifySlaFailoverApproval({
           approval: input.approval,
           operatorUserId: input.actor.id,
           organizationId: input.organizationId,
           component: input.component,
-          expectedSourceId: sources.expectedSourceId,
-          nextSourceId: sources.nextSourceId,
+          expectedSourceId: input.approval.expectedSourceId,
+          nextSourceId: input.approval.nextSourceId,
           now,
           secret: deps.approvalSecret,
         });
         ({ approvalRef, approverUserId } = checked);
+
+        await deps.authorizeOperator(input.actor);
+        await deps.authorizeTenant(input.actor, input.organizationId);
+
+        const resolvedSources = await deps.approvedSources({
+          organizationId: input.organizationId,
+          component: input.component,
+        });
+        if (!resolvedSources ||
+          input.approval.expectedSourceId !== resolvedSources.expectedSourceId ||
+          input.approval.nextSourceId !== resolvedSources.nextSourceId) throw refused();
+        sources = resolvedSources;
+
         await deps.authorizeApprover(approverUserId, input.organizationId);
       } catch {
         throw refused();
@@ -101,8 +109,8 @@ export function createSlaAuditedFailoverCoordinator(deps: {
         environment: deps.environment,
         clock: () => now,
         audit: { actorUserId: input.actor.id, approverUserId, approvalRef },
-        // Reuse the exact server-side source pair that was cryptographically
-        // verified; never resolve a second, potentially drifted pair later.
+        // Reuse the exact server-side source pair already compared with the
+        // signed approval; never resolve a second, potentially drifted pair.
         approvedSources: async () => sources,
       }).transfer({
         organizationId: input.organizationId,
