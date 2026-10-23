@@ -1,4 +1,4 @@
-import type { IntegrationSystem } from "./integrationContracts";
+import { assertIntegrationContractCompatibility, type IntegrationSystem } from "./integrationContracts";
 
 export type IntegrationResiliencePolicy = {
   system: IntegrationSystem;
@@ -24,13 +24,13 @@ export type IntegrationResilienceDecision = {
 };
 
 function assertPositiveInteger(value: number, label: string): void {
-  if (!Number.isInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`${label} deve ser um inteiro positivo.`);
   }
 }
 
 function assertNonNegativeInteger(value: number, label: string): void {
-  if (!Number.isInteger(value) || value < 0) {
+  if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} deve ser um inteiro não negativo.`);
   }
 }
@@ -67,6 +67,7 @@ export function evaluateIntegrationResilience(input: {
   now: Date;
 }): IntegrationResilienceDecision {
   assertPositiveInteger(input.tenantId, "Tenant");
+  assertIntegrationContractCompatibility({ system: input.policy.system, requestedVersion: 1 });
   assertPositiveInteger(input.policy.maxAttempts, "Número máximo de tentativas");
   assertPositiveInteger(input.policy.failureThreshold, "Limiar de falhas");
   assertPositiveInteger(input.policy.cooldownSeconds, "Cooldown");
@@ -108,7 +109,9 @@ export function evaluateIntegrationResilience(input: {
       input.tenantId,
       input.policy.system,
       "half_open",
-      true,
+      // Cooldown expiry changes the circuit state, not authorization.
+      // Only an exclusive, persisted tenant/system lease may allow a probe.
+      false,
     );
   }
 
