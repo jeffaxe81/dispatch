@@ -47,13 +47,19 @@ export function createIntegrationProbeExecutor(dependencies: {
     }) {
       assertHomologationGate();
 
-      const grant = await dependencies.circuit.consumeProbeExecutionIntent({
-        organizationId: input.organizationId,
-        system: input.system,
-        expectedVersion: input.expectedVersion,
-        leaseToken: input.leaseToken,
-        executionToken: input.executionToken,
-      });
+      // Erros de storage/coordinator não podem propagar SQL, tokens nem segredos do ambiente.
+      let grant: Awaited<ReturnType<Circuit["consumeProbeExecutionIntent"]>>;
+      try {
+        grant = await dependencies.circuit.consumeProbeExecutionIntent({
+          organizationId: input.organizationId,
+          system: input.system,
+          expectedVersion: input.expectedVersion,
+          leaseToken: input.leaseToken,
+          executionToken: input.executionToken,
+        });
+      } catch {
+        throw new Error("Consumo one-shot de probe bloqueado ou indisponível.");
+      }
 
       if (grant.permitsProbe !== true) {
         throw new Error("Grant one-shot não autorizou execução de probe.");
@@ -62,20 +68,31 @@ export function createIntegrationProbeExecutor(dependencies: {
         throw new Error("Grant de probe contém permissão externa incompatível.");
       }
 
-      const outcome = await dependencies.probe(Object.freeze({
-        organizationId: input.organizationId,
-        system: input.system,
-      }));
+      let outcome: IntegrationProbeOutcome;
+      try {
+        outcome = await dependencies.probe(Object.freeze({
+          organizationId: input.organizationId,
+          system: input.system,
+        }));
+      } catch {
+        // A intenção já foi consumida. Não incluir o erro do adapter como cause.
+        throw new Error("Resultado de probe incerto; grant consumido, sem reexecução automática.");
+      }
       assertOutcome(outcome);
 
-      return dependencies.circuit.resolveProbe({
-        organizationId: input.organizationId,
-        system: input.system,
-        expectedVersion: grant.version,
-        leaseToken: input.leaseToken,
-        outcome,
-        cooldownSeconds: input.cooldownSeconds,
-      });
+      try {
+        return await dependencies.circuit.resolveProbe({
+          organizationId: input.organizationId,
+          system: input.system,
+          expectedVersion: grant.version,
+          leaseToken: input.leaseToken,
+          outcome,
+          cooldownSeconds: input.cooldownSeconds,
+        });
+      } catch {
+        // O commit pode ter ocorrido antes da perda de conexão: jamais tentar de novo.
+        throw new Error("Resolução do probe incerta; grant consumido, sem reexecução automática.");
+      }
     },
   });
 }
