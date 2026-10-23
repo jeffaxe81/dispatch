@@ -3,6 +3,7 @@
   "include": [
     "server/test/integrationOutboxMysqlEnvironment.ts",
     "server/integrationOutbox.mysql-homologation.ts",
+    "server/zzIntegrationCircuit.mysql-homologation.ts",
     "vitest.integration-outbox-mysql.config.ts"
   ],
   "exclude": ["node_modules", "dist", "build"],
