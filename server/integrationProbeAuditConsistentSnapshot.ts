@@ -105,6 +105,10 @@ export function createIntegrationProbeAuditConsistentSnapshotReader(
           state: Object.freeze({ ...state }) as CircuitProbeAuditState,
           entries: Object.freeze(entries),
         });
+      }, {
+        isolationLevel: "repeatable read",
+        accessMode: "read only",
+        withConsistentSnapshot: true,
       });
     },
   });
