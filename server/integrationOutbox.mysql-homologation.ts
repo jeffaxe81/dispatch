@@ -13,6 +13,7 @@ import {
   buildIntegrationOutboxResolution,
   createIntegrationOutboxMySqlStorage,
 } from "./integrationOutboxCas";
+import { createIntegrationRecoveryAuditedMySqlService } from "./integrationOutboxRecoveryAuditedMySql";
 import {
   buildExpiredIntegrationLeaseQuarantine,
   createExpiredIntegrationLeaseRecoveryStorage,
