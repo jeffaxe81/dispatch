@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../dbLegacy";
+import { auditLogs } from "../../drizzle/schema";
 import { workflowSlaComponentHeartbeats as heartbeat } from "./workflowSlaHeartbeatSchema";
 import { SLA_HEARTBEAT_MAX_AGE_MS, type SlaHeartbeatStore } from "./workflowSlaSignedHeartbeat";
 
@@ -18,6 +20,7 @@ export type SlaFailoverStore = SlaHeartbeatStore & {
     expectedSourceId: string;
     nextSourceId: string;
     nowMs: number;
+    audit?: { actorUserId: number; approverUserId: number; approvalRef: string };
   }): Promise<boolean>;
 };
 
@@ -41,6 +44,12 @@ export function createSlaHeartbeatMySqlStore(db: WorkflowDb): SlaFailoverStore {
         !Number.isSafeInteger(input.nowMs) || input.nowMs < 0) {
         throw new Error("Transferência SLA inválida.");
       }
+      if (input.audit && (
+        !Number.isSafeInteger(input.audit.actorUserId) || input.audit.actorUserId < 1 ||
+        !Number.isSafeInteger(input.audit.approverUserId) || input.audit.approverUserId < 1 ||
+        input.audit.approverUserId === input.audit.actorUserId ||
+        !/^[a-f0-9]{64}$/.test(input.audit.approvalRef)
+      )) throw new Error("Evidência de aprovação SLA inválida.");
       return db.transaction(async tx => {
         const key = and(
           eq(heartbeat.organizationId, input.organizationId),
@@ -66,6 +75,30 @@ export function createSlaHeartbeatMySqlStore(db: WorkflowDb): SlaFailoverStore {
           sentAtMs: 0,
           receivedAtMs: input.nowMs,
         }).where(key);
+        if (input.audit) {
+          // Audit and authority handoff share a SINGLE transaction: audit
+          // failure rolls the new owner back. Never persist HMACs, source
+          // topology identifiers or signing keys in plaintext audit payload.
+          const digest = (value: string) =>
+            createHash("sha256").update(value, "utf8").digest("hex");
+          await tx.insert(auditLogs).values({
+            resourceType: "workflow_sla_heartbeat",
+            resourceId: input.organizationId,
+            action: "manual_failover_fenced",
+            actorUserId: input.audit.actorUserId,
+            beforeData: {
+              component: input.component,
+              sourceDigest: digest(input.expectedSourceId),
+            },
+            afterData: {
+              component: input.component,
+              sourceDigest: digest(input.nextSourceId),
+              approverUserId: input.audit.approverUserId,
+              approvalRef: input.audit.approvalRef,
+              previousHealthInvalidated: true,
+            },
+          });
+        }
         return true;
       });
     },
