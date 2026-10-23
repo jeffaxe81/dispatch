@@ -2,6 +2,8 @@ import type { IntegrationSystem } from "../shared/integrationContracts";
 import {
   buildIntegrationCircuitFailure,
   buildIntegrationCircuitCooldownExpiry,
+  buildIntegrationCircuitProbeFailure,
+  buildIntegrationCircuitSuccess,
   type IntegrationCircuitSnapshot,
 } from "./integrationCircuitState";
 import {
@@ -125,6 +127,45 @@ export function createIntegrationCircuitCoordinator(
         ...before,version:planned.circuitVersion,leaseOwner:null,leaseToken:null,leaseExpiresAtMs:null,
       };
       return Object.freeze({...await commit(before,next,"integration.circuit.probe_lease.released"),permitsProbe:false as const});
+    },
+
+    async resolveProbe(input:{
+      organizationId:number;system:IntegrationSystem;expectedVersion:number;
+      leaseToken:string;outcome:"success"|"failure";cooldownSeconds:number;
+    }){
+      const before=await current(input);
+      const now=clock();
+      if(before.state!=="half_open") throw new Error("Resolução de probe exige circuito half-open.");
+      if(typeof input.leaseToken!=="string"||!input.leaseToken.trim()) throw new Error("Token de fencing inválido.");
+      if(before.leaseToken!==input.leaseToken) throw new Error("Token de fencing divergente.");
+      if(before.leaseExpiresAtMs===null||now>=before.leaseExpiresAtMs) throw new Error("Lease de probe expirado.");
+      if(input.outcome!=="success"&&input.outcome!=="failure") throw new Error("Resultado do probe inválido.");
+
+      const planned=input.outcome==="success"
+        ? buildIntegrationCircuitSuccess(stateView(before),now)
+        : buildIntegrationCircuitProbeFailure(stateView(before),{
+          nowEpochMs:now,cooldownSeconds:input.cooldownSeconds,
+        });
+      const next:IntegrationCircuitPersistenceSnapshot={
+        ...before,
+        state:planned.state,
+        version:planned.version,
+        consecutiveFailures:planned.consecutiveFailures,
+        openedAtMs:planned.openedAtMs,
+        cooldownUntilMs:planned.cooldownUntilMs,
+        leaseOwner:null,
+        leaseToken:null,
+        leaseExpiresAtMs:null,
+      };
+      const action=input.outcome==="success"
+        ?"integration.circuit.probe.succeeded"
+        :"integration.circuit.probe.failed";
+      return Object.freeze({
+        ...await commit(before,next,action),
+        permitsExternalCall:false as const,
+        permitsProbe:false as const,
+        permitsAutomaticReplay:false as const,
+      });
     },
   };
 }
