@@ -269,7 +269,7 @@ describe("D-012J J30 — ciclo completo persistente em MySQL 8.4", () => {
          WHERE resource_type = 'integration_circuit_state'
            AND resource_id = (
              SELECT id FROM integration_circuit_state
-              WHERE organization_id = ? AND system = ?
+              WHERE `organization_id` = ? AND `system` = ?
            )
          ORDER BY id ASC`,
       [tenantId, system],
