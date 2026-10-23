@@ -223,3 +223,30 @@ describe("D-012J J22 — consolidação J13 com fencing obrigatório", () => {
     expect(new Set(decisions.map(d => JSON.stringify(d))).size).toBe(1);
   });
 });
+
+describe("D-012J J22 — validação cruzada dos contratos de integração", () => {
+  it("rejeita sistema não declarado mesmo sob cast externo de TypeScript", () => {
+    expect(() => evaluateIntegrationResilience({
+      tenantId: 7,
+      policy: { ...policy, system: "unknown-provider" as never },
+      nextAttempt: 1,
+      consecutiveFailures: 0,
+      circuitOpenedAt: null,
+      now: new Date("2026-10-22T23:00:00.000Z"),
+    })).toThrow(/contrato|sistema|integração/i);
+  });
+
+  it("rejeita parâmetros numéricos acima do inteiro seguro", () => {
+    for (const patch of [
+      { tenantId: Number.MAX_SAFE_INTEGER + 1 },
+      { nextAttempt: Number.MAX_SAFE_INTEGER + 1 },
+      { consecutiveFailures: Number.MAX_SAFE_INTEGER + 1 },
+    ]) {
+      expect(() => evaluateIntegrationResilience({
+        tenantId: 7, policy, nextAttempt: 1,
+        consecutiveFailures: 0, circuitOpenedAt: null,
+        now: new Date("2026-10-22T23:00:00.000Z"), ...patch,
+      })).toThrow(/inteiro/i);
+    }
+  });
+});
