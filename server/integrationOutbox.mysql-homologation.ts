@@ -281,14 +281,25 @@ async function seedJ20Administrator(organizationId: number, grantRecover = true)
     "INSERT INTO users (\`openId\`, name, active) VALUES (?, 'J20 disposable admin', 1)",
     ["j20-" + randomUUID()],
   );
-  const [role] = await control.execute<ResultSetHeader>(
-    "INSERT INTO access_roles (code, name, role_scope, active) VALUES (?, 'J20 scoped admin', 'organizacao', 1)",
-    ["j20-admin-" + randomUUID()],
-  );
+  // RBAC recognizes the literal 'administrador' role code, not an arbitrary
+  // fixture role name. Permissions live in a second, per-actor scoped role.
   await control.execute(
-    "INSERT INTO user_role_assignments (user_id, role_id, organization_id, active) VALUES (?, ?, ?, 1)",
-    [user.insertId, role.insertId, organizationId],
+    "INSERT INTO access_roles (code, name, role_scope, active) VALUES ('administrador', 'J20 tenant admin', 'organizacao', 1) ON DUPLICATE KEY UPDATE role_scope = 'organizacao', active = 1",
   );
+  const [admin] = await control.execute<RowDataPacket[]>(
+    "SELECT id FROM access_roles WHERE code = 'administrador' AND active = 1",
+  );
+  expect(admin).toHaveLength(1);
+  const [entitlement] = await control.execute<ResultSetHeader>(
+    "INSERT INTO access_roles (code, name, role_scope, active) VALUES (?, 'J20 scoped permissions', 'organizacao', 1)",
+    ["j20-entitlement-" + randomUUID()],
+  );
+  for (const roleId of [admin[0].id, entitlement.insertId]) {
+    await control.execute(
+      "INSERT INTO user_role_assignments (user_id, role_id, organization_id, active) VALUES (?, ?, ?, 1)",
+      [user.insertId, roleId, organizationId],
+    );
+  }
   for (const permission of ["workflow.execute", ...(grantRecover ? ["integrations.recover"] : [])]) {
     await control.execute(
       "INSERT INTO access_permissions (code, resource, action, active) VALUES (?, 'integration', 'recover', 1) ON DUPLICATE KEY UPDATE id = id",
@@ -301,7 +312,7 @@ async function seedJ20Administrator(organizationId: number, grantRecover = true)
     expect(rows).toHaveLength(1);
     await control.execute(
       "INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)",
-      [role.insertId, rows[0].id],
+      [entitlement.insertId, rows[0].id],
     );
   }
   return user.insertId;
