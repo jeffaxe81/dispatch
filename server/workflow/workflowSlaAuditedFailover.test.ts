@@ -12,13 +12,15 @@ const actor = {
   id: 11, openId: "admin-11", role: "admin" as const,
   operationalRole: "administrador" as const, teamId: null, active: true,
 };
-const approval = () => signSlaFailoverApproval({
-  version: "j6g-v1", organizationId: 9, component: "scheduler",
+const approvalPayload = {
+  version: "j6g-v1" as const, organizationId: 9, component: "scheduler" as const,
   operatorUserId: 11, approverUserId: 22,
   approvalId: "12".repeat(16),
+  expectedSourceId: "scheduler-a", nextSourceId: "scheduler-b",
   issuedAt: "2026-10-22T23:00:00.000Z",
   expiresAt: "2026-10-22T23:04:00.000Z",
-}, secret);
+};
+const approval = () => signSlaFailoverApproval(approvalPayload, secret);
 const payload = () => ({
   actor, organizationId: 9, component: "scheduler" as const,
   operatorApproved: true, approval: approval(),
@@ -66,6 +68,16 @@ describe("J6G — operador autenticado, aprovação independente e auditoria at�
         approvalRef: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
+  });
+
+  it("rejeita se as fontes server-side mudarem depois da aprovação", async () => {
+    const f = fixture();
+    f.approvedSources.mockResolvedValueOnce({
+      expectedSourceId: "scheduler-a", nextSourceId: "scheduler-c",
+    });
+    await expect(f.make().transfer(payload())).rejects.toThrow(/não autorizada/i);
+    expect(f.openStore).not.toHaveBeenCalled();
+    expect(f.store.promote).not.toHaveBeenCalled();
   });
 
   it("barra produção, user inativo, aprovação não assinada e autoaprovação ANTES de I/O", async () => {
