@@ -21,6 +21,7 @@ const base: ProbeManualExecutionPlanInput = {
     system: "neo",
     expectedCircuitVersion: 9,
     requestedAction: "probe_once",
+    approvalId: "APR-20261023-001",
     status: "eligible_for_manual_execution_plan",
     requiresFreshReconciliation: true,
     requiresExecutionPlan: true,
