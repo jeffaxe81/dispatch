@@ -116,3 +116,25 @@ export function buildIntegrationCircuitSuccess(
     cooldownUntilMs: null,
   });
 }
+
+export function buildIntegrationCircuitProbeFailure(
+  current: IntegrationCircuitSnapshot,
+  input: { nowEpochMs: number; cooldownSeconds: number },
+): IntegrationCircuitSnapshot {
+  assertIntegrationCircuitSnapshot(current);
+  epoch(input.nowEpochMs, "Relógio");
+  integer(input.cooldownSeconds, "Cooldown", 1);
+  if (current.state !== "half_open") throw new Error("Falha de probe exige circuito half-open.");
+  const failures = current.consecutiveFailures + 1;
+  integer(failures, "Falhas consecutivas");
+  const cooldownUntilMs = input.nowEpochMs + input.cooldownSeconds * 1_000;
+  epoch(cooldownUntilMs, "Fim do cooldown");
+  return Object.freeze({
+    ...current,
+    state: "open",
+    version: nextVersion(current),
+    consecutiveFailures: failures,
+    openedAtMs: input.nowEpochMs,
+    cooldownUntilMs,
+  });
+}
