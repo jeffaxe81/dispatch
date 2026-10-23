@@ -29,6 +29,7 @@ export type ProbeAdministrativeGateResult = Readonly<{
   system: IntegrationSystem;
   expectedCircuitVersion: number;
   requestedAction: "probe_once";
+  approvalId: string;
   status: ProbeAdministrativeGateStatus;
   requiresFreshReconciliation: true;
   requiresExecutionPlan: true;
@@ -63,6 +64,7 @@ function output(
     system: input.system,
     expectedCircuitVersion: input.expectedCircuitVersion,
     requestedAction: "probe_once",
+    approvalId: input.approvalId,
     status,
     requiresFreshReconciliation: true,
     requiresExecutionPlan: true,
