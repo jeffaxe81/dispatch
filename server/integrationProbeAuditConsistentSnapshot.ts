@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/mysql2";
 import { integrationCircuitState } from "../drizzle/integrationCircuitSchema";
 import { auditLogs } from "../drizzle/schema";
 import type { getDb } from "./dbLegacy";
@@ -50,6 +51,95 @@ function assertHomologationGate(): void {
   }
 }
 
+async function readSnapshotWithinTransaction(
+  tx: any,
+  input: Pick<ProbeAuditInput, "organizationId" | "system">,
+): Promise<ProbeAuditConsistentSnapshot> {
+  const stateRows = await tx.select({
+    id: integrationCircuitState.id,
+    organizationId: integrationCircuitState.organizationId,
+    system: integrationCircuitState.system,
+    state: integrationCircuitState.state,
+    version: integrationCircuitState.circuitVersion,
+    consecutiveFailures: integrationCircuitState.consecutiveFailures,
+    executionConsumedAtMs: integrationCircuitState.probeExecutionConsumedAtMs,
+  }).from(integrationCircuitState).where(and(
+    eq(integrationCircuitState.organizationId, input.organizationId),
+    eq(integrationCircuitState.system, input.system),
+  )).limit(1);
+
+  const state = stateRows[0] ?? null;
+  if (state === null) {
+    return Object.freeze({ state: null, entries: Object.freeze([]) });
+  }
+
+  const auditRows = await tx.select({
+    resourceId: auditLogs.resourceId,
+    action: auditLogs.action,
+    beforeData: auditLogs.beforeData,
+    afterData: auditLogs.afterData,
+  }).from(auditLogs).where(and(
+    eq(auditLogs.resourceType, "integration_circuit_state"),
+    eq(auditLogs.resourceId, state.id),
+    inArray(auditLogs.action, ACTIONS),
+  )).orderBy(desc(auditLogs.id)).limit(J33_MAX_AUDIT_ROWS);
+
+  const entries = auditRows.map((row: any) => Object.freeze({
+    resourceId: row.resourceId,
+    action: row.action,
+    beforeData: row.beforeData ?? {},
+    afterData: row.afterData ?? {},
+  }));
+
+  return Object.freeze({
+    state: Object.freeze({ ...state }) as CircuitProbeAuditState,
+    entries: Object.freeze(entries),
+  });
+}
+
+async function readMysql2ConsistentSnapshot(
+  db: any,
+  input: Pick<ProbeAuditInput, "organizationId" | "system">,
+): Promise<ProbeAuditConsistentSnapshot> {
+  const client = db?.$client;
+  if (!client) {
+    return db.transaction(
+      (tx: any) => readSnapshotWithinTransaction(tx, input),
+      {
+        isolationLevel: "repeatable read",
+        accessMode: "read only",
+        withConsistentSnapshot: true,
+      },
+    );
+  }
+
+  const pooled = typeof client.getConnection === "function";
+  const connection = pooled ? await client.getConnection() : client;
+  if (!connection || typeof connection.query !== "function") {
+    if (pooled && typeof connection?.release === "function") connection.release();
+    throw new Error("Conexão MySQL indisponível para snapshot J34.");
+  }
+
+  let started = false;
+  try {
+    await connection.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    await connection.query("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY");
+    started = true;
+
+    const tx = drizzle({ client: connection });
+    const snapshot = await readSnapshotWithinTransaction(tx, input);
+
+    await connection.query("COMMIT");
+    started = false;
+    return snapshot;
+  } catch (error) {
+    if (started) await connection.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    if (pooled && typeof connection.release === "function") connection.release();
+  }
+}
+
 /**
  * J34 read-only adapter. State and audit evidence are captured inside the same
  * database transaction so the classifier cannot combine two different moments.
@@ -64,52 +154,7 @@ export function createIntegrationProbeAuditConsistentSnapshotReader(
 
   return Object.freeze({
     async readSnapshot(input): Promise<ProbeAuditConsistentSnapshot> {
-      return (db as any).transaction(async (tx: any) => {
-        const stateRows = await tx.select({
-          id: integrationCircuitState.id,
-          organizationId: integrationCircuitState.organizationId,
-          system: integrationCircuitState.system,
-          state: integrationCircuitState.state,
-          version: integrationCircuitState.circuitVersion,
-          consecutiveFailures: integrationCircuitState.consecutiveFailures,
-          executionConsumedAtMs: integrationCircuitState.probeExecutionConsumedAtMs,
-        }).from(integrationCircuitState).where(and(
-          eq(integrationCircuitState.organizationId, input.organizationId),
-          eq(integrationCircuitState.system, input.system),
-        )).limit(1);
-
-        const state = stateRows[0] ?? null;
-        if (state === null) {
-          return Object.freeze({ state: null, entries: Object.freeze([]) });
-        }
-
-        const auditRows = await tx.select({
-          resourceId: auditLogs.resourceId,
-          action: auditLogs.action,
-          beforeData: auditLogs.beforeData,
-          afterData: auditLogs.afterData,
-        }).from(auditLogs).where(and(
-          eq(auditLogs.resourceType, "integration_circuit_state"),
-          eq(auditLogs.resourceId, state.id),
-          inArray(auditLogs.action, ACTIONS),
-        )).orderBy(desc(auditLogs.id)).limit(J33_MAX_AUDIT_ROWS);
-
-        const entries = auditRows.map((row: any) => Object.freeze({
-          resourceId: row.resourceId,
-          action: row.action,
-          beforeData: row.beforeData ?? {},
-          afterData: row.afterData ?? {},
-        }));
-
-        return Object.freeze({
-          state: Object.freeze({ ...state }) as CircuitProbeAuditState,
-          entries: Object.freeze(entries),
-        });
-      }, {
-        isolationLevel: "repeatable read",
-        accessMode: "read only",
-        withConsistentSnapshot: true,
-      });
+      return readMysql2ConsistentSnapshot(db as any, input);
     },
   });
 }
