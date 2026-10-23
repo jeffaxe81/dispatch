@@ -5,6 +5,7 @@ import type { IntegrationSystem } from "../shared/integrationContracts";
 import type { getDb } from "./dbLegacy";
 import { assertIntegrationCircuitSnapshot } from "./integrationCircuitState";
 import { assertIntegrationCircuitProbeLeaseSnapshot } from "./integrationCircuitProbeLease";
+import { assertIntegrationProbeExecutionSnapshot } from "./integrationCircuitProbeExecutionIntent";
 
 type IntegrationDb = Omit<NonNullable<Awaited<ReturnType<typeof getDb>>>, "$client">;
 type CircuitRow = typeof integrationCircuitState.$inferSelect;
@@ -21,6 +22,9 @@ export type IntegrationCircuitPersistenceSnapshot = Readonly<{
   leaseOwner: string | null;
   leaseToken: string | null;
   leaseExpiresAtMs: number | null;
+  executionToken: string | null;
+  executionExpiresAtMs: number | null;
+  executionConsumedAtMs: number | null;
 }>;
 
 export type IntegrationCircuitAuditProjection = Readonly<{
@@ -56,9 +60,12 @@ export function hydrateIntegrationCircuitPersistence(
     consecutiveFailures:r.consecutiveFailures,
     openedAtMs:r.openedAtMs,
     cooldownUntilMs:r.cooldownUntilMs,
-    leaseOwner:r.probeLeaseOwner,
-    leaseToken:r.probeLeaseToken,
-    leaseExpiresAtMs:r.probeLeaseExpiresAtMs,
+    leaseOwner:r.probeLeaseOwner ?? null,
+    leaseToken:r.probeLeaseToken ?? null,
+    leaseExpiresAtMs:r.probeLeaseExpiresAtMs ?? null,
+    executionToken:r.probeExecutionToken ?? null,
+    executionExpiresAtMs:r.probeExecutionExpiresAtMs ?? null,
+    executionConsumedAtMs:r.probeExecutionConsumedAtMs ?? null,
   };
   assertIntegrationCircuitSnapshot({
     organizationId:snapshot.organizationId, system:snapshot.system, state:snapshot.state,
@@ -69,6 +76,13 @@ export function hydrateIntegrationCircuitPersistence(
     organizationId:snapshot.organizationId, system:snapshot.system, circuitState:snapshot.state,
     circuitVersion:snapshot.version, leaseOwner:snapshot.leaseOwner,
     leaseToken:snapshot.leaseToken, leaseExpiresAtMs:snapshot.leaseExpiresAtMs,
+  });
+  assertIntegrationProbeExecutionSnapshot({
+    organizationId:snapshot.organizationId, system:snapshot.system, circuitState:snapshot.state,
+    circuitVersion:snapshot.version, leaseOwner:snapshot.leaseOwner,
+    leaseToken:snapshot.leaseToken, leaseExpiresAtMs:snapshot.leaseExpiresAtMs,
+    executionToken:snapshot.executionToken, executionExpiresAtMs:snapshot.executionExpiresAtMs,
+    executionConsumedAtMs:snapshot.executionConsumedAtMs,
   });
   if(snapshot.state!=="half_open" && snapshot.leaseToken!==null) {
     throw new Error("Lease de probe só pode existir em half-open.");
@@ -117,11 +131,16 @@ export function createIntegrationCircuitMySqlStorage(db:IntegrationDb) {
         if(!locked) return false;
         const live=hydrateIntegrationCircuitPersistence(locked);
         if(live.version!==input.expectedVersion||live.state!==input.current.state
-          ||live.leaseToken!==input.current.leaseToken) return false;
+          ||live.leaseToken!==input.current.leaseToken
+          ||live.executionToken!==input.current.executionToken
+          ||live.executionConsumedAtMs!==input.current.executionConsumedAtMs) return false;
 
         const leaseCondition=live.leaseToken===null
           ? isNull(integrationCircuitState.probeLeaseToken)
           : eq(integrationCircuitState.probeLeaseToken,live.leaseToken);
+        const executionCondition=live.executionToken===null
+          ? isNull(integrationCircuitState.probeExecutionToken)
+          : eq(integrationCircuitState.probeExecutionToken,live.executionToken);
         const [result]=await tx.update(integrationCircuitState).set({
           state:input.next.state,
           circuitVersion:input.next.version,
@@ -131,12 +150,16 @@ export function createIntegrationCircuitMySqlStorage(db:IntegrationDb) {
           probeLeaseOwner:input.next.leaseOwner,
           probeLeaseToken:input.next.leaseToken,
           probeLeaseExpiresAtMs:input.next.leaseExpiresAtMs,
+          probeExecutionToken:input.next.executionToken,
+          probeExecutionExpiresAtMs:input.next.executionExpiresAtMs,
+          probeExecutionConsumedAtMs:input.next.executionConsumedAtMs,
         }).where(and(
           eq(integrationCircuitState.organizationId,input.organizationId),
           eq(integrationCircuitState.system,input.system),
           eq(integrationCircuitState.circuitVersion,input.expectedVersion),
           eq(integrationCircuitState.state,input.current.state),
           leaseCondition,
+          executionCondition,
         ));
         if(result.affectedRows===0) return false;
         if(result.affectedRows!==1) throw new Error("Invariante CAS do circuito violada.");
