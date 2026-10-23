@@ -108,7 +108,9 @@ export function evaluateIntegrationResilience(input: {
       input.tenantId,
       input.policy.system,
       "half_open",
-      true,
+      // Cooldown expiry changes the circuit state, not authorization.
+      // Only an exclusive, persisted tenant/system lease may allow a probe.
+      false,
     );
   }
 
