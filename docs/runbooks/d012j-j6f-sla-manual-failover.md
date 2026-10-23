@@ -6,7 +6,7 @@ Permitir **troca controlada de fonte de evidência** após perda comprovada de h
 A J6D congelava `sourceId` de uma combinação `organization_id/component`; J6F define o caminho administrativo seguro para trocar a fonte, **sem edição manual direta do banco**. O store transacional J6F:
 1. Faz `SELECT ... FOR UPDATE` da linha de `workflow_sla_component_heartbeats` para o tenant e componente exatos.
 2. Exige `expectedSourceId` e `expectedSequence` idênticos ao registro; não permite promoção de fonte idêntica ou sequência próxima do limite seguro.
-3. Exige heartbeat anterior com **idade estritamente maior que 60.000 ms**: no limite de 60 segundos ainda é proibido.
+3. Exige **emissão e recebimento** do heartbeat anterior com idade estritamente maior que 60.000 ms: no limite de 60 segundos, ou se o recebimento foi recente, a promoção é proibida.
 4. Troca para `nextSourceId`, incrementa a sequência e registra `state = unhealthy`, com timestamps atuais. Assim, **nenhuma instância herda o healthy antigo**. O novo emissor precisa apresentar novo heartbeat HMAC próprio, com sequência ainda maior.
 5. Insere a auditoria `workflow_sla_heartbeat/manual_source_handover`, com ator, origem, destino, sequência e motivo, **na mesma transação**. Falha da auditoria reverte a transferência.
 6. Concorrentes perdem pelo CAS; a fonte antiga é impedida de aceitar novos beats, mesmo com assinatura antiga válida, porque `sourceId` diverge do novo registro.
