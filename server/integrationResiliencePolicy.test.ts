@@ -65,7 +65,7 @@ describe("D-012J J13 — política de retry e circuit breaker por adapter", () =
     });
   });
 
-  it("mantém circuito aberto durante cooldown e permite half-open após a janela", () => {
+  it("mantém circuito aberto durante cooldown e exige fencing exclusivo no half-open", () => {
     const openedAt = new Date("2026-10-22T22:00:00.000Z");
 
     const blocked = evaluateIntegrationResilience({
@@ -89,7 +89,7 @@ describe("D-012J J13 — política de retry e circuit breaker por adapter", () =
       now: new Date("2026-10-22T22:00:30.000Z"),
     });
     expect(halfOpen.action).toBe("half_open");
-    expect(halfOpen.allowAttempt).toBe(true);
+    expect(halfOpen.allowAttempt).toBe(false);
     expect(halfOpen.retryAfterSeconds).toBe(0);
   });
 
