@@ -85,6 +85,11 @@ describe("D-012J J34 — snapshot consistente da reconciliação de probe", () =
     const reader = createIntegrationProbeAuditConsistentSnapshotReader({ transaction } as any);
     const snapshot = await reader.readSnapshot({ organizationId: 7, system: "neo" });
     expect(transaction).toHaveBeenCalledTimes(1);
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: "repeatable read",
+      accessMode: "read only",
+      withConsistentSnapshot: true,
+    });
     expect(tx.select).toHaveBeenCalledTimes(2);
     expect(snapshot.state).toEqual(state);
     expect(snapshot.entries).toHaveLength(2);
