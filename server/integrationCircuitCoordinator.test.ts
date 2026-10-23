@@ -102,3 +102,91 @@ describe("D-012J J28 — coordenador CAS/auditoria do circuito", () => {
     expect(s.commitAudited).not.toHaveBeenCalled();
   });
 });
+
+describe("D-012J J29 — resolução fenced do resultado do probe", () => {
+  const leasedHalfOpen = {
+    ...base,
+    state: "half_open" as const,
+    version: 6,
+    consecutiveFailures: 3,
+    openedAtMs: 1_000,
+    cooldownUntilMs: 31_000,
+    leaseOwner: "worker-a",
+    leaseToken: "probe-token",
+    leaseExpiresAtMs: 40_000,
+  };
+
+  it("fecha o circuito e limpa o lease somente após sucesso com token e versão válidos", async () => {
+    const s = storage({ load: vi.fn(async () => leasedHalfOpen) });
+    const c = createIntegrationCircuitCoordinator(s, () => 33_000);
+    const result = await c.resolveProbe({
+      organizationId: 7,
+      system: "neo",
+      expectedVersion: 6,
+      leaseToken: "probe-token",
+      outcome: "success",
+      cooldownSeconds: 30,
+    });
+    expect(result).toMatchObject({
+      state: "closed",
+      version: 7,
+      consecutiveFailures: 0,
+      openedAtMs: null,
+      cooldownUntilMs: null,
+      leaseOwner: null,
+      leaseToken: null,
+      leaseExpiresAtMs: null,
+      permitsExternalCall: false,
+      permitsAutomaticReplay: false,
+    });
+    expect(s.commitAudited).toHaveBeenCalledWith(expect.objectContaining({
+      action: "integration.circuit.probe.succeeded",
+      expectedVersion: 6,
+    }));
+  });
+
+  it("reabre o circuito com novo cooldown quando o probe falha", async () => {
+    const s = storage({ load: vi.fn(async () => leasedHalfOpen) });
+    const c = createIntegrationCircuitCoordinator(s, () => 33_000);
+    const result = await c.resolveProbe({
+      organizationId: 7,
+      system: "neo",
+      expectedVersion: 6,
+      leaseToken: "probe-token",
+      outcome: "failure",
+      cooldownSeconds: 30,
+    });
+    expect(result).toMatchObject({
+      state: "open",
+      version: 7,
+      consecutiveFailures: 4,
+      openedAtMs: 33_000,
+      cooldownUntilMs: 63_000,
+      leaseOwner: null,
+      leaseToken: null,
+      leaseExpiresAtMs: null,
+      permitsExternalCall: false,
+      permitsAutomaticReplay: false,
+    });
+    expect(s.commitAudited).toHaveBeenCalledWith(expect.objectContaining({
+      action: "integration.circuit.probe.failed",
+    }));
+  });
+
+  it("rejeita token divergente ou lease expirado antes de qualquer commit", async () => {
+    const s = storage({ load: vi.fn(async () => leasedHalfOpen) });
+    const c = createIntegrationCircuitCoordinator(s, () => 33_000);
+    await expect(c.resolveProbe({
+      organizationId: 7, system: "neo", expectedVersion: 6,
+      leaseToken: "outro-token", outcome: "success", cooldownSeconds: 30,
+    })).rejects.toThrow(/token|fencing/i);
+    expect(s.commitAudited).not.toHaveBeenCalled();
+
+    const expired = storage({ load: vi.fn(async () => ({ ...leasedHalfOpen, leaseExpiresAtMs: 33_000 })) });
+    await expect(createIntegrationCircuitCoordinator(expired, () => 33_000).resolveProbe({
+      organizationId: 7, system: "neo", expectedVersion: 6,
+      leaseToken: "probe-token", outcome: "failure", cooldownSeconds: 30,
+    })).rejects.toThrow(/expir/i);
+    expect(expired.commitAudited).not.toHaveBeenCalled();
+  });
+});
