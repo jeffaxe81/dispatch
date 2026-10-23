@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createConnection, type Connection } from "mysql2/promise";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
@@ -89,6 +89,8 @@ beforeAll(async () => {
   tenantA = ta.insertId;
   tenantB = tb.insertId;
 });
+afterEach(() => vi.unstubAllEnvs());
+
 afterAll(async () => {
   for (const client of connections) {
     await client.rollback().catch(() => {});
@@ -270,5 +272,191 @@ describe("D-012J J18 — MySQL 8.4 físico da outbox", () => {
       current: leased, nowEpochMs: NOW + 999,
     })).rejects.toThrow(/não expirou/i);
     expect(await state(id)).toMatchObject({ status: "leased", version: 1 });
+  });
+});
+
+async function seedJ20Administrator(organizationId: number, grantRecover = true) {
+  const [user] = await control.execute<ResultSetHeader>(
+    "INSERT INTO users (\`openId\`, name, active) VALUES (?, 'J20 disposable admin', 1)",
+    ["j20-" + randomUUID()],
+  );
+  const [role] = await control.execute<ResultSetHeader>(
+    "INSERT INTO access_roles (code, name, role_scope, active) VALUES (?, 'J20 scoped admin', 'organizacao', 1)",
+    ["j20-admin-" + randomUUID()],
+  );
+  await control.execute(
+    "INSERT INTO user_role_assignments (user_id, role_id, organization_id, active) VALUES (?, ?, ?, 1)",
+    [user.insertId, role.insertId, organizationId],
+  );
+  for (const permission of ["workflow.execute", ...(grantRecover ? ["integrations.recover"] : [])]) {
+    await control.execute(
+      "INSERT INTO access_permissions (code, resource, action, active) VALUES (?, 'integration', 'recover', 1) ON DUPLICATE KEY UPDATE id = id",
+      [permission],
+    );
+    const [rows] = await control.execute<RowDataPacket[]>(
+      "SELECT id FROM access_permissions WHERE code = ? AND active = 1",
+      [permission],
+    );
+    expect(rows).toHaveLength(1);
+    await control.execute(
+      "INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)",
+      [role.insertId, rows[0].id],
+    );
+  }
+  return user.insertId;
+}
+
+async function seedJ20Leased(organizationId: number) {
+  const deliveryId = await insertDelivery(organizationId);
+  const current = (await storage(control).loadByTenant({ organizationId, deliveryId }))!;
+  const next = buildIntegrationOutboxClaim(current, {
+    nowEpochMs: NOW, workerId: "j20-worker", leaseToken: randomUUID(),
+    leaseDurationMs: 1000,
+  });
+  expect(await storage(control).compareAndSwap({
+    organizationId, deliveryId, expectedVersion: 0,
+    current, next, nowEpochMs: NOW,
+  })).toBe(true);
+  return { deliveryId, next };
+}
+
+function enableJ20() {
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("AXE_RUNTIME_ENV", "homologation");
+  vi.stubEnv("AXE_INTEGRATION_RECOVERY_J20_ENABLED", "true");
+}
+
+describe("D-012J J20 — transação real de quarentena e auditoria", () => {
+  it("commits quarantined state and sanitized audit in the same transaction", async () => {
+    enableJ20();
+    const actorUserId = await seedJ20Administrator(tenantA);
+    const { deliveryId } = await seedJ20Leased(tenantA);
+    const tx = await connection();
+    const result = await createIntegrationRecoveryAuditedMySqlService(
+      drizzle({ client: tx }), () => NOW + 1001,
+    ).quarantineExpired({
+      authenticatedActorUserId: actorUserId,
+      resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
+      reasonCode: "delivery_outcome_unknown", ticketReference: "INC-12345",
+      operatorApproved: true,
+    });
+    expect(result).toMatchObject({
+      outcome: "quarantined", organizationId: tenantA,
+      deliveryId, version: 2,
+    });
+    expect(await state(deliveryId)).toMatchObject({
+      status: "dead_letter", version: 2, attempts: 1, leaseToken: null,
+    });
+    const [audits] = await control.execute<RowDataPacket[]>(
+      "SELECT before_data AS beforeData, after_data AS afterData, actor_user_id AS actorId FROM audit_logs WHERE resource_type = 'integration_delivery_outbox' AND resource_id = ?",
+      [deliveryId],
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0].actorId).toBe(actorUserId);
+    const serialized = JSON.stringify(audits[0]);
+    expect(serialized).toContain("INC-12345");
+    expect(serialized).not.toContain("vault:fixture");
+    expect(serialized).not.toContain("j20-worker");
+    expect(serialized).not.toContain("lease_token");
+  });
+
+  it("rejects cross-tenant actor or missing explicit recovery grant without changing data", async () => {
+    enableJ20();
+    const wrongTenantActor = await seedJ20Administrator(tenantB);
+    const noGrantActor = await seedJ20Administrator(tenantA, false);
+    const { deliveryId } = await seedJ20Leased(tenantA);
+    const service = createIntegrationRecoveryAuditedMySqlService(
+      drizzle({ client: await connection() }), () => NOW + 1001,
+    );
+    const base = {
+      resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
+      reasonCode: "delivery_outcome_unknown" as const,
+      ticketReference: "INC-12345", operatorApproved: true as const,
+    };
+    await expect(service.quarantineExpired({
+      ...base, authenticatedActorUserId: wrongTenantActor,
+    })).rejects.toThrow(/administrador|escopo/i);
+    await expect(service.quarantineExpired({
+      ...base, authenticatedActorUserId: noGrantActor,
+    })).rejects.toThrow(/permiss/i);
+    expect(await state(deliveryId)).toMatchObject({ status: "leased", version: 1 });
+    const [audits] = await control.execute<RowDataPacket[]>(
+      "SELECT id FROM audit_logs WHERE resource_type = 'integration_delivery_outbox' AND resource_id = ?",
+      [deliveryId],
+    );
+    expect(audits).toHaveLength(0);
+  });
+
+  it("rolls back the quarantined state if the SQL audit INSERT fails", async () => {
+    enableJ20();
+    const actorUserId = await seedJ20Administrator(tenantA);
+    const { deliveryId } = await seedJ20Leased(tenantA);
+    const guard = "j20_audit_failure_" + deliveryId;
+    await control.query(
+      `ALTER TABLE audit_logs ADD CONSTRAINT \`${guard}\` CHECK (resource_type <> 'integration_delivery_outbox' OR resource_id <> ${deliveryId})`,
+    );
+    try {
+      await expect(createIntegrationRecoveryAuditedMySqlService(
+        drizzle({ client: await connection() }), () => NOW + 1001,
+      ).quarantineExpired({
+        authenticatedActorUserId: actorUserId,
+        resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
+        reasonCode: "delivery_outcome_unknown", ticketReference: "OPS-12345",
+        operatorApproved: true,
+      })).rejects.toMatchObject({ code: "ER_CHECK_CONSTRAINT_VIOLATED" });
+    } finally {
+      await control.query(`ALTER TABLE audit_logs DROP CHECK \`${guard}\``);
+    }
+    expect(await state(deliveryId)).toMatchObject({
+      status: "leased", version: 1, attempts: 1,
+    });
+    const [audits] = await control.execute<RowDataPacket[]>(
+      "SELECT id FROM audit_logs WHERE resource_type = 'integration_delivery_outbox' AND resource_id = ?",
+      [deliveryId],
+    );
+    expect(audits).toHaveLength(0);
+  });
+
+  it("allows just one of two concurrent recoveries and writes a single audit", async () => {
+    enableJ20();
+    const actorUserId = await seedJ20Administrator(tenantA);
+    const { deliveryId } = await seedJ20Leased(tenantA);
+    const request = {
+      authenticatedActorUserId: actorUserId,
+      resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
+      reasonCode: "delivery_outcome_unknown" as const,
+      ticketReference: "CHG-12345", operatorApproved: true as const,
+    };
+    const a = createIntegrationRecoveryAuditedMySqlService(
+      drizzle({ client: await connection() }), () => NOW + 1001,
+    );
+    const b = createIntegrationRecoveryAuditedMySqlService(
+      drizzle({ client: await connection() }), () => NOW + 1001,
+    );
+    const results = await Promise.allSettled([
+      a.quarantineExpired(request), b.quarantineExpired(request),
+    ]);
+    expect(results.filter(x => x.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(x => x.status === "rejected")).toHaveLength(1);
+    expect(await state(deliveryId)).toMatchObject({ status: "dead_letter", version: 2 });
+    const [rows] = await control.execute<RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM audit_logs WHERE resource_type = 'integration_delivery_outbox' AND resource_id = ?",
+      [deliveryId],
+    );
+    expect(Number(rows[0].n)).toBe(1);
+  });
+
+  it("fails closed without the J20 homologation gate", async () => {
+    const actorUserId = await seedJ20Administrator(tenantA);
+    const { deliveryId } = await seedJ20Leased(tenantA);
+    await expect(createIntegrationRecoveryAuditedMySqlService(
+      drizzle({ client: await connection() }), () => NOW + 1001,
+    ).quarantineExpired({
+      authenticatedActorUserId: actorUserId,
+      resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
+      reasonCode: "delivery_outcome_unknown", ticketReference: "INC-12345",
+      operatorApproved: true,
+    })).rejects.toThrow(/desabilitada/i);
+    expect(await state(deliveryId)).toMatchObject({ status: "leased", version: 1 });
   });
 });
