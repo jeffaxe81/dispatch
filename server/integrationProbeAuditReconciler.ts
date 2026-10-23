@@ -44,10 +44,17 @@ export type ProbeAuditResult = Readonly<ProbeAuditInput & {
   permitsAutomaticReplay: false;
 }>;
 
+export type ProbeAuditConsistentSnapshot = Readonly<{
+  state: CircuitProbeAuditState | null;
+  entries: readonly CircuitProbeAuditEntry[];
+}>;
+
 export type ProbeAuditReader = Readonly<{
-  load(input: Pick<ProbeAuditInput, "organizationId" | "system">):
+  readConsistentSnapshot?(input: Pick<ProbeAuditInput, "organizationId" | "system">):
+    Promise<ProbeAuditConsistentSnapshot>;
+  load?(input: Pick<ProbeAuditInput, "organizationId" | "system">):
     Promise<CircuitProbeAuditState | null>;
-  readAudit(input: { resourceId: number }): Promise<readonly CircuitProbeAuditEntry[]>;
+  readAudit?(input: { resourceId: number }): Promise<readonly CircuitProbeAuditEntry[]>;
 }>;
 
 const ACTION_CONSUMED = "integration.circuit.probe_intent.consumed";
@@ -186,23 +193,41 @@ function assertHomologationGate(): void {
  * The organization must be chosen by trusted server-side code, never a browser.
  */
 export function createIntegrationProbeAuditReconciler(reader: ProbeAuditReader) {
-  if (!reader || typeof reader.load !== "function"
-    || typeof reader.readAudit !== "function") {
-    throw new Error("Reader interno de auditoria J33 inválido.");
+  const hasConsistentSnapshot = !!reader
+    && typeof reader.readConsistentSnapshot === "function";
+  const hasLegacyReader = !!reader
+    && typeof reader.load === "function"
+    && typeof reader.readAudit === "function";
+  if (!hasConsistentSnapshot && !hasLegacyReader) {
+    throw new Error("Reader interno de auditoria J33/J34 inválido.");
   }
   return Object.freeze({
     async reconcile(input: ProbeAuditInput): Promise<ProbeAuditResult> {
       assertHomologationGate();
       if (!validScope(input)) throw new Error("Escopo/versão J33 inválidos.");
       try {
-        const state = await reader.load({
+        if (reader.readConsistentSnapshot) {
+          const snapshot = await reader.readConsistentSnapshot({
+            organizationId: input.organizationId, system: input.system,
+          });
+          if (!snapshot || !Array.isArray(snapshot.entries)) {
+            throw new Error("Snapshot consistente inválido.");
+          }
+          if (snapshot.state === null) return result(input, "not_found");
+          if (!validState(snapshot.state, input)) {
+            throw new Error("Snapshot fora do escopo de auditoria.");
+          }
+          return classifyIntegrationProbeAudit(input, snapshot.state, snapshot.entries);
+        }
+
+        const state = await reader.load!({
           organizationId: input.organizationId, system: input.system,
         });
         if (state === null) return result(input, "not_found");
         if (!validState(state, input)) {
           throw new Error("Snapshot fora do escopo de auditoria.");
         }
-        const entries = await reader.readAudit({ resourceId: state.id });
+        const entries = await reader.readAudit!({ resourceId: state.id });
         return classifyIntegrationProbeAudit(input, state, entries);
       } catch {
         // Never leak SQL errors, raw log fields, tokens or infrastructure data.
