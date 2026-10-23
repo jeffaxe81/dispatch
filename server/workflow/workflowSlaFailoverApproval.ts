@@ -8,6 +8,8 @@ export type SlaFailoverApproval = {
   operatorUserId: number;
   approverUserId: number;
   approvalId: string;
+  expectedSourceId: string;
+  nextSourceId: string;
   issuedAt: string;
   expiresAt: string;
   signature: string;
@@ -24,6 +26,10 @@ function utc(value: string): number {
   return ms;
 }
 
+function validSource(value: unknown): value is string {
+  return typeof value === "string" && /^[a-z0-9][a-z0-9._-]{0,79}$/.test(value);
+}
+
 function valid(approval: SlaFailoverApproval): { issued: number; expires: number } {
   if (!approval || approval.version !== "j6g-v1" ||
     !Number.isSafeInteger(approval.organizationId) || approval.organizationId < 1 ||
@@ -32,7 +38,10 @@ function valid(approval: SlaFailoverApproval): { issued: number; expires: number
     !Number.isSafeInteger(approval.approverUserId) || approval.approverUserId < 1 ||
     approval.operatorUserId === approval.approverUserId ||
     typeof approval.approvalId !== "string" ||
-    !/^[a-f0-9]{32}$/.test(approval.approvalId)) throw refused();
+    !/^[a-f0-9]{32}$/.test(approval.approvalId) ||
+    !validSource(approval.expectedSourceId) ||
+    !validSource(approval.nextSourceId) ||
+    approval.expectedSourceId === approval.nextSourceId) throw refused();
   const issued = utc(approval.issuedAt);
   const expires = utc(approval.expiresAt);
   if (expires <= issued || expires - issued > MAX_APPROVAL_MS) throw refused();
@@ -44,6 +53,7 @@ function canonical(approval: SlaFailoverApproval) {
     "axe-dispatch-sla-failover-approval-v1",
     approval.organizationId, approval.component, approval.operatorUserId,
     approval.approverUserId, approval.approvalId,
+    approval.expectedSourceId, approval.nextSourceId,
     approval.issuedAt, approval.expiresAt,
   ]);
 }
@@ -69,6 +79,8 @@ export function verifySlaFailoverApproval(input: {
   operatorUserId: number;
   organizationId: number;
   component: SlaHeartbeatComponent;
+  expectedSourceId: string;
+  nextSourceId: string;
   now: string;
   secret: string | Buffer;
 }): { approvalRef: string; approverUserId: number } {
@@ -78,6 +90,8 @@ export function verifySlaFailoverApproval(input: {
   if (approval.operatorUserId !== input.operatorUserId ||
     approval.organizationId !== input.organizationId ||
     approval.component !== input.component ||
+    approval.expectedSourceId !== input.expectedSourceId ||
+    approval.nextSourceId !== input.nextSourceId ||
     at < times.issued || at > times.expires ||
     typeof approval.signature !== "string" ||
     !/^[a-f0-9]{64}$/.test(approval.signature)) throw refused();
