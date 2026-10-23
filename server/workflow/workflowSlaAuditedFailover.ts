@@ -63,19 +63,28 @@ export function createSlaAuditedFailoverCoordinator(deps: {
       let approvalRef: string;
       let approverUserId: number;
       let now: string;
+      let sources: { expectedSourceId: string; nextSourceId: string };
       try {
         now = deps.clock();
+        await deps.authorizeOperator(input.actor);
+        await deps.authorizeTenant(input.actor, input.organizationId);
+        const resolvedSources = await deps.approvedSources({
+          organizationId: input.organizationId,
+          component: input.component,
+        });
+        if (!resolvedSources) throw refused();
+        sources = resolvedSources;
         const checked = verifySlaFailoverApproval({
           approval: input.approval,
           operatorUserId: input.actor.id,
           organizationId: input.organizationId,
           component: input.component,
+          expectedSourceId: sources.expectedSourceId,
+          nextSourceId: sources.nextSourceId,
           now,
           secret: deps.approvalSecret,
         });
         ({ approvalRef, approverUserId } = checked);
-        await deps.authorizeOperator(input.actor);
-        await deps.authorizeTenant(input.actor, input.organizationId);
         await deps.authorizeApprover(approverUserId, input.organizationId);
       } catch {
         throw refused();
@@ -92,7 +101,9 @@ export function createSlaAuditedFailoverCoordinator(deps: {
         environment: deps.environment,
         clock: () => now,
         audit: { actorUserId: input.actor.id, approverUserId, approvalRef },
-        approvedSources: deps.approvedSources,
+        // Reuse the exact server-side source pair that was cryptographically
+        // verified; never resolve a second, potentially drifted pair later.
+        approvedSources: async () => sources,
       }).transfer({
         organizationId: input.organizationId,
         component: input.component,
