@@ -15,6 +15,7 @@ import {
 } from "./integrationOutboxCas";
 import { createIntegrationRecoveryAuditedMySqlService } from "./integrationOutboxRecoveryAuditedMySql";
 import { createIntegrationRecoveryAuditVerifier } from "./integrationOutboxRecoveryAuditVerifier";
+import { createIntegrationOutboxCasCoordinator } from "./integrationOutboxCoordinator";
 import {
   buildExpiredIntegrationLeaseQuarantine,
   createExpiredIntegrationLeaseRecoveryStorage,
@@ -572,5 +573,77 @@ describe("D-012J J21 — prova física de auditoria sem replay", () => {
     expect(await state(deliveryId)).toMatchObject({
       status: "leased", version: 1,
     });
+  });
+});
+
+function enableJ23() {
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("AXE_RUNTIME_ENV", "homologation");
+  vi.stubEnv("AXE_INTEGRATION_OUTBOX_J23_ENABLED", "true");
+}
+
+describe("D-012J J23 — provas físicas MySQL do coordenador CAS", () => {
+  it("permite um único claim concorrente tenant-scoped e bloqueia trabalhador obsoleto", async () => {
+    enableJ23();
+    const deliveryId = await insertDelivery(tenantA);
+    const a = createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW,
+    );
+    const b = createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW,
+    );
+    const inputs = {
+      organizationId: tenantA, deliveryId, leaseDurationMs: 1000,
+    };
+    const results = await Promise.allSettled([
+      a.claim({ ...inputs, workerId: "j23-worker-a", leaseToken: randomUUID() }),
+      b.claim({ ...inputs, workerId: "j23-worker-b", leaseToken: randomUUID() }),
+    ]);
+    const successful = results.filter(x => x.status === "fulfilled");
+    expect(successful).toHaveLength(1);
+    expect(results.filter(x => x.status === "rejected")).toHaveLength(1);
+    expect(await state(deliveryId)).toMatchObject({
+      organizationId: tenantA, status: "leased", version: 1, attempts: 1,
+    });
+    const lease = successful[0].status === "fulfilled" ? successful[0].value : null;
+    expect(lease).not.toBeNull();
+    await expect(createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW + 1000,
+    ).resolve({
+      organizationId: tenantA, deliveryId,
+      workerId: lease!.leaseOwner!, leaseToken: lease!.leaseToken!,
+      expectedVersion: 1, outcome: "delivered",
+    })).rejects.toThrow(/expirad/i);
+    expect(await state(deliveryId)).toMatchObject({
+      status: "leased", version: 1, attempts: 1,
+    });
+  });
+
+  it("fenceia tenant e versão em MySQL real e não envia comunicação externa", async () => {
+    enableJ23();
+    const deliveryId = await insertDelivery(tenantA);
+    const coordinator = createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW,
+    );
+    await expect(coordinator.claim({
+      organizationId: tenantB, deliveryId,
+      workerId: "j23-worker", leaseToken: randomUUID(),
+      leaseDurationMs: 1000,
+    })).rejects.toThrow(/não encontrada|organização/i);
+    expect(await state(deliveryId)).toMatchObject({ status: "pending", version: 0 });
+    const token = randomUUID();
+    await coordinator.claim({
+      organizationId: tenantA, deliveryId,
+      workerId: "j23-worker", leaseToken: token,
+      leaseDurationMs: 1000,
+    });
+    await expect(createIntegrationOutboxCasCoordinator(
+      storage(await connection()), () => NOW + 1,
+    ).resolve({
+      organizationId: tenantA, deliveryId,
+      workerId: "j23-worker", leaseToken: token,
+      expectedVersion: 2, outcome: "delivered",
+    })).rejects.toThrow(/conflito/i);
+    expect(await state(deliveryId)).toMatchObject({ status: "leased", version: 1 });
   });
 });
