@@ -42,3 +42,15 @@ Nenhum módulo produtivo importa ou instancia este executor nesta entrega.
 - grants;
 - migration real;
 - merge da pilha em main.
+
+
+## Endurecimento de exceções e concorrência
+
+- Erros do adapter e do banco/coordinator são substituídos por mensagens estáticas sem `cause`, tokens, SQL, endpoints, payloads ou credenciais.
+- Falha ao consumir o grant encerra antes de chamar o callback; não ocorre execução não autorizada.
+- Se o callback falhar, retornar resultado ambíguo ou a persistência da resolução ficar incerta, o grant já consumido **não** é reutilizado. O estado continua conservador para reconciliação manual.
+- `failure` confiável reabre o circuito com cooldown; `success` confiável fecha o circuito.
+- Testes adicionais verificam ausência de vazamento de segredos, token consumido, falha do storage e disputa simultânea com um único vencedor CAS.
+- A cobertura em memória não substitui MySQL real, homologação externa ou monitoramento operacional.
+
+A correção não amplia o gate J32 nem concede permissão para executar adaptações reais, chamadas externas, scheduler ou replay.
