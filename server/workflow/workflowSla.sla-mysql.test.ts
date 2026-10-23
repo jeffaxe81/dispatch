@@ -949,6 +949,17 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
     await expect(primary.handover({
       ...command, now: new Date(nowMs + 60_000).toISOString(),
     })).rejects.toThrow(/rejeitado/i);
+    // A packet whose emission expired but whose receipt is still fresh
+    // must also prevent promotion to standby.
+    await control.execute(
+      "UPDATE workflow_sla_component_heartbeats SET received_at_ms = ? WHERE organization_id = ? AND component = ?",
+      [nowMs + 50_000, tenantA, "adapter"]
+    );
+    await expect(primary.handover(command)).rejects.toThrow(/rejeitado/i);
+    await control.execute(
+      "UPDATE workflow_sla_component_heartbeats SET received_at_ms = ? WHERE organization_id = ? AND component = ?",
+      [nowMs, tenantA, "adapter"]
+    );
     await expect(primary.handover({
       ...command, organizationId: tenantB,
     })).rejects.toThrow(/autorização/i);
