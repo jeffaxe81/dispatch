@@ -989,4 +989,50 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
     })).toMatchObject({ organizationId: tenantB, state: "unknown" });
   });
 
+  it("J6G: MySQL 8.4 audita a transferência na MESMA transação e faz rollback sem auditoria", async () => {
+    const target = { organizationId: tenantA, component: "scheduler" as const };
+    const store = createSlaHeartbeatMySqlStore(database(control));
+    const previous = await store.read(target);
+    expect(previous?.sourceId).toBe("scheduler-sla-homologation");
+    const approvedByUserId = await insert(
+      "INSERT INTO users (openId, name) VALUES (?, ?)",
+      ["sla-j6g-approver", "J6G independent approver"],
+    );
+    const takeover = {
+      ...target, expectedSourceId: previous!.sourceId, nextSourceId: "scheduler-j6g-new",
+      nowMs: nowMs + 90_000,
+    };
+    const badAudit = {
+      actorUserId: 2_000_000_000, approverUserId: approvedByUserId,
+      approvalRef: "e".repeat(64),
+    };
+    await expect(store.promote({ ...takeover, audit: badAudit })).rejects.toThrow();
+    expect((await store.read(target))?.sourceId).toBe(previous!.sourceId);
+
+    const audit = { actorUserId: userId, approverUserId: approvedByUserId,
+      approvalRef: "f".repeat(64) };
+    const results = await Promise.allSettled([
+      createSlaHeartbeatMySqlStore(database(await connection())).promote({ ...takeover, audit }),
+      createSlaHeartbeatMySqlStore(database(await connection())).promote({ ...takeover, audit }),
+    ]);
+    expect(results.filter(v => v.status === "fulfilled" && v.value === true)).toHaveLength(1);
+    expect(results.filter(v => v.status === "fulfilled" && v.value === false)).toHaveLength(1);
+    const after = await store.read(target);
+    expect(after).toMatchObject({ sourceId: "scheduler-j6g-new", state: "unhealthy", sequence: 0, sentAtMs: 0 });
+    const [events] = await control.execute<RowDataPacket[]>(
+      "SELECT resource_type, resource_id, action, actor_user_id, before_data, after_data FROM audit_logs WHERE resource_type = 'workflow_sla_heartbeat' AND resource_id = ? AND action = 'manual_failover_fenced'",
+      [tenantA],
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].actor_user_id).toBe(userId);
+    const evidence = JSON.stringify(events[0]);
+    expect(evidence).toContain("previousHealthInvalidated");
+    expect(evidence).toContain(audit.approvalRef);
+    expect(evidence).not.toContain(previous!.sourceId);
+    expect(evidence).not.toContain("scheduler-j6g-new");
+    expect(evidence).not.toContain("old-failover-key");
+    expect((await store.read({ organizationId: tenantB, component: "scheduler" }))?.sourceId)
+      .toBe("scheduler-tenant-b-e2e");
+  });
+
 });
