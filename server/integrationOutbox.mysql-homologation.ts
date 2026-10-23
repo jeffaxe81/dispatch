@@ -408,14 +408,30 @@ describe("D-012J J20 — transação real de quarentena e auditoria", () => {
       `ALTER TABLE audit_logs ADD CONSTRAINT \`${guard}\` CHECK (resource_type <> 'integration_delivery_outbox' OR resource_id <> ${deliveryId})`,
     );
     try {
-      await expect(createIntegrationRecoveryAuditedMySqlService(
-        drizzle({ client: await connection() }), () => NOW + 1001,
-      ).quarantineExpired({
-        authenticatedActorUserId: actorUserId,
-        resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
-        reasonCode: "delivery_outcome_unknown", ticketReference: "OPS-12345",
-        operatorApproved: true,
-      })).rejects.toMatchObject({ code: "ER_CHECK_CONSTRAINT_VIOLATED" });
+      const [attempt] = await Promise.allSettled([
+        createIntegrationRecoveryAuditedMySqlService(
+          drizzle({ client: await connection() }), () => NOW + 1001,
+        ).quarantineExpired({
+          authenticatedActorUserId: actorUserId,
+          resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
+          reasonCode: "delivery_outcome_unknown", ticketReference: "OPS-12345",
+          operatorApproved: true,
+        }),
+      ]);
+      expect(attempt.status).toBe("rejected");
+      if (attempt.status === "rejected") {
+        expect(String(attempt.reason)).toMatch(/audit_logs/i);
+        let cause: unknown = attempt.reason;
+        let code: string | undefined;
+        const visited = new Set<object>();
+        while (cause && typeof cause === "object" && !visited.has(cause)) {
+          visited.add(cause);
+          const detail = cause as { code?: unknown; cause?: unknown };
+          if (typeof detail.code === "string") { code = detail.code; break; }
+          cause = detail.cause;
+        }
+        expect(code).toBe("ER_CHECK_CONSTRAINT_VIOLATED");
+      }
     } finally {
       await control.query(`ALTER TABLE audit_logs DROP CHECK \`${guard}\``);
     }
