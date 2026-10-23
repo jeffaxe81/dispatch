@@ -14,6 +14,7 @@ import {
   createIntegrationOutboxMySqlStorage,
 } from "./integrationOutboxCas";
 import { createIntegrationRecoveryAuditedMySqlService } from "./integrationOutboxRecoveryAuditedMySql";
+import { createIntegrationRecoveryAuditVerifier } from "./integrationOutboxRecoveryAuditVerifier";
 import {
   buildExpiredIntegrationLeaseQuarantine,
   createExpiredIntegrationLeaseRecoveryStorage,
@@ -486,5 +487,90 @@ describe("D-012J J20 — transação real de quarentena e auditoria", () => {
       operatorApproved: true,
     })).rejects.toThrow(/desabilitada/i);
     expect(await state(deliveryId)).toMatchObject({ status: "leased", version: 1 });
+  });
+});
+
+describe("D-012J J21 — prova física de auditoria sem replay", () => {
+  it("verifica quarentena J20 com auditoria atômica e protege leitura entre tenants", async () => {
+    enableJ20();
+    const actorUserId = await seedJ20Administrator(tenantA);
+    const { deliveryId } = await seedJ20Leased(tenantA);
+    const writer = createIntegrationRecoveryAuditedMySqlService(
+      drizzle({ client: await connection() }), () => NOW + 1001,
+    );
+    await writer.quarantineExpired({
+      authenticatedActorUserId: actorUserId,
+      resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
+      reasonCode: "delivery_outcome_unknown",
+      ticketReference: "INC-20260", operatorApproved: true,
+    });
+    const verifier = createIntegrationRecoveryAuditVerifier(
+      drizzle({ client: await connection() }),
+    );
+    expect(await verifier.verify({
+      organizationId: tenantA, deliveryId,
+    })).toEqual({
+      organizationId: tenantA, deliveryId,
+      status: "verified", permitsReplay: false,
+    });
+    expect(await verifier.verify({
+      organizationId: tenantB, deliveryId,
+    })).toEqual({
+      organizationId: tenantB, deliveryId,
+      status: "not_found", permitsReplay: false,
+    });
+  });
+
+  it("classifica a quarentena J17 sem recibo atômico como missing, nunca como replay liberado", async () => {
+    const { deliveryId, next } = await seedJ20Leased(tenantA);
+    expect(await recovery(control).quarantineExpired({
+      organizationId: tenantA, deliveryId, expectedVersion: 1,
+      current: next, nowEpochMs: NOW + 1001,
+    })).toBe(true);
+    expect(await createIntegrationRecoveryAuditVerifier(
+      drizzle({ client: await connection() }),
+    ).verify({ organizationId: tenantA, deliveryId })).toEqual({
+      organizationId: tenantA, deliveryId,
+      status: "missing", permitsReplay: false,
+    });
+  });
+
+  it("rejeita auditoria adulterada após commit, sem realizar mutação no diagnóstico", async () => {
+    enableJ20();
+    const actorUserId = await seedJ20Administrator(tenantA);
+    const { deliveryId } = await seedJ20Leased(tenantA);
+    await createIntegrationRecoveryAuditedMySqlService(
+      drizzle({ client: await connection() }), () => NOW + 1001,
+    ).quarantineExpired({
+      authenticatedActorUserId: actorUserId,
+      resolvedOrganizationId: tenantA, deliveryId, expectedVersion: 1,
+      reasonCode: "lease_expired_after_disconnect",
+      ticketReference: "OPS-20260", operatorApproved: true,
+    });
+    // Tampering only inside the disposable MySQL fixture; production data untouched.
+    await control.execute(
+      "UPDATE audit_logs SET after_data = JSON_SET(after_data, '$.correlationId', 'tampered') WHERE resource_type = 'integration_delivery_outbox' AND resource_id = ?",
+      [deliveryId],
+    );
+    const verifier = createIntegrationRecoveryAuditVerifier(
+      drizzle({ client: await connection() }),
+    );
+    expect(await verifier.verify({
+      organizationId: tenantA, deliveryId,
+    })).toMatchObject({ status: "inconsistent", permitsReplay: false });
+    expect(await state(deliveryId)).toMatchObject({
+      status: "dead_letter", version: 2,
+    });
+  });
+
+  it("nega diagnóstico fora do gate de homologação, antes de buscar dados", async () => {
+    const { deliveryId } = await seedJ20Leased(tenantA);
+    vi.stubEnv("AXE_INTEGRATION_MYSQL_TESTS", "false");
+    await expect(createIntegrationRecoveryAuditVerifier(
+      drizzle({ client: await connection() }),
+    ).verify({ organizationId: tenantA, deliveryId })).rejects.toThrow(/desabilitado/i);
+    expect(await state(deliveryId)).toMatchObject({
+      status: "leased", version: 1,
+    });
   });
 });
