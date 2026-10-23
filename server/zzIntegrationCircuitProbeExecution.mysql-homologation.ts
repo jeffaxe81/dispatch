@@ -50,11 +50,11 @@ describe("D-012J J31 — intenção one-shot em MySQL 8.4", () => {
     const lease = "lease-" + randomUUID();
     const execution = "exec-" + randomUUID();
     await control.execute(
-      `INSERT INTO integration_circuit_state
-        (`organization_id`, `system`, `state`, `circuit_version`, `consecutive_failures`,
-         opened_at_ms, cooldown_until_ms, probe_lease_owner, probe_lease_token, probe_lease_expires_at_ms,
-         `probe_execution_token`, `probe_execution_expires_at_ms`, `probe_execution_consumed_at_ms`)
-       VALUES (?, 'neo', 'half_open', 6, 3, ?, ?, 'j31-worker', ?, ?, NULL, NULL, NULL)`,
+      "INSERT INTO integration_circuit_state " +
+        "(`organization_id`, `system`, `state`, `circuit_version`, `consecutive_failures`, " +
+        "`opened_at_ms`, `cooldown_until_ms`, `probe_lease_owner`, `probe_lease_token`, `probe_lease_expires_at_ms`, " +
+        "`probe_execution_token`, `probe_execution_expires_at_ms`, `probe_execution_consumed_at_ms`) " +
+        "VALUES (?, 'neo', 'half_open', 6, 3, ?, ?, 'j31-worker', ?, ?, NULL, NULL, NULL)",
       [tenantId, NOW - 30_000, NOW - 1_000, lease, NOW + 60_000],
     );
 
@@ -90,24 +90,18 @@ describe("D-012J J31 — intenção one-shot em MySQL 8.4", () => {
     }
 
     const [rows] = await control.execute<RowDataPacket[]>(
-      `SELECT circuit_version AS version,
-              probe_execution_consumed_at_ms AS consumedAt
-         FROM integration_circuit_state
-        WHERE organization_id = ? AND system = 'neo'`,
+      "SELECT `circuit_version` AS version, `probe_execution_consumed_at_ms` AS consumedAt " +
+        "FROM `integration_circuit_state` WHERE `organization_id` = ? AND `system` = 'neo'",
       [tenantId],
     );
     expect(rows[0].version).toBe(8);
     expect(Number(rows[0].consumedAt)).toBe(NOW + 1_000);
 
     const [audits] = await control.execute<RowDataPacket[]>(
-      `SELECT action, before_data AS beforeData, after_data AS afterData
-         FROM audit_logs
-        WHERE resource_type = 'integration_circuit_state'
-          AND resource_id = (
-            SELECT id FROM integration_circuit_state
-             WHERE organization_id = ? AND system = 'neo'
-          )
-        ORDER BY id ASC`,
+      "SELECT `action`, `before_data` AS beforeData, `after_data` AS afterData " +
+        "FROM `audit_logs` WHERE `resource_type` = 'integration_circuit_state' " +
+        "AND `resource_id` = (SELECT `id` FROM `integration_circuit_state` " +
+        "WHERE `organization_id` = ? AND `system` = 'neo') ORDER BY `id` ASC",
       [tenantId],
     );
     expect(audits.map(row => row.action)).toEqual([
