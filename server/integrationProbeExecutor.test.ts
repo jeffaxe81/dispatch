@@ -106,17 +106,20 @@ describe("D-012J J32 — executor isolado de probe em homologação", () => {
     enable();
     const state = store(authorized);
     const circuit = createIntegrationCircuitCoordinator(state.storage, () => 41_000);
-    const probe = vi.fn(async () => { throw new Error("timeout incerto"); });
+    const probe = vi.fn(async () => { throw new Error("Bearer VERY_PRIVATE_KEY do adapter"); });
     const executor = createIntegrationProbeExecutor({ circuit, probe });
 
-    await expect(executor.execute({
+    const failure = await executor.execute({
       organizationId: 7,
       system: "neo",
       expectedVersion: 7,
       leaseToken: "lease-j32",
       executionToken: "exec-j32",
       cooldownSeconds: 30,
-    })).rejects.toThrow(/timeout incerto/);
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toMatch(/resultado.*incerto/i);
+    expect(String(failure)).not.toContain("VERY_PRIVATE_KEY");
 
     expect(state.snapshot()).toMatchObject({
       state: "half_open",
@@ -156,4 +159,84 @@ describe("D-012J J32 — executor isolado de probe em homologação", () => {
     expect(probe).not.toHaveBeenCalled();
     expect(state.snapshot()).toEqual(authorized);
   });
+
+  it("persiste resultado confiável failure como circuito open, sem reutilizar a intenção", async () => {
+    enable();
+    const state = store(authorized);
+    const circuit = createIntegrationCircuitCoordinator(state.storage, () => 41_000);
+    const probe = vi.fn(async () => "failure" as const);
+    const executor = createIntegrationProbeExecutor({ circuit, probe });
+
+    const result = await executor.execute({
+      organizationId: 7, system: "neo", expectedVersion: 7,
+      leaseToken: "lease-j32", executionToken: "exec-j32", cooldownSeconds: 30,
+    });
+    expect(result).toMatchObject({
+      state: "open", version: 9, permitsProbe: false,
+      permitsExternalCall: false, permitsAutomaticReplay: false,
+    });
+    expect(state.snapshot()).toMatchObject({
+      state: "open", version: 9, leaseToken: null, executionToken: null,
+    });
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it("resultado não confiável mantém half-open e não reexecuta a chamada", async () => {
+    enable();
+    const state = store(authorized);
+    const circuit = createIntegrationCircuitCoordinator(state.storage, () => 41_000);
+    const probe = vi.fn(async () => "ambiguous" as "success");
+    const executor = createIntegrationProbeExecutor({ circuit, probe });
+
+    const input = {
+      organizationId: 7, system: "neo" as const, expectedVersion: 7,
+      leaseToken: "lease-j32", executionToken: "exec-j32", cooldownSeconds: 30,
+    };
+    await expect(executor.execute(input)).rejects.toThrow(/incerto|inválido/);
+    expect(state.snapshot()).toMatchObject({
+      state: "half_open", version: 8, executionConsumedAtMs: 41_000,
+    });
+    await expect(executor.execute({ ...input, expectedVersion: 8 })).rejects.toThrow(/consumid|one-shot/i);
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it("sanitiza exceção do storage de resolução após consumo sem repetir probe", async () => {
+    enable();
+    const state = store(authorized);
+    const commit = state.storage.commitAudited;
+    state.storage.commitAudited = (input) => input.action === "integration.circuit.probe.succeeded"
+      ? Promise.reject(new Error("database secret=VERY_PRIVATE_KEY"))
+      : commit(input);
+    const circuit = createIntegrationCircuitCoordinator(state.storage, () => 41_000);
+    const probe = vi.fn(async () => "success" as const);
+    const executor = createIntegrationProbeExecutor({ circuit, probe });
+    const input = {
+      organizationId: 7, system: "neo" as const, expectedVersion: 7,
+      leaseToken: "lease-j32", executionToken: "exec-j32", cooldownSeconds: 30,
+    };
+    const failure = await executor.execute(input).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toMatch(/resolução.*incerta|persistir.*incerto/i);
+    expect(String(failure)).not.toContain("VERY_PRIVATE_KEY");
+    expect(state.snapshot()).toMatchObject({ state: "half_open", version: 8, executionConsumedAtMs: 41_000 });
+    await expect(executor.execute({ ...input, expectedVersion: 8 })).rejects.toThrow(/consumid|one-shot/i);
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it("duas execuções concorrentes compartilham apenas um consumo CAS e uma chamada", async () => {
+    enable();
+    const state = store(authorized);
+    const circuit = createIntegrationCircuitCoordinator(state.storage, () => 41_000);
+    const probe = vi.fn(async () => "success" as const);
+    const executor = createIntegrationProbeExecutor({ circuit, probe });
+    const input = {
+      organizationId: 7, system: "neo" as const, expectedVersion: 7,
+      leaseToken: "lease-j32", executionToken: "exec-j32", cooldownSeconds: 30,
+    };
+    const results = await Promise.allSettled([executor.execute(input), executor.execute(input)]);
+    expect(results.filter(item => item.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(item => item.status === "rejected")).toHaveLength(1);
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
 });
