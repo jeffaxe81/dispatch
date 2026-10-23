@@ -29,6 +29,7 @@ import { createSlaHeartbeatMySqlStore } from "./workflowSlaHeartbeatMySql";
 import { createSlaHeartbeatService, signSlaHeartbeat } from "./workflowSlaSignedHeartbeat";
 import { createSlaAuthenticatedHeartbeatProbe, createSlaVerifiedComponentEmitter } from "./workflowSlaHeartbeatBridge";
 import { evaluateSlaDiagnosticPreview } from "./workflowSlaDiagnosticPreview";
+import { createSlaManualFailover } from "./workflowSlaFailover";
 
 const now = "2026-10-18T18:00:00.000Z";
 const nowMs = Date.parse(now);
@@ -900,6 +901,92 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
     expect(stale.status).toBe("not_ready");
     expect(stale.components).toEqual({ scheduler: "unknown", adapter: "unknown" });
     expect(JSON.stringify(stale)).not.toContain(actor);
+  });
+
+  it("J6F: failover físico bloqueia fonte antiga, zera evidência e exige novo heartbeat assinado", async () => {
+    const original = "adapter-j6f-old";
+    const successor = "adapter-j6f-new";
+    const oldKey = "old-failover-key-".repeat(3);
+    const newKey = "new-failover-key-".repeat(3);
+    const environment = {
+      NODE_ENV: "test", AXE_RUNTIME_ENV: "homologation",
+      AXE_SLA_HEARTBEAT_INGEST_ENABLED: "true",
+      AXE_SLA_HEARTBEAT_READ_ENABLED: "true",
+      AXE_SLA_READINESS_PREVIEW_ENABLED: "true",
+      AXE_SLA_FAILOVER_ENABLED: "true",
+    };
+    const createIngest = (sourceId: string, secret: string) =>
+      createSlaHeartbeatService({
+        store: createSlaHeartbeatMySqlStore(database(control)),
+        environment,
+        resolveSigner: async input =>
+          input.organizationId === tenantA && input.component === "adapter"
+            ? { sourceId, secret } : null,
+      });
+    const originalIngest = createIngest(original, oldKey);
+    const seed = signSlaHeartbeat({
+      version: "v1", organizationId: tenantA, component: "adapter",
+      sourceId: original, sequence: 1, state: "healthy", sentAt: now,
+    }, oldKey);
+    await originalIngest.ingest(seed, now);
+    const approve = async () => ({ expectedSourceId: original, nextSourceId: successor });
+    const input = { organizationId: tenantA, component: "adapter" as const, operatorApproved: true };
+
+    // A live and healthy owner cannot be force-preempted while its lease is fresh.
+    const early = createSlaManualFailover({
+      store: createSlaHeartbeatMySqlStore(database(control)),
+      environment, approvedSources: approve,
+      clock: () => new Date(nowMs + 20_000).toISOString(),
+    });
+    await expect(early.transfer(input)).rejects.toThrow(/fencing/i);
+
+    // Two independent database connections compete to promote the SAME owner.
+    const takeoverAt = new Date(nowMs + 60_001).toISOString();
+    const promote = async (client: Connection) =>
+      createSlaManualFailover({
+        store: createSlaHeartbeatMySqlStore(database(client)),
+        environment, approvedSources: approve, clock: () => takeoverAt,
+      }).transfer(input);
+    const results = await Promise.allSettled([
+      promote(await connection()), promote(await connection()),
+    ]);
+    expect(results.filter(item => item.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(item => item.status === "rejected")).toHaveLength(1);
+
+    const store = createSlaHeartbeatMySqlStore(database(control));
+    const oldReader = createSlaAuthenticatedHeartbeatProbe({
+      store, environment,
+      resolveSource: async () => original,
+    });
+    const newReader = createSlaAuthenticatedHeartbeatProbe({
+      store, environment,
+      resolveSource: async () => successor,
+    });
+    const scope = { organizationId: tenantA, component: "adapter" as const };
+    // Successful transfer must NOT inherit the old owner's healthy state.
+    expect(await newReader({ ...scope, now: takeoverAt }))
+      .toEqual({ organizationId: tenantA, state: "unknown", checkedAt: null });
+    expect(await oldReader({ ...scope, now: takeoverAt }))
+      .toEqual({ organizationId: tenantA, state: "unknown", checkedAt: null });
+
+    const freshAt = new Date(nowMs + 60_500).toISOString();
+    const forgedByOld = signSlaHeartbeat({
+      ...seed, sequence: 1000, sentAt: freshAt,
+    }, oldKey);
+    await expect(originalIngest.ingest(forgedByOld, freshAt)).rejects.toThrow(/rejeitado/i);
+
+    const nextIngest = createIngest(successor, newKey);
+    await nextIngest.ingest(signSlaHeartbeat({
+      version: "v1", organizationId: tenantA, component: "adapter",
+      sourceId: successor, sequence: 1, state: "healthy", sentAt: freshAt,
+    }, newKey), freshAt);
+    expect(await newReader({ ...scope, now: freshAt })).toEqual({
+      organizationId: tenantA, state: "healthy", checkedAt: freshAt,
+    });
+    expect(await oldReader({ ...scope, now: freshAt })).toMatchObject({ state: "unknown" });
+    expect(await newReader({
+      organizationId: tenantB, component: "adapter", now: freshAt,
+    })).toMatchObject({ organizationId: tenantB, state: "unknown" });
   });
 
 });
