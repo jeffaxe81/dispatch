@@ -75,6 +75,8 @@ describe("D-012J J6F — controlled manual SLA failover", () => {
     expect(f.authorize).toHaveBeenCalledOnce();
     expect(f.authorize).toHaveBeenCalledWith({
       organizationId: 9, actorUserId: 77, component: "scheduler",
+      expectedSourceId: "primary-one", nextSourceId: "standby-two",
+      expectedSequence: 31, reason: "source_lost",
     });
     expect(f.store.handover).toHaveBeenCalledOnce();
     expect(f.store.handover).toHaveBeenCalledWith(valid);
