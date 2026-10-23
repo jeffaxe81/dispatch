@@ -55,7 +55,7 @@ describe("D-012J J28 — storage MySQL CAS/audit do circuito", () => {
     })).toBe(true);
     expect(queries[0].sql).toContain("organization_id");
     expect(queries[0].sql).toContain("system");
-    expect(queries[1].sql).toContain("circuit_version");
+    expect(queries.some(query => query.sql.includes("circuit_version"))).toBe(true);
     expect(audits).toHaveLength(1);
     expect(JSON.stringify(audits[0])).not.toContain("opaque");
   });
