@@ -33,8 +33,9 @@ export function createSlaHeartbeatFailoverMySqlStore(db: WorkflowDb): SlaHeartbe
           previous.sourceId !== input.expectedSourceId ||
           previous.sequence !== input.expectedSequence ||
           !isSlaHeartbeatExpired(previous.sentAtMs, input.nowMs) ||
-          !Number.isSafeInteger(previous.receivedAtMs) ||
-          previous.receivedAtMs > input.nowMs ||
+          // A recently accepted packet is still evidence of a live source,
+          // even when the sender's timestamp was near the TTL boundary.
+          !isSlaHeartbeatExpired(previous.receivedAtMs, input.nowMs) ||
           previous.sequence >= Number.MAX_SAFE_INTEGER) return false;
         const nextSequence = previous.sequence + 1;
         // Fail closed: the just-promoted source is explicitly unhealthy until
