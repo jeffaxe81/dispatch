@@ -108,7 +108,7 @@ export function evaluateIntegrationResilience(input: {
       input.tenantId,
       input.policy.system,
       "half_open",
-      true,
+      false,
     );
   }
 
