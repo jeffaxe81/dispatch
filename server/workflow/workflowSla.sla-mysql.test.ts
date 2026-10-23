@@ -29,6 +29,8 @@ import { createSlaHeartbeatMySqlStore } from "./workflowSlaHeartbeatMySql";
 import { createSlaHeartbeatService, signSlaHeartbeat } from "./workflowSlaSignedHeartbeat";
 import { createSlaAuthenticatedHeartbeatProbe, createSlaVerifiedComponentEmitter } from "./workflowSlaHeartbeatBridge";
 import { evaluateSlaDiagnosticPreview } from "./workflowSlaDiagnosticPreview";
+import { createSlaHeartbeatManualFailover } from "./workflowSlaHeartbeatFailover";
+import { createSlaHeartbeatFailoverMySqlStore } from "./workflowSlaHeartbeatFailoverMySql";
 
 const now = "2026-10-18T18:00:00.000Z";
 const nowMs = Date.parse(now);
@@ -900,6 +902,93 @@ describe("I5E — MySQL 8.4 físico, CAS e transações concorrentes", () => {
     expect(stale.status).toBe("not_ready");
     expect(stale.components).toEqual({ scheduler: "unknown", adapter: "unknown" });
     expect(JSON.stringify(stale)).not.toContain(actor);
+  });
+
+  it("J6F: failover manual físico faz fencing CAS e auditoria atômica sob concorrência", async () => {
+    const oldSecret = "old-source-secret-".repeat(4);
+    const newSecret = "new-source-secret-".repeat(4);
+    const oldSource = "adapter-old-j6f";
+    const standby = "adapter-standby-j6f";
+    const environment = {
+      NODE_ENV: "test", AXE_RUNTIME_ENV: "homologation",
+      AXE_SLA_HEARTBEAT_INGEST_ENABLED: "true",
+      AXE_SLA_HEARTBEAT_FAILOVER_ENABLED: "true",
+    };
+    const existingStore = createSlaHeartbeatMySqlStore(database(control));
+    const service = (sourceId: string, secret: string) =>
+      createSlaHeartbeatService({
+        store: existingStore, environment,
+        resolveSigner: async ({ organizationId, component }) =>
+          organizationId === tenantA && component === "adapter"
+            ? { sourceId, secret } : null,
+      });
+    const initial = signSlaHeartbeat({
+      version: "v1", organizationId: tenantA, component: "adapter",
+      sourceId: oldSource, sequence: 1, state: "healthy", sentAt: now,
+    }, oldSecret);
+    await service(oldSource, oldSecret).ingest(initial, now);
+    const handover = (conn: Connection) => createSlaHeartbeatManualFailover({
+      environment,
+      store: createSlaHeartbeatFailoverMySqlStore(database(conn)),
+      authorize: async ({ organizationId, actorUserId, component }) =>
+        organizationId === tenantA && actorUserId === userId && component === "adapter",
+    });
+    const command = {
+      organizationId: tenantA,
+      component: "adapter" as const,
+      actorUserId: userId,
+      expectedSourceId: oldSource,
+      nextSourceId: standby,
+      expectedSequence: 1,
+      reason: "source_lost" as const,
+      now: new Date(nowMs + 60_001).toISOString(),
+      operatorApproved: true,
+    };
+    const primary = handover(control);
+    // Even approved handovers cannot supersede a still-fresh heartbeat.
+    await expect(primary.handover({
+      ...command, now: new Date(nowMs + 60_000).toISOString(),
+    })).rejects.toThrow(/rejeitado/i);
+    await expect(primary.handover({
+      ...command, organizationId: tenantB,
+    })).rejects.toThrow(/autorização/i);
+    const a = handover(await connection());
+    const b = handover(await connection());
+    const results = await Promise.allSettled([
+      a.handover(command), b.handover(command),
+    ]);
+    expect(results.filter(x => x.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(x => x.status === "rejected")).toHaveLength(1);
+    const current = await existingStore.read({ organizationId: tenantA, component: "adapter" });
+    expect(current).toMatchObject({
+      sourceId: standby, sequence: 2, state: "unhealthy",
+      sentAtMs: nowMs + 60_001, receivedAtMs: nowMs + 60_001,
+    });
+
+    const [audit] = await control.execute<RowDataPacket[]>(
+      "SELECT actor_user_id, before_data, after_data FROM audit_logs WHERE resource_type = ? AND resource_id = ? AND action = ?",
+      ["workflow_sla_heartbeat", tenantA, "manual_source_handover"],
+    );
+    expect(audit).toHaveLength(1);
+    expect(Number(audit[0].actor_user_id)).toBe(userId);
+    expect(JSON.stringify(audit[0].after_data)).toContain(standby);
+    expect(JSON.stringify(audit[0].before_data)).toContain(oldSource);
+    expect(JSON.stringify(audit[0].after_data)).not.toContain(newSecret);
+
+    // The revoked emitter cannot regain ownership with a valid OLD HMAC.
+    const next = new Date(nowMs + 60_002).toISOString();
+    await expect(service(oldSource, oldSecret).ingest(signSlaHeartbeat({
+      ...initial, sequence: 3, sentAt: next,
+    }, oldSecret), next)).rejects.toThrow(/rejeitado/i);
+
+    // Standby needs its own accepted heartbeat before health can turn green.
+    const standbyBeat = signSlaHeartbeat({
+      ...initial, sourceId: standby, sequence: 3, sentAt: next,
+    }, newSecret);
+    await service(standby, newSecret).ingest(standbyBeat, next);
+    expect(await existingStore.read({
+      organizationId: tenantA, component: "adapter",
+    })).toMatchObject({ sourceId: standby, sequence: 3, state: "healthy" });
   });
 
 });
