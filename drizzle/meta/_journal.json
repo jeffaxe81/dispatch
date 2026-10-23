@@ -134,6 +134,13 @@
       "when": 1792710600000,
       "tag": "0018_d012j_integration_delivery_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1792753200000,
+      "tag": "0019_d012j_integration_circuit_state",
+      "breakpoints": true
     }
   ]
 }

@@ -66,9 +66,9 @@ describe("D-012J J15 — outbox/DLQ persistente de integrações", () => {
       readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
 
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(journal.entries).toContainEqual(expect.objectContaining({
       idx: 18,
       tag: "0018_d012j_integration_delivery_outbox",
-    });
+    }));
   });
 });
