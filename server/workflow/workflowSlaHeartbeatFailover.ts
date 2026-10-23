@@ -76,6 +76,10 @@ export function createSlaHeartbeatManualFailover(deps: {
     organizationId: number;
     actorUserId: number;
     component: SlaHeartbeatComponent;
+    expectedSourceId: string;
+    nextSourceId: string;
+    expectedSequence: number;
+    reason: SlaHeartbeatFailoverReason;
   }): Promise<boolean>;
 }) {
   return {
@@ -95,6 +99,10 @@ export function createSlaHeartbeatManualFailover(deps: {
           organizationId: command.organizationId,
           actorUserId: command.actorUserId,
           component: command.component,
+          expectedSourceId: command.expectedSourceId,
+          nextSourceId: command.nextSourceId,
+          expectedSequence: command.expectedSequence,
+          reason: command.reason,
         });
       } catch {
         // Do not leak the internal authorization provider's error.
