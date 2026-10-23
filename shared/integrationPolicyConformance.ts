@@ -57,13 +57,14 @@ export function compareJ13PolicyProfiles(input: {
   reference: J13ReferenceAdapterProfile;
 }): J13PolicyComparison {
   positive(input.tenantId, "Tenant");
-  const system = input.persisted?.system ?? "";
-  assertIntegrationContractCompatibility({ system, requestedVersion: input.contractVersion });
+  const contract = assertIntegrationContractCompatibility({
+    system: input.persisted?.system ?? "", requestedVersion: input.contractVersion,
+  });
   assertIntegrationContractCompatibility({
     system: input.reference?.system ?? "",
     requestedVersion: input.contractVersion,
   });
-  if (system !== input.reference.system) {
+  if (contract.system !== input.reference.system) {
     throw new Error("Perfis de sistemas diferentes não podem ser reconciliados.");
   }
   positive(input.persisted.maxAttempts, "Tentativas persistidas");
@@ -90,7 +91,7 @@ export function compareJ13PolicyProfiles(input: {
     "attempt_counter_not_equivalent",
   );
   return Object.freeze({
-    system,
+    system: contract.system,
     contractVersion: 1,
     parametersAligned,
     algorithmsEquivalent: false,
