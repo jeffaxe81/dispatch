@@ -65,7 +65,7 @@ describe("D-012J J13 — política de retry e circuit breaker por adapter", () =
     });
   });
 
-  it("mantém circuito aberto durante cooldown e permite half-open após a janela", () => {
+  it("mantém circuito aberto durante cooldown e exige fencing no half-open", () => {
     const openedAt = new Date("2026-10-22T22:00:00.000Z");
 
     const blocked = evaluateIntegrationResilience({
@@ -89,7 +89,7 @@ describe("D-012J J13 — política de retry e circuit breaker por adapter", () =
       now: new Date("2026-10-22T22:00:30.000Z"),
     });
     expect(halfOpen.action).toBe("half_open");
-    expect(halfOpen.allowAttempt).toBe(true);
+    expect(halfOpen.allowAttempt).toBe(false);
     expect(halfOpen.retryAfterSeconds).toBe(0);
   });
 
@@ -172,5 +172,54 @@ describe("D-012J J13 — política de retry e circuit breaker por adapter", () =
     expect(result).not.toHaveProperty("authorization");
     expect(result).not.toHaveProperty("error");
     expect(result).not.toHaveProperty("errorMessage");
+  });
+});
+
+describe("D-012J J22 — consolidação J13 com fencing obrigatório", () => {
+  it("não autoriza probe após cooldown em NEO, Inventário ou CRM sem lease persistido", () => {
+    for (const system of ["neo", "inventory", "crm"] as const) {
+      const base = {
+        tenantId: 7,
+        policy: { ...policy, system },
+        nextAttempt: 2,
+        consecutiveFailures: 3,
+        circuitOpenedAt: new Date("2026-10-22T23:00:00.000Z"),
+      };
+      const before = evaluateIntegrationResilience({
+        ...base, now: new Date("2026-10-22T23:00:29.999Z"),
+      });
+      const boundary = evaluateIntegrationResilience({
+        ...base, now: new Date("2026-10-22T23:00:30.000Z"),
+      });
+      const after = evaluateIntegrationResilience({
+        ...base, now: new Date("2026-10-22T23:01:00.000Z"),
+      });
+      expect(before).toMatchObject({
+        action: "open_circuit", allowAttempt: false, coreDisposition: "continue",
+      });
+      for (const decision of [boundary, after]) {
+        expect(decision).toMatchObject({
+          tenantId: 7, system, action: "half_open",
+          allowAttempt: false, coreDisposition: "continue",
+          retryAfterSeconds: 0,
+        });
+        for (const key of ["leaseToken", "workerId", "credentials", "payload"]) {
+          expect(decision).not.toHaveProperty(key);
+        }
+      }
+    }
+  });
+
+  it("reiteração da política half-open jamais fabrica aprovação de tentativa", () => {
+    const input = {
+      tenantId: 9, policy, nextAttempt: 4, consecutiveFailures: 3,
+      circuitOpenedAt: new Date("2026-10-22T23:00:00.000Z"),
+      now: new Date("2026-10-22T23:00:31.000Z"),
+    };
+    const decisions = Array.from({ length: 6 }, () =>
+      evaluateIntegrationResilience(input));
+    expect(decisions).toHaveLength(6);
+    expect(decisions.every(d => d.action === "half_open" && d.allowAttempt === false)).toBe(true);
+    expect(new Set(decisions.map(d => JSON.stringify(d))).size).toBe(1);
   });
 });
