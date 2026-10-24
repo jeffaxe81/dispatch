@@ -1,5 +1,7 @@
-import type { IntegrationProbeExecutionPlan } from "./integrationCircuitProbeExecutionIntent";
-import { consumeProbeExecutionIntent } from "./integrationCircuitProbeExecutionIntent";
+import {
+  assertIntegrationProbeExecutionSnapshot,
+  type IntegrationProbeExecutionPlan,
+} from "./integrationCircuitProbeExecutionIntent";
 import {
   authorizeIntegrationProbeOneShotIntentIssue,
   type ProbeOneShotIntentIssueAuthorization,
@@ -9,37 +11,57 @@ import type {
   ProbeManualExecutionPlan,
 } from "./integrationProbeManualExecutionPlan";
 
-export type AuthorizedProbeIntentConsumableState = IntegrationProbeExecutionPlan & Readonly<{
+export type AuthorizedProbeIntentHandoffState = IntegrationProbeExecutionPlan & Readonly<{
   approvalId: string;
   authorizationId: string;
   status: string;
   permitsReplay: boolean;
 }>;
 
-export type AuthorizedProbeOneShotIntentConsumptionInput = Readonly<{
+export type AuthorizedProbeExecutionHandoffInput = Readonly<{
   approval: ProbeManualExecutionApproval;
   manualPlan: ProbeManualExecutionPlan;
   executionAuthorization: ProbeOneShotIntentIssueAuthorization;
-  current: AuthorizedProbeIntentConsumableState;
+  current: AuthorizedProbeIntentHandoffState;
   nowEpochMs: number;
+  cooldownSeconds: number;
 }>;
 
-export type AuthorizedProbeOneShotIntentConsumptionResult = IntegrationProbeExecutionPlan & Readonly<{
+export type AuthorizedProbeExecutionHandoff = Readonly<{
+  organizationId: number;
+  system: AuthorizedProbeIntentHandoffState["system"];
+  expectedVersion: number;
+  leaseToken: string;
+  executionToken: string;
+  cooldownSeconds: number;
   approvalId: string;
   authorizationId: string;
-  status: "one_shot_intent_consumed_for_probe_grant";
-  permitsProbe: true;
+  status: "ready_for_j32_atomic_consumption";
+  validUntilMs: number;
+  permitsProbe: false;
   permitsReplay: false;
   permitsExternalCall: false;
   permitsAutomaticReplay: false;
 }>;
 
+function positiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
 function assertIssuedState(
-  current: AuthorizedProbeIntentConsumableState,
+  current: AuthorizedProbeIntentHandoffState,
   authorization: ProbeOneShotIntentIssueAuthorization,
-): void {
+  nowEpochMs: number,
+): asserts current is AuthorizedProbeIntentHandoffState & Readonly<{
+  leaseToken: string;
+  leaseExpiresAtMs: number;
+  executionToken: string;
+  executionExpiresAtMs: number;
+}> {
+  assertIntegrationProbeExecutionSnapshot(current);
+
   if (current.status !== "one_shot_intent_issued") {
-    throw new Error("Intenção one-shot não está no estado emitido ou já foi consumida.");
+    throw new Error("Intenção one-shot não está emitida ou já foi consumida.");
   }
   if (current.organizationId !== authorization.organizationId
     || current.system !== authorization.system) {
@@ -59,24 +81,37 @@ function assertIssuedState(
     || current.permitsExternalCall !== false
     || current.permitsAutomaticReplay !== false
     || current.permitsReplay !== false) {
-    throw new Error("Intenção emitida contém permissões incompatíveis antes do consumo.");
+    throw new Error("Intenção emitida contém permissões incompatíveis antes do consumo atômico.");
   }
   if (current.executionConsumedAtMs !== null) {
     throw new Error("Intenção one-shot já consumida.");
   }
-  if (current.leaseToken === null || current.executionToken === null) {
+  if (current.leaseToken === null
+    || current.leaseExpiresAtMs === null
+    || current.executionToken === null
+    || current.executionExpiresAtMs === null) {
     throw new Error("Intenção one-shot sem lease ou token de execução válido.");
+  }
+  if (nowEpochMs >= current.leaseExpiresAtMs || nowEpochMs >= current.executionExpiresAtMs) {
+    throw new Error("Lease ou intenção one-shot expirada para handoff J40.");
   }
 }
 
 /**
- * J40 consumes a previously issued J39 one-shot intent only while the J38
- * authorization remains valid. It produces the internal one-shot probe grant,
- * but does not execute J32, replay anything, or perform external calls.
+ * J40 prepares the exact handoff required by J32 while deliberately keeping
+ * the J31 one-shot intent unconsumed. The atomic consume remains inside J32,
+ * immediately before its injected homologation-only probe callback.
  */
-export function consumeAuthorizedIntegrationProbeOneShotIntent(
-  input: AuthorizedProbeOneShotIntentConsumptionInput,
-): AuthorizedProbeOneShotIntentConsumptionResult {
+export function prepareAuthorizedIntegrationProbeExecutionHandoff(
+  input: AuthorizedProbeExecutionHandoffInput,
+): AuthorizedProbeExecutionHandoff {
+  if (!Number.isSafeInteger(input.nowEpochMs) || input.nowEpochMs < 0) {
+    throw new Error("Instante do handoff J40 inválido.");
+  }
+  if (!positiveSafeInteger(input.cooldownSeconds)) {
+    throw new Error("Cooldown do handoff J40 inválido.");
+  }
+
   const authorized = authorizeIntegrationProbeOneShotIntentIssue({
     approval: input.approval,
     manualPlan: input.manualPlan,
@@ -84,26 +119,31 @@ export function consumeAuthorizedIntegrationProbeOneShotIntent(
     evaluatedAtMs: input.nowEpochMs,
   });
 
-  assertIssuedState(input.current, input.executionAuthorization);
+  assertIssuedState(input.current, input.executionAuthorization, input.nowEpochMs);
 
   if (authorized.authorizationId !== input.current.authorizationId
     || authorized.approvalId !== input.current.approvalId) {
     throw new Error("Autorização J38 diverge da intenção J39 emitida.");
   }
 
-  const grant = consumeProbeExecutionIntent(input.current, {
-    nowEpochMs: input.nowEpochMs,
-    expectedVersion: input.current.circuitVersion,
-    leaseToken: input.current.leaseToken as string,
-    executionToken: input.current.executionToken as string,
-  });
+  const validUntilMs = Math.min(
+    input.current.executionExpiresAtMs,
+    input.current.leaseExpiresAtMs,
+    input.executionAuthorization.expiresAtMs,
+  );
 
   return Object.freeze({
-    ...grant,
+    organizationId: input.current.organizationId,
+    system: input.current.system,
+    expectedVersion: input.current.circuitVersion,
+    leaseToken: input.current.leaseToken,
+    executionToken: input.current.executionToken,
+    cooldownSeconds: input.cooldownSeconds,
     approvalId: authorized.approvalId,
     authorizationId: authorized.authorizationId,
-    status: "one_shot_intent_consumed_for_probe_grant",
-    permitsProbe: true,
+    status: "ready_for_j32_atomic_consumption",
+    validUntilMs,
+    permitsProbe: false,
     permitsReplay: false,
     permitsExternalCall: false,
     permitsAutomaticReplay: false,
