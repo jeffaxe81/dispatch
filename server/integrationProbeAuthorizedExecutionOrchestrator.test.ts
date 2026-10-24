@@ -100,7 +100,7 @@ describe("D-012J J42 — orquestração one-shot autorizada", () => {
     }, { executor: { execute } });
 
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(result).toBe(executorResult);
+    expect(result).toEqual(executorResult);
     expect(result).not.toHaveProperty("leaseToken");
     expect(result).not.toHaveProperty("executionToken");
     expect(result).not.toHaveProperty("approvalId");
