@@ -9,6 +9,7 @@ import {
 } from "./integrationProbeAuthorizedIntentConsumption";
 
 type Executor = Pick<ReturnType<typeof createIntegrationProbeExecutor>, "execute">;
+type ExecutorResult = Awaited<ReturnType<Executor["execute"]>>;
 
 export type AuthorizedProbeExecutionOrchestratorInput =
   AuthorizedProbeOneShotIntentIssueInput & Readonly<{
@@ -18,6 +19,27 @@ export type AuthorizedProbeExecutionOrchestratorInput =
 export type AuthorizedProbeExecutionOrchestratorDependencies = Readonly<{
   executor: Executor;
 }>;
+
+export type AuthorizedProbeExecutionResult = Readonly<
+  Omit<ExecutorResult, "leaseToken" | "executionToken">
+>;
+
+function projectPublicExecutionResult(
+  result: ExecutorResult,
+): AuthorizedProbeExecutionResult {
+  const raw = result as ExecutorResult & Readonly<{
+    approvalId?: unknown;
+    authorizationId?: unknown;
+  }>;
+  const {
+    leaseToken: _leaseToken,
+    executionToken: _executionToken,
+    approvalId: _approvalId,
+    authorizationId: _authorizationId,
+    ...safe
+  } = raw;
+  return Object.freeze(safe) as AuthorizedProbeExecutionResult;
+}
 
 /**
  * J42 composes the already-authorized J39 -> J40 -> J32 path.
@@ -30,7 +52,7 @@ export type AuthorizedProbeExecutionOrchestratorDependencies = Readonly<{
 export async function executeAuthorizedIntegrationProbeOnce(
   input: AuthorizedProbeExecutionOrchestratorInput,
   dependencies: AuthorizedProbeExecutionOrchestratorDependencies,
-): Promise<Awaited<ReturnType<Executor["execute"]>>> {
+): Promise<AuthorizedProbeExecutionResult> {
   if (!dependencies || !dependencies.executor || typeof dependencies.executor.execute !== "function") {
     throw new Error("Executor J32 obrigatório para a orquestração autorizada.");
   }
@@ -55,5 +77,7 @@ export async function executeAuthorizedIntegrationProbeOnce(
       cooldownSeconds: input.cooldownSeconds,
     });
 
-  return dependencies.executor.execute(handoff);
+  return projectPublicExecutionResult(
+    await dependencies.executor.execute(handoff),
+  );
 }
