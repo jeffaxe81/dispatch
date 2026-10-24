@@ -107,6 +107,54 @@ describe("D-012J J42 — orquestração one-shot autorizada", () => {
     expect(result).not.toHaveProperty("authorizationId");
   });
 
+  it("remove tokens e identificadores sensíveis do snapshot real retornado pelo J32", async () => {
+    const execute = vi.fn(async () => Object.freeze({
+      organizationId: 7,
+      system: "neo" as const,
+      state: "closed" as const,
+      version: 12,
+      consecutiveFailures: 0,
+      openedAtMs: null,
+      cooldownUntilMs: null,
+      leaseOwner: null,
+      leaseToken: "LEASE-NAO-PODE-VAZAR",
+      leaseExpiresAtMs: null,
+      executionToken: "EXEC-NAO-PODE-VAZAR",
+      executionExpiresAtMs: null,
+      executionConsumedAtMs: 141_000,
+      approvalId: approval.approvalId,
+      authorizationId: executionAuthorization.authorizationId,
+      permitsProbe: false as const,
+      permitsExternalCall: false as const,
+      permitsAutomaticReplay: false as const,
+    }));
+
+    const result = await executeAuthorizedIntegrationProbeOnce({
+      approval,
+      manualPlan,
+      executionAuthorization,
+      current,
+      nowEpochMs: 140_000,
+      executionToken: "EXEC-J42",
+      executionDurationMs: 60_000,
+      cooldownSeconds: 30,
+    }, { executor: { execute } });
+
+    expect(result).toMatchObject({
+      organizationId: 7,
+      system: "neo",
+      state: "closed",
+      version: 12,
+      permitsProbe: false,
+      permitsExternalCall: false,
+      permitsAutomaticReplay: false,
+    });
+    expect(result).not.toHaveProperty("leaseToken");
+    expect(result).not.toHaveProperty("executionToken");
+    expect(result).not.toHaveProperty("approvalId");
+    expect(result).not.toHaveProperty("authorizationId");
+  });
+
   it("falha antes do J32 quando a autorização J38 diverge do plano aprovado", async () => {
     const execute = vi.fn();
     const invalidAuthorization = Object.freeze({
