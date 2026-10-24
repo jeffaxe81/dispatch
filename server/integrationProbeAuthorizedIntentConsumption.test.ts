@@ -5,7 +5,7 @@ import {
   issueAuthorizedIntegrationProbeOneShotIntent,
   type AuthorizedProbeOneShotIntentIssueResult,
 } from "./integrationProbeAuthorizedIntentIssue";
-import { consumeAuthorizedIntegrationProbeOneShotIntent } from "./integrationProbeAuthorizedIntentConsumption";
+import { prepareAuthorizedIntegrationProbeExecutionHandoff } from "./integrationProbeAuthorizedIntentConsumption";
 
 const approval: ProbeManualExecutionApproval = {
   organizationId: 7,
@@ -74,88 +74,111 @@ function issued(): AuthorizedProbeOneShotIntentIssueResult {
   });
 }
 
-describe("D-012J J40 — consumo autorizado da intenção one-shot", () => {
-  it("consome uma única vez e libera somente o grant interno de probe", () => {
+describe("D-012J J40 — handoff autorizado para consumo atômico no J32", () => {
+  it("prepara exatamente o input do executor sem consumir a intenção nem liberar probe", () => {
     const current = issued();
-    const result = consumeAuthorizedIntegrationProbeOneShotIntent({
+    const result = prepareAuthorizedIntegrationProbeExecutionHandoff({
       approval,
       manualPlan,
       executionAuthorization,
       current,
       nowEpochMs: 150_000,
+      cooldownSeconds: 30,
     });
 
-    expect(result).toEqual(expect.objectContaining({
+    expect(result).toEqual({
       organizationId: 7,
       system: "neo",
-      circuitVersion: 11,
+      expectedVersion: 10,
+      leaseToken: "LEASE-20261024-001",
+      executionToken: "EXEC-20261024-001",
+      cooldownSeconds: 30,
       approvalId: approval.approvalId,
       authorizationId: executionAuthorization.authorizationId,
-      status: "one_shot_intent_consumed_for_probe_grant",
-      executionToken: "EXEC-20261024-001",
-      executionConsumedAtMs: 150_000,
-      permitsProbe: true,
+      status: "ready_for_j32_atomic_consumption",
+      validUntilMs: 200_000,
+      permitsProbe: false,
       permitsReplay: false,
       permitsExternalCall: false,
       permitsAutomaticReplay: false,
-    }));
+    });
+    expect(current.executionConsumedAtMs).toBeNull();
+    expect(current.permitsProbe).toBe(false);
     expect(Object.isFrozen(result)).toBe(true);
   });
 
-  it("rejeita reconsumo da mesma intenção", () => {
-    const first = consumeAuthorizedIntegrationProbeOneShotIntent({
+  it("é idempotente e não muta o snapshot emitido", () => {
+    const current = issued();
+    const first = prepareAuthorizedIntegrationProbeExecutionHandoff({
       approval,
       manualPlan,
       executionAuthorization,
-      current: issued(),
+      current,
       nowEpochMs: 150_000,
+      cooldownSeconds: 30,
     });
-    expect(() => consumeAuthorizedIntegrationProbeOneShotIntent({
+    const second = prepareAuthorizedIntegrationProbeExecutionHandoff({
       approval,
       manualPlan,
       executionAuthorization,
-      current: first,
-      nowEpochMs: 151_000,
-    })).toThrow(/consumid|one-shot/i);
+      current,
+      nowEpochMs: 150_000,
+      cooldownSeconds: 30,
+    });
+    expect(second).toEqual(first);
+    expect(current.executionConsumedAtMs).toBeNull();
   });
 
-  it("revalida autorização J38 no instante do consumo", () => {
-    expect(() => consumeAuthorizedIntegrationProbeOneShotIntent({
+  it("revalida autorização J38 e rejeita intenção expirada ou já consumida", () => {
+    expect(() => prepareAuthorizedIntegrationProbeExecutionHandoff({
       approval,
       manualPlan,
       executionAuthorization,
       current: issued(),
       nowEpochMs: 320_000,
-    })).toThrow(/expirad|autoriza/i);
+      cooldownSeconds: 30,
+    })).toThrow(/expirad|autoriza|intenção/i);
+
+    expect(() => prepareAuthorizedIntegrationProbeExecutionHandoff({
+      approval,
+      manualPlan,
+      executionAuthorization,
+      current: { ...issued(), executionConsumedAtMs: 149_000 },
+      nowEpochMs: 150_000,
+      cooldownSeconds: 30,
+    })).toThrow(/consumid|one-shot/i);
   });
 
-  it("rejeita metadados de aprovação/autorização adulterados", () => {
-    expect(() => consumeAuthorizedIntegrationProbeOneShotIntent({
+  it("rejeita metadados adulterados e cooldown inválido", () => {
+    expect(() => prepareAuthorizedIntegrationProbeExecutionHandoff({
       approval,
       manualPlan,
       executionAuthorization,
       current: { ...issued(), authorizationId: "EXE-AUTH-20261024-XYZ" },
       nowEpochMs: 150_000,
+      cooldownSeconds: 30,
     })).toThrow(/autoriza|escopo|identificador/i);
 
-    expect(() => consumeAuthorizedIntegrationProbeOneShotIntent({
-      approval,
-      manualPlan,
-      executionAuthorization,
-      current: { ...issued(), approvalId: "APR-20261024-XYZ" },
-      nowEpochMs: 150_000,
-    })).toThrow(/aprovação|escopo|identificador/i);
-  });
-
-  it("não concede replay nem chamada externa e não executa adapter algum", () => {
-    const result = consumeAuthorizedIntegrationProbeOneShotIntent({
+    expect(() => prepareAuthorizedIntegrationProbeExecutionHandoff({
       approval,
       manualPlan,
       executionAuthorization,
       current: issued(),
       nowEpochMs: 150_000,
+      cooldownSeconds: 0,
+    })).toThrow(/cooldown/i);
+  });
+
+  it("não executa adapter, não consome grant e não concede replay ou chamada externa", () => {
+    const result = prepareAuthorizedIntegrationProbeExecutionHandoff({
+      approval,
+      manualPlan,
+      executionAuthorization,
+      current: issued(),
+      nowEpochMs: 150_000,
+      cooldownSeconds: 30,
     });
-    expect(result.permitsProbe).toBe(true);
+    expect(result.permitsProbe).toBe(false);
     expect(result.permitsExternalCall).toBe(false);
     expect(result.permitsReplay).toBe(false);
     expect(result.permitsAutomaticReplay).toBe(false);
