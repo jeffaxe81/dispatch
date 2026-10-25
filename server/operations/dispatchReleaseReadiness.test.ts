@@ -48,6 +48,16 @@ describe("Gate passivo de release AXE Dispatch", () => {
       pending_gate_ids:["DISPATCH-REAL-01","DISPATCH-REAL-02","DISPATCH-REAL-03"],
     });
   });
+  it("rejeita URL de evidência com query, fragmento ou credenciais embutidas", () => {
+    const m = withEvidence(original());
+    m.external_environment_tests[0].evidence_url = "https://evidence.example.org/report?token=secret";
+    m.external_environment_tests[1].evidence_url = "https://evidence.example.org/report#internal";
+    m.external_environment_tests[2].evidence_url = "https://user:pass@evidence.example.org/report";
+    expect(evaluateDispatchReadiness(m, now)).toMatchObject({
+      decision:"NO_GO", evidenced_gates:0,
+      pending_gate_ids:["DISPATCH-REAL-01","DISPATCH-REAL-02","DISPATCH-REAL-03"],
+    });
+  });
   it("não concede GO, mesmo com os três gates evidenciados", () => {
     expect(evaluateDispatchReadiness(withEvidence(original()), now)).toMatchObject({
       decision: "MANUAL_GO_REVIEW_REQUIRED", production_approved: false,
