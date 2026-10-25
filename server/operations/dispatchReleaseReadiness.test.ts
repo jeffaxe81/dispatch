@@ -41,6 +41,17 @@ describe("Gate passivo de release AXE Dispatch", () => {
     valid.review_date = "2026-10-25";
     expect(evaluateDispatchReadiness(valid, now).manifest_valid).toBe(true);
   });
+  it("não aceita evidência executada depois da data de revisão do manifesto", () => {
+    const m = withEvidence(original());
+    m.review_date = "2026-10-24";
+    m.external_environment_tests[0].executed_at = "2026-10-25T10:00:00Z";
+    const result = evaluateDispatchReadiness(m, now);
+    expect(result.decision).toBe("NO_GO");
+    expect(result.evidenced_gates).toBe(2);
+    expect(result.pending_gate_ids).toContain("DISPATCH-REAL-01");
+    expect(result.findings).toContain("INCOMPLETE_EVIDENCE");
+  });
+
   it("rejeita IDs desconhecidos, ausentes ou duplicados", () => {
     const m = original();
     m.external_environment_tests.push({...m.external_environment_tests[0]});
