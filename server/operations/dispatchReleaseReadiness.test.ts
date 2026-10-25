@@ -55,6 +55,17 @@ describe("Gate passivo de release AXE Dispatch", () => {
     expect(result.findings).toContain("INCOMPLETE_EVIDENCE");
   });
 
+  it("rejeita gate sem procedimento ou requisito de evidência documentados", () => {
+    const m = original();
+    m.external_environment_tests[0].procedure = "";
+    m.external_environment_tests[1].evidence_required = "   ";
+    const result = evaluateDispatchReadiness(m, now);
+    expect(result.decision).toBe("NO_GO");
+    expect(result.manifest_valid).toBe(false);
+    expect(result.findings).toContain("INVALID_GATE");
+    expect(result.pending_gate_ids).toEqual(expect.arrayContaining(["DISPATCH-REAL-01", "DISPATCH-REAL-02"]));
+  });
+
   it("rejeita IDs desconhecidos, ausentes ou duplicados", () => {
     const m = original();
     m.external_environment_tests.push({...m.external_environment_tests[0]});
