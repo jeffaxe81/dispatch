@@ -43,6 +43,9 @@ function isSafeEvidenceUrl(v: unknown): boolean {
     return false;
   }
 }
+function isNonEmptyText(v: unknown): boolean {
+  return typeof v === "string" && v.trim().length > 0;
+}
 function isNamedEvidenceOwner(v: unknown): boolean {
   if (typeof v !== "string") return false;
   const owner = v.trim().toLowerCase();
@@ -91,7 +94,10 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
       findings.push("MISSING_GATE");
       continue;
     }
-    if (gate.gate !== "PRODUCTION_GO" || !allowed.has(gate.status as string)) {
+    if (gate.gate !== "PRODUCTION_GO" ||
+        !allowed.has(gate.status as string) ||
+        !isNonEmptyText(gate.procedure) ||
+        !isNonEmptyText(gate.evidence_required)) {
       pending.push(id);
       findings.push("INVALID_GATE");
       continue;
