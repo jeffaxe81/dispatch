@@ -16,7 +16,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 function isValidReviewDate(v: unknown, now: Date): boolean {
-  if (typeof v !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(v)) return false;
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
   const d = new Date(v + "T00:00:00.000Z");
   if (!Number.isFinite(d.getTime()) || d.toISOString().slice(0, 10) !== v) return false;
   return v <= now.toISOString().slice(0, 10);
