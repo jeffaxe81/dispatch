@@ -34,7 +34,7 @@ function isNamedEvidenceOwner(v: unknown): boolean {
   if (typeof v !== "string") return false;
   const owner = v.trim().toLowerCase();
   if (!owner) return false;
-  return !new Set(["to_be_assigned", "tbd", "unknown", "unassigned"]).has(owner);
+  return !new Set(["to_be_assigned", "tbd", "unknown", "unassigned", "none", "n/a", "pending", "-"]).has(owner);
 }
 
 /**
