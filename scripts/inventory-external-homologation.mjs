@@ -18,6 +18,7 @@ async function requestJson({ baseUrl, pathname, method = "GET", tenantId, userId
   try {
     const response = await fetch(`${normalizeBaseUrl(baseUrl)}${pathname}`, {
       method,
+      redirect: "manual", // Não seguir 3xx para hosts fora da allowlist.
       signal: controller.signal,
       headers: {
         accept: "application/json",

@@ -1,6 +1,6 @@
 # Pré-verificação offline — Inventário externo / AXE Dispatch
 
-Esta entrega da branch de validação adiciona uma barreira **antes de qualquer acesso de rede** ao ensaio de homologação Inventário ↔ Despachador. É somente preparação: não executa o ensaio, não aprova liberação, não altera a main.
+Esta entrega da branch de validação adiciona uma barreira **antes de qualquer acesso de rede** ao ensaio de homologação Inventário ↔ Despachador. É somente preparação: não executa o ensaio nem aprova liberação. A proteção inicial foi incorporada à main pelo PR #189; os reforços seguintes passam por revisão e CI próprias.
 
 ## Configuração do GitHub Environment homologation
 
@@ -31,3 +31,9 @@ A evidência final continua pendente nos gates DISPATCH-REAL-02 e na issue #192.
 ## Compatibilidade com o harness unitário existente
 
 O harness exportado mantém a possibilidade de testes locais com servidor HTTP sintético exclusivamente em NODE_ENV=test, quando **ambos os destinos** são HTTP loopback 127.0.0.1 com porta explícita. Esta exceção é restrita à suíte local e não permite destino remoto; URLs externas passam obrigatoriamente pela validação de autorização. O workflow de homologação real continua protegido pelas verificações offline e pela confirmação manual.
+
+## Proteção contra redirecionamento de destino
+
+O harness faz requisições HTTP com `redirect: manual`, recusando implicitamente qualquer resposta 3xx como resultado de sucesso. Isso impede que um host inicialmente autorizado use `Location:` para induzir o cliente a contactar um servidor não aprovado. O preflight também recusa portas HTTPS alternativas, permitindo apenas HTTPS na porta padrão. Testes sintéticos verificam que um segundo servidor local, escolhido como destino de redirecionamento, **não recebe nenhuma requisição**. Nenhuma integração externa é chamada por esses testes.
+
+O controle não substitui validação de DNS/routing, firewall e confirmação humana do environment de homologação descritos na issue #97. Os gates reais continuam 0/3 até coleta de evidências reais na issue #192.
