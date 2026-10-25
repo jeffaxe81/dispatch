@@ -25,7 +25,7 @@ function isSafeEvidenceUrl(v: unknown): boolean {
   if (typeof v !== "string") return false;
   try {
     const u = new URL(v);
-    return u.protocol === "https:" && !!u.hostname && !u.username && !u.password;
+    return u.protocol === "https:" && !!u.hostname && !u.username && !u.password && !u.search && !u.hash;
   } catch {
     return false;
   }
