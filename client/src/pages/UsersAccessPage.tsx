@@ -78,8 +78,8 @@ function UsersAccessContent() {
     createUser.mutate({
       displayName: manualUser.displayName,
       email: manualUser.email,
-      username: manualUser.username,
-      password: manualUser.password,
+      username: manualUser.username.trim() || undefined,
+      password: manualUser.password || undefined,
       employeeId: manualUser.employeeId || null,
       institutionalId: manualUser.institutionalId || null,
       phone: manualUser.phone || null,
