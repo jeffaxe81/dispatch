@@ -15,6 +15,12 @@ const allowed = new Set(["PENDING_REAL_ENVIRONMENT", "PASSED_REAL_ENVIRONMENT", 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+function isValidReviewDate(v: unknown, now: Date): boolean {
+  if (typeof v !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(v)) return false;
+  const d = new Date(v + "T00:00:00.000Z");
+  if (!Number.isFinite(d.getTime()) || d.toISOString().slice(0, 10) !== v) return false;
+  return v <= now.toISOString().slice(0, 10);
+}
 function isUtcTimestamp(v: unknown, now: Date): boolean {
   if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(v)) return false;
   const d = new Date(v);
@@ -48,6 +54,7 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
 
   if (!isRecord(manifest) || manifest.schema_version !== 1 ||
       manifest.project !== "AXE Dispatch" ||
+      !isValidReviewDate(manifest.review_date, now) ||
       manifest.release_status !== "NOT_APPROVED_FOR_PRODUCTION") {
     findings.push("INVALID_RELEASE_MANIFEST");
   }
