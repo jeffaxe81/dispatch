@@ -27,6 +27,13 @@ function isUtcTimestamp(v: unknown, now: Date): boolean {
   if (!Number.isFinite(d.getTime()) || d.getTime() > now.getTime()) return false;
   return d.toISOString() === (v.includes(".") ? v : v.replace("Z", ".000Z"));
 }
+function isReviewedEvidenceTimestamp(v: unknown, reviewDate: unknown, now: Date): boolean {
+  return isUtcTimestamp(v, now) &&
+    typeof v === "string" &&
+    typeof reviewDate === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(reviewDate) &&
+    v.slice(0, 10) <= reviewDate;
+}
 function isSafeEvidenceUrl(v: unknown): boolean {
   if (typeof v !== "string") return false;
   try {
@@ -95,7 +102,7 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
       continue;
     }
     if (!isNamedEvidenceOwner(gate.owner) ||
-        !isUtcTimestamp(gate.executed_at, now) || !isSafeEvidenceUrl(gate.evidence_url)) {
+        !isReviewedEvidenceTimestamp(gate.executed_at, isRecord(manifest) ? manifest.review_date : undefined, now) || !isSafeEvidenceUrl(gate.evidence_url)) {
       pending.push(id);
       findings.push("INCOMPLETE_EVIDENCE");
       continue;
