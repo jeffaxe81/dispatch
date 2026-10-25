@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateInventoryHomologationConfig } from "./inventory-external-preflight.mjs";
 
 function normalizeBaseUrl(value) {
   return String(value || "").replace(/\/+$/, "");
@@ -65,6 +66,7 @@ export async function runInventoryExternalHomologation(options) {
     authToken,
   } = options;
 
+  validateInventoryHomologationConfig(options);
   const checks = [];
   const correlationIds = [];
   const correlation = () => {
@@ -254,6 +256,8 @@ function readCliOptions(env) {
     incidentReference: env.HOMOLOGATION_INCIDENT_REFERENCE,
     timeoutMs: Number(env.HOMOLOGATION_TIMEOUT_MS || 3000),
     authToken: env.HOMOLOGATION_AUTH_TOKEN || undefined,
+    allowedHosts: env.HOMOLOGATION_ALLOWED_HOSTS,
+    executionApproval: env.HOMOLOGATION_EXECUTION_APPROVAL,
   };
 }
 

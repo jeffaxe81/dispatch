@@ -68,18 +68,19 @@ describe("workflow de qualidade do GitHub", () => {
       .filter((step: { run?: string }) => step.run)
       .map((step: { run: string }) => step.run);
 
-    expect(commands).toHaveLength(8);
-    expect(commands.slice(0, 7)).toEqual([
+    expect(commands).toHaveLength(9);
+    expect(commands.slice(0, 8)).toEqual([
       "corepack enable",
       "corepack pnpm install --frozen-lockfile",
       "corepack pnpm security:check",
       "corepack pnpm check",
       "corepack pnpm test",
       "corepack pnpm readiness:dispatch",
+      "node --test scripts/inventory-external-preflight.test.mjs",
       "corepack pnpm build",
     ]);
-    expect(commands[7]).toContain("docker compose config");
-    expect(commands[7]).toContain("docker compose build app migrate");
+    expect(commands[8]).toContain("docker compose config");
+    expect(commands[8]).toContain("docker compose build app migrate");
   });
 
   it("não usa segredos, integração, escrita ou entrega", () => {

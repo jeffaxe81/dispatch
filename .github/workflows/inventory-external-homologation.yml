@@ -1,7 +1,12 @@
 name: Inventory external homologation
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Digite AUTHORIZE_INVENTORY_HOMOLOGATION após conferir os destinos de homologação'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -25,6 +30,8 @@ jobs:
       HOMOLOGATION_INCIDENT_REFERENCE: ${{ vars.HOMOLOGATION_INCIDENT_REFERENCE }}
       HOMOLOGATION_TIMEOUT_MS: ${{ vars.HOMOLOGATION_TIMEOUT_MS }}
       HOMOLOGATION_AUTH_TOKEN: ${{ secrets.HOMOLOGATION_AUTH_TOKEN }}
+      HOMOLOGATION_ALLOWED_HOSTS: ${{ vars.HOMOLOGATION_ALLOWED_HOSTS }}
+      HOMOLOGATION_EXECUTION_APPROVAL: ${{ inputs.confirm }}
       HOMOLOGATION_REPORT_DIR: artifacts/homologation
 
     steps:
@@ -68,6 +75,9 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Validar destinos e aprovação offline
+        run: node scripts/inventory-external-preflight.mjs
 
       - name: Executar homologação externa
         run: corepack pnpm homologation:inventory
