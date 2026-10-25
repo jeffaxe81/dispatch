@@ -102,3 +102,28 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
     findings: [...new Set(findings)],
   };
 }
+
+
+/** Markdown sanitizado para GitHub Actions; só usa contadores e IDs fixos. */
+export function formatDispatchReadinessSummary(result: ReadinessResult): string {
+  const pending = new Set(result.pending_gate_ids);
+  const statuses = REQUIRED_REAL_GATES.map(id =>
+    "| " + id + " | " + (pending.has(id) ? "Pendente" : "Evidência registrada para revisão") + " |"
+  );
+  return [
+    "### AXE Dispatch — liberação operacional",
+    "",
+    "**Status operacional: " + result.decision + "**",
+    "",
+    "- Evidências mínimas registradas: **" + result.evidenced_gates + "/3**",
+    "- Autorização de produção: **NÃO**",
+    "- CI técnica: **verificada em etapa independente**",
+    "",
+    "| Gate | Evidência documental |",
+    "| --- | --- |",
+    ...statuses,
+    "",
+    "Aprovação técnica da CI não substitui homologação real e decisão humana de GO/NO-GO.",
+    "",
+  ].join("\n");
+}

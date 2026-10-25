@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
-import { evaluateDispatchReadiness } from "./dispatchReleaseReadiness";
+import { evaluateDispatchReadiness, formatDispatchReadinessSummary } from "./dispatchReleaseReadiness";
 
 const source = path.resolve(import.meta.dirname, "../../docs/quality/real-environment-pending-2026-10-23.json");
 const original = () => JSON.parse(fs.readFileSync(source, "utf8"));
@@ -53,6 +53,20 @@ describe("Gate passivo de release AXE Dispatch", () => {
       decision: "MANUAL_GO_REVIEW_REQUIRED", production_approved: false,
       evidenced_gates: 3, ci_not_assessed: true,
     });
+  });
+  it("gera sumário seguro e impede GO automático visual", () => {
+    const report = evaluateDispatchReadiness(original(), now);
+    const summary = formatDispatchReadinessSummary(report);
+    expect(summary).toContain("0/3");
+    expect(summary).toContain("NO_GO");
+    expect(summary).toContain("NÃO");
+    expect(summary).toContain("DISPATCH-REAL-01");
+    expect(summary).not.toContain("https://");
+    const approved = evaluateDispatchReadiness(withEvidence(original()), now);
+    const review = formatDispatchReadinessSummary(approved);
+    expect(review).toContain("MANUAL_GO_REVIEW_REQUIRED");
+    expect(review).toContain("Autorização de produção: **NÃO**");
+    expect(review).not.toContain("homologation-team");
   });
   it("não revela dados externos ou segredos no relatório", () => {
     const m = withEvidence(original());

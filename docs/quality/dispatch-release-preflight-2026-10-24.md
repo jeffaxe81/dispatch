@@ -30,3 +30,7 @@ Não marque um gate como concluído sem execução real e evidência verificáve
 ## Verificação automática na CI
 
 O workflow de Qualidade executa `corepack pnpm readiness:dispatch` após os testes locais e antes do build. A saída JSON identifica os gates reais ainda pendentes, sem criar uma etapa operacional de aprovação. Um manifesto estruturalmente inválido faz a CI falhar; um manifesto válido com gates pendentes retorna `NO_GO` e não bloqueia o desenvolvimento técnico. A CI verde não libera produção: o PR permanece Draft e a homologação manual continua obrigatória.
+
+## Resumo no GitHub Actions
+
+Quando a variável controlada pelo GitHub `GITHUB_STEP_SUMMARY` estiver disponível, o comando acrescenta um resumo em Markdown ao job de Qualidade. O painel inclui percentual documental dos três gates, IDs fixos e o status explícito de `NO_GO` ou `MANUAL_GO_REVIEW_REQUIRED`. Não replica responsáveis, evidências URL, tokens, nem payloads. Ausência ou falha do arquivo de sumário não transforma um gate em `GO` e não altera a decisão da CLI. Esse percentual **não mede implantação concluída**.

@@ -1,12 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
-import { evaluateDispatchReadiness } from "./dispatchReleaseReadiness";
+import { evaluateDispatchReadiness, formatDispatchReadinessSummary } from "./dispatchReleaseReadiness";
 
 const file = path.resolve(import.meta.dirname, "../../docs/quality/real-environment-pending-2026-10-23.json");
 try {
   const data: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
   const result = evaluateDispatchReadiness(data);
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    try {
+      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, formatDispatchReadinessSummary(result), "utf8");
+    } catch {
+      process.stderr.write("DISPATCH_READINESS_SUMMARY_UNAVAILABLE\\n");
+    }
+  }
   // Report-only: never changes the environment or authorizes production.
   if (!result.manifest_valid) process.exitCode = 2;
 } catch {
