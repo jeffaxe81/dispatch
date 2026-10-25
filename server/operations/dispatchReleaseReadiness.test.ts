@@ -29,6 +29,18 @@ describe("Gate passivo de release AXE Dispatch", () => {
     m.policy.manual_environment_tests_required_before_production_go = false;
     expect(evaluateDispatchReadiness(m, now)).toMatchObject({decision:"NO_GO", manifest_valid:false});
   });
+  it("exige review_date ISO válida e não futura para considerar o manifesto estruturalmente válido", () => {
+    for (const reviewDate of [undefined, "", "25/10/2026", "2026-02-30", "2026-10-27"]) {
+      const m = original();
+      m.review_date = reviewDate;
+      const result = evaluateDispatchReadiness(m, now);
+      expect(result).toMatchObject({decision:"NO_GO", manifest_valid:false});
+      expect(result.findings).toContain("INVALID_RELEASE_MANIFEST");
+    }
+    const valid = original();
+    valid.review_date = "2026-10-25";
+    expect(evaluateDispatchReadiness(valid, now).manifest_valid).toBe(true);
+  });
   it("rejeita IDs desconhecidos, ausentes ou duplicados", () => {
     const m = original();
     m.external_environment_tests.push({...m.external_environment_tests[0]});
