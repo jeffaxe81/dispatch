@@ -7,6 +7,7 @@ const source = path.resolve(import.meta.dirname, "../../docs/quality/real-enviro
 const original = () => JSON.parse(fs.readFileSync(source, "utf8"));
 const now = new Date("2026-10-26T12:00:00Z");
 function withEvidence(m: any) {
+  m.review_date = "2026-10-25";
   for (const g of m.external_environment_tests) {
     g.status = "PASSED_REAL_ENVIRONMENT";
     g.owner = "homologation-team";
