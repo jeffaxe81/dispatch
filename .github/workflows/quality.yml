@@ -50,6 +50,9 @@ jobs:
       - name: Executar testes locais
         run: corepack pnpm test
 
+      - name: Verificar pendências de homologação (somente leitura)
+        run: corepack pnpm readiness:dispatch
+
       - name: Gerar build
         run: corepack pnpm build
 

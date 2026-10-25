@@ -26,3 +26,7 @@ Quando todos os três gates estiverem evidenciados, a saída muda somente para M
 - Manifesto: docs/quality/real-environment-pending-2026-10-23.json
 
 Não marque um gate como concluído sem execução real e evidência verificável. Nenhum gate substitui os testes de segurança, TypeScript, build e Docker, ou autoriza produção.
+
+## Verificação automática na CI
+
+O workflow de Qualidade executa `corepack pnpm readiness:dispatch` após os testes locais e antes do build. A saída JSON identifica os gates reais ainda pendentes, sem criar uma etapa operacional de aprovação. Um manifesto estruturalmente inválido faz a CI falhar; um manifesto válido com gates pendentes retorna `NO_GO` e não bloqueia o desenvolvimento técnico. A CI verde não libera produção: o PR permanece Draft e a homologação manual continua obrigatória.
