@@ -99,6 +99,62 @@
       "when": 1789343700000,
       "tag": "0013_d012f_workflow_event_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1790526600000,
+      "tag": "0014_d012i_workflow_task_sla",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1791630000000,
+      "tag": "0015_d012i_workflow_sla_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1792281600000,
+      "tag": "0016_d012i_workflow_sla_delivery_cas",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1792346400000,
+      "tag": "0017_d012i_workflow_sla_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1792710600000,
+      "tag": "0018_d012j_integration_delivery_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1792753200000,
+      "tag": "0019_d012j_integration_circuit_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1792756800000,
+      "tag": "0020_d012j_circuit_probe_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1792760400000,
+      "tag": "0021_d012j_probe_execution_intent",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ upload: vi.fn(), invalidate: vi.fn(), refetch: vi.fn(), uploadError: null as Error | null, currentUser: { id: 8, teamId: 4 as number | null, operationalRole: "agente", active: true }, permissions: ["occurrences.view", "occurrences.transition"] }));
+const defaultRows = [{ incident: { id: 12, code: "OCO-12", category: "Atendimento", priority: "alta", status: "em_atendimento", address: "Rua Central, 10", description: "Verificar situação." } }];
+const mocks = vi.hoisted(() => ({ upload: vi.fn(), invalidate: vi.fn(), refetch: vi.fn(), uploadError: null as Error | null, currentUser: { id: 8, teamId: 4 as number | null, operationalRole: "agente", active: true }, permissions: ["occurrences.view", "occurrences.transition"], rows: [] as any[] }));
 
 vi.mock("@/components/DashboardLayout", () => ({ default: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("@/components/QueryState", () => ({ QueryState: () => null }));
@@ -16,7 +17,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ incidents: { list: { invalidate: mocks.invalidate }, timeline: { invalidate: mocks.invalidate }, evidence: { list: { invalidate: mocks.invalidate } } }, dashboard: { summary: { invalidate: mocks.invalidate } } }),
     access: { me: { useQuery: () => ({ data: { permissions: mocks.permissions }, isLoading: false }) } },
     incidents: {
-      list: { useQuery: () => ({ data: { rows: [{ incident: { id: 12, code: "OCO-12", category: "Atendimento", priority: "alta", status: "em_atendimento", address: "Rua Central, 10", description: "Verificar situação." } }] }, isLoading: false, isFetching: false, error: null, refetch: mocks.refetch }) },
+      list: { useQuery: () => ({ data: { rows: mocks.rows.length ? mocks.rows : defaultRows }, isLoading: false, isFetching: false, error: null, refetch: mocks.refetch }) },
       respondToAssignment: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       transition: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },
       evidence: {
@@ -29,7 +30,7 @@ vi.mock("@/lib/trpc", () => ({
 
 import AgentPage from "./AgentPage";
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); mocks.uploadError = null; mocks.currentUser = { id: 8, teamId: 4, operationalRole: "agente", active: true }; mocks.permissions = ["occurrences.view", "occurrences.transition"]; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); mocks.uploadError = null; mocks.currentUser = { id: 8, teamId: 4, operationalRole: "agente", active: true }; mocks.permissions = ["occurrences.view", "occurrences.transition"]; mocks.rows = []; });
 
 describe("AgentPage evidências", () => {
   it("aceita múltiplos anexos e prepara um envio individual para cada arquivo do lote", async () => {
@@ -88,4 +89,16 @@ describe("AgentPage evidências", () => {
     expect(screen.getByText("Permissões de campo incompletas")).toBeTruthy();
     expect(screen.getByText(/occurrences\.transition/i)).toBeTruthy();
   });
+  it("bloqueia ações operacionais quando existem duas ocorrências ativas para a equipe", () => {
+    mocks.rows = [
+      { incident: { id: 12, code: "OCO-12", category: "Atendimento", priority: "alta", status: "em_atendimento", address: "Rua Central, 10", description: "Verificar situação." } },
+      { incident: { id: 13, code: "OCO-13", category: "Apoio", priority: "media", status: "aceita", address: "Rua Sul, 20", description: "Apoiar atendimento." } },
+    ];
+    render(<AgentPage />);
+    expect(screen.getByRole("alert").textContent).toMatch(/conflito operacional/i);
+    expect(screen.getByText(/2 ocorrências ativas/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /concluir/i })).toBeNull();
+    expect(screen.queryByLabelText(/ativar compartilhamento de localização/i)).toBeNull();
+  });
+
 });

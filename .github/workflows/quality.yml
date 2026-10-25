@@ -2,9 +2,9 @@ name: Qualidade
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "feat/d012i-*", "feat/d012j-*"]
   push:
-    branches: [main]
+    branches: [main, "feat/d012j-*"]
   workflow_dispatch: {}
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
       - name: Obter código
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Preparar Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -49,6 +49,12 @@ jobs:
 
       - name: Executar testes locais
         run: corepack pnpm test
+
+      - name: Verificar pendências de homologação (somente leitura)
+        run: corepack pnpm readiness:dispatch
+
+      - name: Testar proteção offline da homologação externa
+        run: node --test scripts/inventory-external-preflight.test.mjs
 
       - name: Gerar build
         run: corepack pnpm build

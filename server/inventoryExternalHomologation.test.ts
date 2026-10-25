@@ -22,6 +22,20 @@ async function withServer(handler: Parameters<typeof createServer>[0], fn: (base
 }
 
 describe("inventory external homologation harness", () => {
+  it("recusa acesso remoto sem autorização explícita, mesmo durante testes", async () => {
+    const { runInventoryExternalHomologation } = await loadHarness();
+    await expect(runInventoryExternalHomologation({
+      assetMotorBaseUrl: "https://assets.hml.example.org",
+      dispatchBaseUrl: "https://dispatch.hml.example.org",
+      tenantA: "tenant-a",
+      tenantB: "tenant-b",
+      userId: "homologation-user",
+      incidentReference: "INC-HML-003",
+      authToken: "synthetic-no-access",
+      timeoutMs: 1000,
+    })).rejects.toThrow("INVENTORY_PREFLIGHT_EXPLICIT_APPROVAL_MISSING");
+  });
+
   it("valida fluxo feliz, tenant isolation, replay e fail-closed", async () => {
     const { runInventoryExternalHomologation } = await loadHarness();
     const calls: Array<{ url?: string; tenant?: string | string[]; correlation?: string | string[] }> = [];

@@ -11,6 +11,7 @@
     "recovery:restore": "tsx server/recovery/cli.ts restore",
     "recovery:verify": "tsx server/recovery/cli.ts verify",
     "check": "tsc --noEmit",
+    "check:sla-mysql": "tsc --project tsconfig.sla-mysql.json --noEmit",
     "contracts:coverage": "node scripts/generate-trpc-coverage.mjs",
     "test:browser-local": "node scripts/browser-local-login-smoke.mjs",
     "ui:coverage": "node scripts/generate-ui-route-matrix.mjs",
@@ -21,12 +22,14 @@
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:sla-mysql": "vitest run --config vitest.sla-mysql.config.ts",
     "test:recovery": "vitest run --config vitest.recovery.config.ts",
     "test:all": "vitest run --config vitest.config.ts && vitest run --config vitest.integration.config.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "test:gis-visual": "node scripts/gis-visual-homologation.mjs",
-    "test:neo-visual": "node scripts/neo-workspace-visual-homologation.mjs"
+    "test:neo-visual": "node scripts/neo-workspace-visual-homologation.mjs",
+    "readiness:dispatch": "tsx server/operations/dispatchReleaseReadiness.cli.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1117.0",

@@ -8,6 +8,7 @@ import {
   type WorkflowFormRequirement,
   type WorkflowFormSubmissionEvidence,
 } from "./workflowFormRequirement";
+import type { WorkflowSlaConfiguration } from "./workflowSla";
 
 export type WorkflowInstanceStatus = "running" | "waiting" | "completed" | "cancelled" | "failed";
 
@@ -16,6 +17,7 @@ export type WorkflowInstanceGraphNode = {
   type: string;
   requiresHumanTask?: boolean;
   assigneeUserId?: number | null;
+  slaConfiguration?: WorkflowSlaConfiguration;
   decision?: {
     condition: WorkflowCondition;
     trueTargetNodeId: string;

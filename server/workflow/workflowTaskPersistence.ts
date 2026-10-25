@@ -3,6 +3,10 @@ import { auditLogs, workflowExecutions, workflowVersions } from "../../drizzle/s
 import { getDb } from "../dbLegacy";
 import { readWorkflowFormEvidence } from "./workflowFormEventEvidence";
 import { workflowFormRequirementFromDefinition } from "./workflowFormRequirement";
+import {
+  calculateWorkflowSlaTimeline,
+  workflowSlaConfigurationSchema,
+} from "./workflowSla";
 import { workflowTasks } from "./workflowTaskSchema";
 import {
   assignWorkflowTaskState,
@@ -20,6 +24,34 @@ async function requireDb() {
 }
 
 type Tx = Parameters<Parameters<Awaited<ReturnType<typeof requireDb>>["transaction"]>[0]>[0];
+
+export function buildWorkflowTaskSlaPersistenceValues(
+  configurationInput: unknown,
+  occurredAt: string,
+): {
+  slaStartedAt: Date | null;
+  slaReminderAt: Date | null;
+  slaDueAt: Date | null;
+  slaEscalationAt: Date | null;
+} {
+  if (configurationInput === null || configurationInput === undefined) {
+    return {
+      slaStartedAt: null,
+      slaReminderAt: null,
+      slaDueAt: null,
+      slaEscalationAt: null,
+    };
+  }
+
+  const configuration = workflowSlaConfigurationSchema.parse(configurationInput);
+  const timeline = calculateWorkflowSlaTimeline(configuration, occurredAt);
+  return {
+    slaStartedAt: new Date(timeline.startedAt),
+    slaReminderAt: new Date(timeline.reminderAt),
+    slaDueAt: new Date(timeline.dueAt),
+    slaEscalationAt: new Date(timeline.escalationAt),
+  };
+}
 
 function toState(row: typeof workflowTasks.$inferSelect): WorkflowTaskState {
   return {

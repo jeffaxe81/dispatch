@@ -1,0 +1,36 @@
+# AXE Dispatch — controle passivo de homologação
+
+Preparação em 24/10/2026. Este controle é apenas diagnóstico; não faz merge, deploy, migração, grants ou probes externos.
+
+## Uso
+
+Executar localmente: corepack pnpm readiness:dispatch.
+
+O comando lê o manifesto docs/quality/real-environment-pending-2026-10-23.json e imprime JSON sanitizado, com quantidades, IDs dos gates ainda pendentes e códigos fixos de erro. Não imprime nomes de usuários, URLs de evidências, credenciais ou dados de integrações.
+
+## Pendências reais obrigatórias
+
+- DISPATCH-REAL-01: validar MySQL de homologação, concorrência SLA, outbox/DLQ, leases com fencing, failover e rollback.
+- DISPATCH-REAL-02: validar NEO, CRM e Inventário em homologação com credenciais mínimas, tenant A/B, correlação, idempotência e fail-closed. Detalhes: https://github.com/jeffaxe81/dispatch/issues/97
+- DISPATCH-REAL-03: validar RBAC, isolamento de empresas, GIS, carga, reinício e ensaio restore/rollback.
+
+Um gate só conta como evidenciado se tiver status PASSED_REAL_ENVIRONMENT, responsável humano identificado, horário UTC válido/não futuro e URL HTTPS de evidência. Qualquer falha estrutural, política enfraquecida, dados ausentes ou prova incompleta conserva NO_GO.
+
+Quando todos os três gates estiverem evidenciados, a saída muda somente para MANUAL_GO_REVIEW_REQUIRED. Isso nunca é autorização automática: a decisão GO/NO-GO exige revisão humana, confirmação da autenticidade dos artefatos e aprovação operacional explícita. A saída production_approved permanece false e ci_not_assessed permanece true.
+
+## Rastreabilidade
+
+- CI técnica consolidada: https://github.com/jeffaxe81/dispatch/pull/189
+- Homologação operacional do Inventário: https://github.com/jeffaxe81/dispatch/issues/89
+- Environment de homologação: https://github.com/jeffaxe81/dispatch/issues/97
+- Manifesto: docs/quality/real-environment-pending-2026-10-23.json
+
+Não marque um gate como concluído sem execução real e evidência verificável. Nenhum gate substitui os testes de segurança, TypeScript, build e Docker, ou autoriza produção.
+
+## Verificação automática na CI
+
+O workflow de Qualidade executa `corepack pnpm readiness:dispatch` após os testes locais e antes do build. A saída JSON identifica os gates reais ainda pendentes, sem criar uma etapa operacional de aprovação. Um manifesto estruturalmente inválido faz a CI falhar; um manifesto válido com gates pendentes retorna `NO_GO` e não bloqueia o desenvolvimento técnico. A CI verde não libera produção: o PR permanece Draft e a homologação manual continua obrigatória.
+
+## Resumo no GitHub Actions
+
+Quando a variável controlada pelo GitHub `GITHUB_STEP_SUMMARY` estiver disponível, o comando acrescenta um resumo em Markdown ao job de Qualidade. O painel inclui percentual documental dos três gates, IDs fixos e o status explícito de `NO_GO` ou `MANUAL_GO_REVIEW_REQUIRED`. Não replica responsáveis, evidências URL, tokens, nem payloads. Ausência ou falha do arquivo de sumário não transforma um gate em `GO` e não altera a decisão da CLI. Esse percentual **não mede implantação concluída**.

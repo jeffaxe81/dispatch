@@ -1,0 +1,129 @@
+export const REQUIRED_REAL_GATES = ["DISPATCH-REAL-01", "DISPATCH-REAL-02", "DISPATCH-REAL-03"] as const;
+
+type GateId = (typeof REQUIRED_REAL_GATES)[number];
+export type ReadinessResult = {
+  decision: "NO_GO" | "MANUAL_GO_REVIEW_REQUIRED";
+  production_approved: false;
+  ci_not_assessed: true;
+  manifest_valid: boolean;
+  required_gates: 3;
+  evidenced_gates: number;
+  pending_gate_ids: string[];
+  findings: string[];
+};
+const allowed = new Set(["PENDING_REAL_ENVIRONMENT", "PASSED_REAL_ENVIRONMENT", "FAILED_REAL_ENVIRONMENT"]);
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+function isUtcTimestamp(v: unknown, now: Date): boolean {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(v)) return false;
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime()) || d.getTime() > now.getTime()) return false;
+  return d.toISOString() === (v.includes(".") ? v : v.replace("Z", ".000Z"));
+}
+function isSafeEvidenceUrl(v: unknown): boolean {
+  if (typeof v !== "string") return false;
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" && !!u.hostname && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Evaluates already recorded evidence only. Never changes runtime state,
+ * reads secrets, contacts other services, or approves production.
+ */
+export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): ReadinessResult {
+  const findings: string[] = [];
+  const pending: string[] = [];
+  let evidenced = 0;
+
+  if (!isRecord(manifest) || manifest.schema_version !== 1 ||
+      manifest.project !== "AXE Dispatch" ||
+      manifest.release_status !== "NOT_APPROVED_FOR_PRODUCTION") {
+    findings.push("INVALID_RELEASE_MANIFEST");
+  }
+  const policy = isRecord(manifest) && isRecord(manifest.policy) ? manifest.policy : {};
+  if (policy.manual_environment_tests_required_before_production_go !== true ||
+      policy.do_not_claim_unperformed_tests_as_passed !== true ||
+      policy.do_not_disable_technical_security_gates !== true) {
+    findings.push("POLICY_UNSAFE");
+  }
+
+  const list = isRecord(manifest) ? manifest.external_environment_tests : undefined;
+  if (!Array.isArray(list)) findings.push("REQUIRED_GATES_UNAVAILABLE");
+  const gates = new Map<GateId, Record<string, unknown>>();
+  for (const row of Array.isArray(list) ? list : []) {
+    if (!isRecord(row) || !REQUIRED_REAL_GATES.includes(row.id as GateId)) {
+      findings.push("UNKNOWN_GATE");
+      continue;
+    }
+    const id = row.id as GateId;
+    if (gates.has(id)) findings.push("DUPLICATE_GATE");
+    else gates.set(id, row);
+  }
+  for (const id of REQUIRED_REAL_GATES) {
+    const gate = gates.get(id);
+    if (!gate) {
+      pending.push(id);
+      findings.push("MISSING_GATE");
+      continue;
+    }
+    if (gate.gate !== "PRODUCTION_GO" || !allowed.has(gate.status as string)) {
+      pending.push(id);
+      findings.push("INVALID_GATE");
+      continue;
+    }
+    if (gate.status !== "PASSED_REAL_ENVIRONMENT") {
+      pending.push(id);
+      if (gate.status === "FAILED_REAL_ENVIRONMENT") findings.push("FAILED_REAL_TEST");
+      continue;
+    }
+    if (typeof gate.owner !== "string" || !gate.owner.trim() || gate.owner === "to_be_assigned" ||
+        !isUtcTimestamp(gate.executed_at, now) || !isSafeEvidenceUrl(gate.evidence_url)) {
+      pending.push(id);
+      findings.push("INCOMPLETE_EVIDENCE");
+      continue;
+    }
+    evidenced++;
+  }
+  const structureErrors = ["INVALID_RELEASE_MANIFEST", "POLICY_UNSAFE", "REQUIRED_GATES_UNAVAILABLE", "UNKNOWN_GATE", "DUPLICATE_GATE", "MISSING_GATE", "INVALID_GATE"];
+  const manifestValid = !findings.some(f => structureErrors.includes(f));
+  return {
+    decision: manifestValid && pending.length === 0 ? "MANUAL_GO_REVIEW_REQUIRED" : "NO_GO",
+    production_approved: false,
+    ci_not_assessed: true,
+    manifest_valid: manifestValid,
+    required_gates: 3,
+    evidenced_gates: evidenced,
+    pending_gate_ids: pending,
+    findings: [...new Set(findings)],
+  };
+}
+
+
+/** Markdown sanitizado para GitHub Actions; só usa contadores e IDs fixos. */
+export function formatDispatchReadinessSummary(result: ReadinessResult): string {
+  const pending = new Set(result.pending_gate_ids);
+  const statuses = REQUIRED_REAL_GATES.map(id =>
+    "| " + id + " | " + (pending.has(id) ? "Pendente" : "Evidência registrada para revisão") + " |"
+  );
+  return [
+    "### AXE Dispatch — liberação operacional",
+    "",
+    "**Status operacional: " + result.decision + "**",
+    "",
+    "- Evidências mínimas registradas: **" + result.evidenced_gates + "/3**",
+    "- Autorização de produção: **NÃO**",
+    "- CI técnica: **verificada em etapa independente**",
+    "",
+    "| Gate | Evidência documental |",
+    "| --- | --- |",
+    ...statuses,
+    "",
+    "Aprovação técnica da CI não substitui homologação real e decisão humana de GO/NO-GO.",
+    "",
+  ].join("\n");
+}

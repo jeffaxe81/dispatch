@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateInventoryHomologationConfig } from "./inventory-external-preflight.mjs";
 
 function normalizeBaseUrl(value) {
   return String(value || "").replace(/\/+$/, "");
@@ -53,6 +54,24 @@ function pushCheck(checks, name, passed, details = {}) {
   checks.push({ name, status: passed ? "PASS" : "FAIL", ...details });
 }
 
+/**
+ * Isolamento estrito da suíte Vitest: somente um servidor HTTP de loopback
+ * em NODE_ENV=test. Nenhum destino remoto escapa do preflight.
+ */
+function isLocalTestFixture(options) {
+  if (process.env.NODE_ENV !== "test") return false;
+  try {
+    return [options.assetMotorBaseUrl, options.dispatchBaseUrl].every(value => {
+      const url = new URL(value);
+      return url.protocol === "http:" && url.hostname === "127.0.0.1" &&
+        !!url.port && url.pathname === "/" && !url.search && !url.hash &&
+        !url.username && !url.password;
+    });
+  } catch {
+    return false;
+  }
+}
+
 export async function runInventoryExternalHomologation(options) {
   const {
     assetMotorBaseUrl,
@@ -65,6 +84,7 @@ export async function runInventoryExternalHomologation(options) {
     authToken,
   } = options;
 
+  if (!isLocalTestFixture(options)) validateInventoryHomologationConfig(options);
   const checks = [];
   const correlationIds = [];
   const correlation = () => {
@@ -254,6 +274,8 @@ function readCliOptions(env) {
     incidentReference: env.HOMOLOGATION_INCIDENT_REFERENCE,
     timeoutMs: Number(env.HOMOLOGATION_TIMEOUT_MS || 3000),
     authToken: env.HOMOLOGATION_AUTH_TOKEN || undefined,
+    allowedHosts: env.HOMOLOGATION_ALLOWED_HOSTS,
+    executionApproval: env.HOMOLOGATION_EXECUTION_APPROVAL,
   };
 }
 

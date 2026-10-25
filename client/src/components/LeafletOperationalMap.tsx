@@ -36,6 +36,7 @@ type LeafletOperationalMapProps = {
   assets?: LeafletAsset[];
   route?: GeoJsonLineString | null;
   className?: string;
+  onTileError?: () => void;
 };
 
 const priorityPathOptions: Record<string, { color: string; fillColor: string }> = {
@@ -71,7 +72,7 @@ function AutoFit({ center, zoom, points }: { center: { lat: number; lng: number 
   return null;
 }
 
-export default function LeafletOperationalMap({ center, zoom, incidents, teams, assets = [], route, className = "h-[430px] w-full" }: LeafletOperationalMapProps) {
+export default function LeafletOperationalMap({ center, zoom, incidents, teams, assets = [], route, className = "h-[430px] w-full", onTileError }: LeafletOperationalMapProps) {
   const incidentPoints = incidents
     .map(incident => ({ incident, position: asLatLng(incident) }))
     .filter((entry): entry is { incident: LeafletIncident; position: [number, number] } => Array.isArray(entry.position));
@@ -92,7 +93,7 @@ export default function LeafletOperationalMap({ center, zoom, incidents, teams, 
   return (
     <div className={className}>
       <MapContainer center={[center.lat, center.lng]} zoom={zoom} className="h-full w-full" zoomControl attributionControl>
-        <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" eventHandlers={{ tileerror: () => onTileError?.() }} />
         {incidentPoints.map(({ incident, position }) => {
           const style = priorityPathOptions[incident.priority] ?? priorityPathOptions.media;
           return (

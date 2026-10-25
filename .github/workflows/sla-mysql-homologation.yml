@@ -1,0 +1,66 @@
+name: SLA MySQL homologation
+
+on:
+  pull_request:
+    branches: [main, "feat/d012i-*", "feat/d012j-*"]
+  push:
+    branches: ["feat/d012j-*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sla-mysql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-sla:
+    name: Concorrência SLA em MySQL 8.4
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: dispatch_sla_homologation
+          MYSQL_USER: sla_test
+          MYSQL_PASSWORD: disposable-sla-test-only
+          MYSQL_ROOT_PASSWORD: disposable-root-test-only
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      CI: "true"
+      NODE_ENV: test
+      AXE_RUNTIME_ENV: homologation
+      AXE_SLA_MYSQL_TESTS: "true"
+      AXE_SLA_I5D_ENABLED: "true"
+      AXE_SLA_MYSQL_TEST_DATABASE_URL: mysql://sla_test:disposable-sla-test-only@127.0.0.1:3306/dispatch_sla_homologation
+    steps:
+      - name: Obter código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Habilitar Corepack
+        run: corepack enable
+      - name: Instalar dependências congeladas
+        run: corepack pnpm install --frozen-lockfile
+      - name: Ensaiar CAS, recibos, locks e rollback reais
+        run: corepack pnpm check:sla-mysql && corepack pnpm test:sla-mysql
+      - name: Preservar relatório de homologação
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: d012i-i5e-sla-mysql
+          path: artifacts/sla-mysql
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,67 @@
+name: Integration outbox MySQL homologation
+
+on:
+  pull_request:
+    branches: [main, "feat/d012j-*"]
+  push:
+    branches: ["feat/d012j-*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-outbox-mysql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-outbox-mysql:
+    name: CAS/Fencing integrações em MySQL 8.4
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: dispatch_integration_homologation
+          MYSQL_USER: integration_test
+          MYSQL_PASSWORD: disposable-integration-test-only
+          MYSQL_ROOT_PASSWORD: disposable-root-test-only
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      CI: "true"
+      NODE_ENV: test
+      AXE_RUNTIME_ENV: homologation
+      AXE_INTEGRATION_MYSQL_TESTS: "true"
+      AXE_INTEGRATION_MYSQL_TEST_DATABASE_URL: mysql://integration_test:disposable-integration-test-only@127.0.0.1:3306/dispatch_integration_homologation
+    steps:
+      - name: Obter código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Habilitar Corepack
+        run: corepack enable
+      - name: Instalar dependências congeladas
+        run: corepack pnpm install --frozen-lockfile
+      - name: Checar TypeScript do ensaio MySQL
+        run: corepack pnpm exec tsc --project tsconfig.integration-outbox-mysql.json --noEmit
+      - name: Homologar CAS, isolamento e rollback reais
+        run: corepack pnpm exec vitest run --config vitest.integration-outbox-mysql.config.ts
+      - name: Preservar evidências de homologação
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: d012j-j18-integration-outbox-mysql
+          path: artifacts/integration-outbox-mysql
+          if-no-files-found: warn
+          retention-days: 14

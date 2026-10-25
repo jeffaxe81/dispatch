@@ -3,36 +3,153 @@ import { trpc } from "@/lib/trpc";
 import type { WorkspaceWidgetInstance } from "@shared/workspaceLayout";
 import { WorkspaceWidgetFrame } from "../WorkspaceWidgetFrame";
 
-export type SlaAlertRow = { id: number; code: string; category: string; priority: string; ageMinutes: number };
+export type SlaAlertRow = {
+  intentId: number;
+  taskId: number;
+  eventKind: "reminder" | "overdue" | "escalation";
+  deliveryStatus: "pending" | "leased" | "dead_letter";
+  taskStatus: "open" | "in_progress";
+  assigneeUserId: number | null;
+  scheduledAt: string;
+  attempts: number;
+  minutesFromNow: number;
+  timing: "future" | "due";
+};
 
-export function SlaAlertsWidgetView({ rows, riskMinutes }: { rows: SlaAlertRow[]; riskMinutes: number }) {
-  if (rows.length === 0) return <p className="text-sm text-slate-500">Nenhum alerta de tempo operacional no limiar configurado.</p>;
+export type SlaOperationalSeverity = "normal" | "attention" | "critical" | "quarantine";
+
+export type SlaOperationalFilters = {
+  eventKinds?: SlaAlertRow["eventKind"][];
+  deliveryStatuses?: SlaAlertRow["deliveryStatus"][];
+  taskId?: number;
+  assigneeUserId?: number;
+};
+
+const eventLabels: Record<SlaAlertRow["eventKind"], string> = {
+  reminder: "Lembrete",
+  overdue: "Vencimento",
+  escalation: "Escalonamento",
+};
+
+const deliveryLabels: Record<SlaAlertRow["deliveryStatus"], string> = {
+  pending: "Pendente",
+  leased: "Reservado",
+  dead_letter: "Quarentena",
+};
+
+const severityLabels: Record<SlaOperationalSeverity, string> = {
+  normal: "normal",
+  attention: "atenção",
+  critical: "crítica",
+  quarantine: "quarentena",
+};
+
+function timingLabel(row: SlaAlertRow) {
+  if (row.minutesFromNow > 0) return `em ${row.minutesFromNow} min`;
+  if (row.minutesFromNow < 0) return `${Math.abs(row.minutesFromNow)} min vencido`;
+  return "agora";
+}
+
+export function slaOperationalSeverity(row: SlaAlertRow): SlaOperationalSeverity {
+  if (row.deliveryStatus === "dead_letter") return "quarantine";
+  if (row.timing === "due" && (row.eventKind === "overdue" || row.eventKind === "escalation")) {
+    return "critical";
+  }
+  if (row.timing === "due" || row.eventKind === "reminder") return "attention";
+  if (row.minutesFromNow <= 15) return "attention";
+  return "normal";
+}
+
+export function filterSlaOperationalRows(
+  rows: SlaAlertRow[],
+  filters: SlaOperationalFilters,
+): SlaAlertRow[] {
+  return rows
+    .filter(row => !filters.eventKinds?.length || filters.eventKinds.includes(row.eventKind))
+    .filter(row => !filters.deliveryStatuses?.length || filters.deliveryStatuses.includes(row.deliveryStatus))
+    .filter(row => filters.taskId === undefined || row.taskId === filters.taskId)
+    .filter(row => filters.assigneeUserId === undefined || row.assigneeUserId === filters.assigneeUserId);
+}
+
+export function SlaAlertsWidgetView({ rows }: { rows: SlaAlertRow[] }) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-slate-500">Nenhum alerta SLA operacional pendente.</p>;
+  }
+
   return (
     <div className="space-y-2">
-      {rows.map(row => (
-        <article key={row.id} className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-          <div className="flex items-start justify-between gap-3"><div><div className="text-xs font-semibold text-amber-800">{row.code} · {row.priority}</div><div className="mt-1 text-sm font-semibold text-slate-950">{row.category}</div></div><span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">{row.ageMinutes} min</span></div>
-          <p className="mt-2 text-xs text-slate-600">Limiar de atenção: {riskMinutes} min.</p>
-        </article>
-      ))}
+      {rows.map(row => {
+        const severity = slaOperationalSeverity(row);
+        return (
+          <article
+            key={row.intentId}
+            aria-label={`Severidade ${severityLabels[severity]}`}
+            data-sla-severity={severity}
+            className="rounded-xl border border-amber-200 bg-amber-50/60 p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold text-amber-800">
+                  Tarefa #{row.taskId} · {eventLabels[row.eventKind]}
+                </div>
+                <div className="mt-1 text-sm font-semibold text-slate-950">
+                  {deliveryLabels[row.deliveryStatus]}
+                </div>
+              </div>
+              <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                {timingLabel(row)}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-600">
+              {row.assigneeUserId ? `Responsável #${row.assigneeUserId}` : "Sem responsável"} · tentativas {row.attempts}
+            </p>
+          </article>
+        );
+      })}
     </div>
   );
 }
 
 export function SlaAlertsWidget({ widget }: { widget: WorkspaceWidgetInstance }) {
-  const settings = widget.settings as { riskMinutes?: number };
-  const riskMinutes = settings.riskMinutes ?? 15;
-  const query = trpc.incidents.list.useQuery({ page: 1, pageSize: 50 });
+  const settings = widget.settings as {
+    limit?: number;
+    eventKinds?: SlaAlertRow["eventKind"][];
+    deliveryStatuses?: SlaAlertRow["deliveryStatus"][];
+    taskId?: number;
+    assigneeUserId?: number;
+  };
+  const requestedLimit = settings.limit ?? 50;
+  const limit = Number.isInteger(requestedLimit) && requestedLimit >= 1 && requestedLimit <= 100
+    ? requestedLimit
+    : 50;
+  const query = trpc.workflowSlaOperational.list.useQuery({ limit });
+
   if (query.isLoading) return <WorkspaceWidgetFrame title="Alertas e SLA" state="loading" />;
   if (query.error) return <WorkspaceWidgetFrame title="Alertas e SLA" state="error" error={query.error} />;
-  const now = Date.now();
-  const rows: SlaAlertRow[] = (query.data?.rows ?? []).map(({ incident }: any) => ({
-    id: incident.id,
-    code: incident.code,
-    category: incident.category,
-    priority: incident.priority,
-    status: incident.status,
-    ageMinutes: Math.max(0, Math.floor((now - new Date(incident.createdAt).getTime()) / 60000)),
-  })).filter((row: SlaAlertRow & { status?: string }) => row.status !== "concluida" && row.status !== "cancelada" && row.ageMinutes >= riskMinutes);
-  return <WorkspaceWidgetFrame title="Alertas e SLA"><SlaAlertsWidgetView rows={rows} riskMinutes={riskMinutes} /></WorkspaceWidgetFrame>;
+
+  const rows: SlaAlertRow[] = (query.data ?? []).map(row => ({
+    intentId: row.intentId,
+    taskId: row.taskId,
+    eventKind: row.eventKind,
+    deliveryStatus: row.deliveryStatus,
+    taskStatus: row.taskStatus,
+    assigneeUserId: row.assigneeUserId,
+    scheduledAt: row.scheduledAt,
+    attempts: row.attempts,
+    minutesFromNow: row.minutesFromNow,
+    timing: row.timing,
+  }));
+
+  const filteredRows = filterSlaOperationalRows(rows, {
+    eventKinds: settings.eventKinds,
+    deliveryStatuses: settings.deliveryStatuses,
+    taskId: settings.taskId,
+    assigneeUserId: settings.assigneeUserId,
+  });
+
+  return (
+    <WorkspaceWidgetFrame title="Alertas e SLA">
+      <SlaAlertsWidgetView rows={filteredRows} />
+    </WorkspaceWidgetFrame>
+  );
 }

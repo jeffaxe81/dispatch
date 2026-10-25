@@ -21,10 +21,10 @@ describe("workflow de qualidade do GitHub", () => {
     expect(workflow.name).toBe("Qualidade");
   });
 
-  it("valida propostas e alterações da main, além da execução manual", () => {
+  it("valida PRs empilhadas D-012I/J e push da série J, mantendo execução manual", () => {
     expect(workflow.on).toEqual({
-      pull_request: { branches: ["main"] },
-      push: { branches: ["main"] },
+      pull_request: { branches: ["main", "feat/d012i-*", "feat/d012j-*"] },
+      push: { branches: ["main", "feat/d012j-*"] },
       workflow_dispatch: {},
     });
   });
@@ -51,7 +51,7 @@ describe("workflow de qualidade do GitHub", () => {
 
     const checkout = actionSteps[0];
     expect(checkout.with).toEqual({
-      ref: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+      ref: "${{ github.sha }}",
     });
 
     const setupNode = actionSteps[1];
@@ -68,17 +68,19 @@ describe("workflow de qualidade do GitHub", () => {
       .filter((step: { run?: string }) => step.run)
       .map((step: { run: string }) => step.run);
 
-    expect(commands).toHaveLength(7);
-    expect(commands.slice(0, 6)).toEqual([
+    expect(commands).toHaveLength(9);
+    expect(commands.slice(0, 8)).toEqual([
       "corepack enable",
       "corepack pnpm install --frozen-lockfile",
       "corepack pnpm security:check",
       "corepack pnpm check",
       "corepack pnpm test",
+      "corepack pnpm readiness:dispatch",
+      "node --test scripts/inventory-external-preflight.test.mjs",
       "corepack pnpm build",
     ]);
-    expect(commands[6]).toContain("docker compose config");
-    expect(commands[6]).toContain("docker compose build app migrate");
+    expect(commands[8]).toContain("docker compose config");
+    expect(commands[8]).toContain("docker compose build app migrate");
   });
 
   it("não usa segredos, integração, escrita ou entrega", () => {
