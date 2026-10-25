@@ -68,6 +68,17 @@ describe("Gate passivo de release AXE Dispatch", () => {
       pending_gate_ids:["DISPATCH-REAL-01","DISPATCH-REAL-02","DISPATCH-REAL-03"],
     });
   });
+  it("rejeita placeholders adicionais de responsável que não identificam equipe ou pessoa", () => {
+    for (const placeholder of ["none", "n/a", "pending", "-"]) {
+      const m = withEvidence(original());
+      m.external_environment_tests[0].owner = placeholder;
+      const result = evaluateDispatchReadiness(m, now);
+      expect(result.decision).toBe("NO_GO");
+      expect(result.evidenced_gates).toBe(2);
+      expect(result.pending_gate_ids).toContain("DISPATCH-REAL-01");
+      expect(result.findings).toContain("INCOMPLETE_EVIDENCE");
+    }
+  });
   it("não concede GO, mesmo com os três gates evidenciados", () => {
     expect(evaluateDispatchReadiness(withEvidence(original()), now)).toMatchObject({
       decision: "MANUAL_GO_REVIEW_REQUIRED", production_approved: false,
