@@ -36,36 +36,31 @@ function projectReceipt(
   startedAtMs: number,
   finishedAtMs: number,
 ): AuthorizedProbeExecutionReceipt {
-  const safeResult = result as Readonly<{
-    organizationId?: unknown;
-    system?: unknown;
-    state?: unknown;
-    version?: unknown;
-  }>;
-
-  const organizationId =
-    typeof safeResult.organizationId === "number"
-      ? safeResult.organizationId
-      : input.approval.organizationId;
-  const system =
-    typeof safeResult.system === "string"
-      ? safeResult.system
-      : input.approval.system;
-  const state =
-    typeof safeResult.state === "string"
-      ? safeResult.state
-      : "completed";
-  const version =
-    typeof safeResult.version === "number" && Number.isInteger(safeResult.version)
-      ? safeResult.version
-      : null;
+  if (!Number.isSafeInteger(result.organizationId) || result.organizationId <= 0) {
+    throw new Error("Organização inválida no resultado da execução autorizada.");
+  }
+  if (result.organizationId !== input.approval.organizationId) {
+    throw new Error("Organização do resultado diverge do escopo aprovado.");
+  }
+  if (typeof result.system !== "string" || !result.system.trim()) {
+    throw new Error("Sistema inválido no resultado da execução autorizada.");
+  }
+  if (result.system !== input.approval.system) {
+    throw new Error("Sistema do resultado diverge do escopo aprovado.");
+  }
+  if (!["closed", "open", "half_open"].includes(result.state)) {
+    throw new Error("Estado do circuito inválido no resultado da execução autorizada.");
+  }
+  if (!Number.isSafeInteger(result.version) || result.version < 0) {
+    throw new Error("Versão inválida no resultado da execução autorizada.");
+  }
 
   return Object.freeze({
     executionId,
-    organizationId,
-    system,
-    state,
-    version,
+    organizationId: result.organizationId,
+    system: result.system,
+    state: result.state,
+    version: result.version,
     executedAtMs: finishedAtMs,
     durationMs: Math.max(0, finishedAtMs - startedAtMs),
     outcome: "success" as const,
