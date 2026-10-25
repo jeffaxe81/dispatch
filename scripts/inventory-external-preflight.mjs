@@ -29,7 +29,7 @@ function hostFromHttps(value) {
     deny("ENDPOINT_INVALID");
   }
   const host = u.hostname.toLowerCase().replace(/\.$/, "");
-  if (u.protocol !== "https:" || !hostnameAllowed(host) ||
+  if (u.protocol !== "https:" || u.port || !hostnameAllowed(host) ||
       u.username || u.password || u.search || u.hash ||
       !["", "/"].includes(u.pathname)) deny("ENDPOINT_INVALID");
   return host;

@@ -23,6 +23,7 @@ test("requires explicit per-run confirmation", () => {
 test("accepts only exact allowlisted HTTPS hostnames", () => {
   assert.deepEqual(validateInventoryHomologationConfig(valid()), { approved: true, targetCount: 2 });
   denied({...valid(),assetMotorBaseUrl:"http://assets.hml.example.org"}, "ENDPOINT_INVALID");
+  denied({...valid(),assetMotorBaseUrl:"https://assets.hml.example.org:8443"}, "ENDPOINT_INVALID");
   denied({...valid(),assetMotorBaseUrl:"https://assets.hml.example.org.evil.test"}, "ENDPOINT_NOT_ALLOWLISTED");
   denied({...valid(),assetMotorBaseUrl:"https://assets.hml.example.org?token=unsafe"}, "ENDPOINT_INVALID");
   denied({...valid(),assetMotorBaseUrl:"https://u:p@assets.hml.example.org"}, "ENDPOINT_INVALID");

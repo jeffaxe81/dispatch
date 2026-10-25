@@ -103,6 +103,40 @@ describe("inventory external homologation harness", () => {
     });
   });
 
+  it("bloqueia 302 sem seguir URL não autorizada nem enviar token ao destino", async () => {
+    const { runInventoryExternalHomologation } = await loadHarness();
+    let divertedRequests = 0;
+
+    await withServer((req, res) => {
+      divertedRequests++;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ items: [{ id: "asset-from-unapproved-host" }] }));
+    }, async unapprovedUrl => {
+      await withServer((_req, res) => {
+        res.statusCode = 302;
+        res.setHeader("Location", unapprovedUrl + "/api/v1/assets?query=PST");
+        res.end();
+      }, async approvedFixtureUrl => {
+        const report = await runInventoryExternalHomologation({
+          assetMotorBaseUrl: approvedFixtureUrl,
+          dispatchBaseUrl: approvedFixtureUrl,
+          tenantA: "tenant-a",
+          tenantB: "tenant-b",
+          userId: "homologation-user",
+          incidentReference: "INC-HML-REDIRECT",
+          authToken: "synthetic-secret",
+          timeoutMs: 1000,
+        });
+
+        expect(report.status).toBe("FAIL");
+        expect(report.checks[0]).toMatchObject({
+          name: "asset-search", status: "FAIL", httpStatus: 302,
+        });
+        expect(divertedRequests).toBe(0);
+      });
+    });
+  });
+
   it("reporta falha controlada quando o Motor fica indisponível sem travar o harness", async () => {
     const { runInventoryExternalHomologation } = await loadHarness();
     const report = await runInventoryExternalHomologation({
