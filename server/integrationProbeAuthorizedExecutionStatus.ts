@@ -16,7 +16,7 @@ export type AuthorizedProbeOperationalStatus = Readonly<{
 }>;
 
 function isHealthyState(state: string): boolean {
-  return state === "closed" || state === "completed" || state === "success";
+  return state === "closed";
 }
 
 /**
