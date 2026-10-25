@@ -12,6 +12,8 @@ const dispatchRouter = read("server/dispatchRouter.ts");
 const dispatchRuntime = read("server/dispatchRuntime.ts");
 const formsRuntime = read("server/forms/formsRuntimeContext.ts");
 const tenantOperational = read("server/tenantOperational.ts");
+const routers = read("server/routers.ts");
+const dbLegacy = read("server/dbLegacy.ts");
 const tenantExternalReview = read("server/tenantExternalReview.ts");
 const tenantSchema = read("drizzle/tenantScopeSchema.ts");
 const tenantMigration = read("drizzle/0008_multi_tenant_operational_scope.sql");
@@ -57,6 +59,18 @@ describe("fronteira multi-tenant do núcleo operacional", () => {
     expect(tenantMigration).toMatch(/JOIN\s+`?teams`?/i);
     expect(tenantMigration).toMatch(/organization_id`?\s+IS\s+NOT\s+NULL/i);
     expect(tenantMigration).not.toMatch(/COALESCE\s*\([^)]*organization_id[^)]*,\s*1\s*\)/i);
+  });
+
+  it("oferece bootstrap seguro da primeira organização sem liberar usuários sem escopo", () => {
+    expect(dbLegacy).toContain("export async function hasAnyOrganization");
+    expect(routers).toContain("bootstrapState");
+    expect(routers).toContain("initializeOrganization");
+    expect(routers).toContain("assertSuperAdministrator(ctx.user)");
+    expect(routers).toContain('code: "CONFLICT"');
+    expect(tenantShell).toContain("Configuração inicial");
+    expect(tenantShell).toContain("access.initializeOrganization");
+    expect(tenantShell).toContain("bootstrapState.data?.canInitialize");
+    expect(tenantShell).toContain("Nenhuma empresa autorizada");
   });
 
   it("envia a empresa ativa em todas as chamadas e oferece seleção no portal", () => {

@@ -62,6 +62,7 @@ import {
   listFutureGeneralSettingEntries,
   listOperationLogs,
   getDashboardData,
+  hasAnyOrganization,
   getOperationalReport,
   auditOperationalReportExport,
   listDashboardSavedFilters,
@@ -612,6 +613,25 @@ export const appRouter = router({
   }),
   access: router({
     me: operationalProcedure.query(({ ctx }) => getEffectiveAccess(ctx.user)),
+    bootstrapState: operationalProcedure.query(async ({ ctx }) => {
+      const [organizationExists, access] = await Promise.all([
+        hasAnyOrganization(),
+        getEffectiveAccess(ctx.user),
+      ]);
+      return {
+        organizationExists,
+        canInitialize: !organizationExists && access.isSuperAdministrator,
+      };
+    }),
+    initializeOrganization: operationalProcedure
+      .input(z.object({ code: z.string().trim().regex(/^[a-z0-9_]+$/).min(2).max(48), name: z.string().trim().min(3).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertSuperAdministrator(ctx.user);
+        if (await hasAnyOrganization()) {
+          throw new TRPCError({ code: "CONFLICT", message: "A configuração inicial já foi concluída. Use Administração → Escopos organizacionais para gerenciar empresas." });
+        }
+        return createOrganization({ ...input, actorUserId: ctx.user.id });
+      }),
     roles: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "roles.view");
       return listAccessRoles();
@@ -662,7 +682,7 @@ export const appRouter = router({
       }),
     myProfilePhoto: operationalProcedure.query(({ ctx }) => getOwnProfilePhoto(ctx.user.id)),
     createUser: operationalProcedure
-      .input(z.object({ displayName: z.string().trim().min(3).max(160), email: z.string().trim().email().max(320), username: z.string().trim().regex(/^[a-zA-Z0-9._-]{3,64}$/).max(64).optional(), password: z.string().min(12).max(256).optional(), employeeId: z.string().trim().max(80).nullable().optional(), institutionalId: z.string().trim().max(80).nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), jobTitle: z.string().trim().max(120).nullable().optional(), operationalRole: roleEnum, active: z.boolean().default(true), teamId: z.number().int().positive().nullable().optional(), roleId: z.number().int().positive(), organizationId: z.number().int().positive().nullable().optional(), organizationalUnitId: z.number().int().positive().nullable().optional(), roleTeamId: z.number().int().positive().nullable().optional() }))
+      .input(z.object({ displayName: z.string().trim().min(3).max(160), email: z.string().trim().email().max(320), username: z.preprocess(value => typeof value === "string" && value.trim() === "" ? undefined : value, z.string().trim().regex(/^[a-zA-Z0-9._-]{3,64}$/).max(64).optional()), password: z.preprocess(value => value === "" ? undefined : value, z.string().min(12).max(256).optional()), employeeId: z.string().trim().max(80).nullable().optional(), institutionalId: z.string().trim().max(80).nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), jobTitle: z.string().trim().max(120).nullable().optional(), operationalRole: roleEnum, active: z.boolean().default(true), teamId: z.number().int().positive().nullable().optional(), roleId: z.number().int().positive(), organizationId: z.number().int().positive().nullable().optional(), organizationalUnitId: z.number().int().positive().nullable().optional(), roleTeamId: z.number().int().positive().nullable().optional() }))
       .mutation(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "users.edit");
         if (Boolean(input.username) !== Boolean(input.password)) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe usuário e senha juntos ou deixe ambos em branco para pré-cadastro." });
