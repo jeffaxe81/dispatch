@@ -51,7 +51,7 @@ describe("workflow de qualidade do GitHub", () => {
 
     const checkout = actionSteps[0];
     expect(checkout.with).toEqual({
-      ref: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+      ref: "${{ github.sha }}",
     });
 
     const setupNode = actionSteps[1];
