@@ -30,6 +30,12 @@ function isSafeEvidenceUrl(v: unknown): boolean {
     return false;
   }
 }
+function isNamedEvidenceOwner(v: unknown): boolean {
+  if (typeof v !== "string") return false;
+  const owner = v.trim().toLowerCase();
+  if (!owner) return false;
+  return !new Set(["to_be_assigned", "tbd", "unknown", "unassigned"]).has(owner);
+}
 
 /**
  * Evaluates already recorded evidence only. Never changes runtime state,
@@ -81,7 +87,7 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
       if (gate.status === "FAILED_REAL_ENVIRONMENT") findings.push("FAILED_REAL_TEST");
       continue;
     }
-    if (typeof gate.owner !== "string" || !gate.owner.trim() || gate.owner === "to_be_assigned" ||
+    if (!isNamedEvidenceOwner(gate.owner) ||
         !isUtcTimestamp(gate.executed_at, now) || !isSafeEvidenceUrl(gate.evidence_url)) {
       pending.push(id);
       findings.push("INCOMPLETE_EVIDENCE");
