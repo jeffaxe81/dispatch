@@ -27,3 +27,7 @@ Teste offline (sem acesso externo):
 Não se deve considerar a aprovação do preflight como prova de que o DNS é confiável, de que o endpoint não é produção ou de que credenciais são suficientes; a confirmação administrativa do environment é uma etapa independente e obrigatória. Não disparar o workflow da main antes de sua aprovação e dos endpoints reais autorizados.
 
 A evidência final continua pendente nos gates DISPATCH-REAL-02 e na issue #192. O resultado operacional segue NO_GO até os três gates externos serem efetivamente comprovados.
+
+## Compatibilidade com o harness unitário existente
+
+O harness exportado mantém a possibilidade de testes locais com servidor HTTP sintético exclusivamente em NODE_ENV=test, quando **ambos os destinos** são HTTP loopback 127.0.0.1 com porta explícita. Esta exceção é restrita à suíte local e não permite destino remoto; URLs externas passam obrigatoriamente pela validação de autorização. O workflow de homologação real continua protegido pelas verificações offline e pela confirmação manual.

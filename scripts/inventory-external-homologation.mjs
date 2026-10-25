@@ -54,6 +54,24 @@ function pushCheck(checks, name, passed, details = {}) {
   checks.push({ name, status: passed ? "PASS" : "FAIL", ...details });
 }
 
+/**
+ * Isolamento estrito da suíte Vitest: somente um servidor HTTP de loopback
+ * em NODE_ENV=test. Nenhum destino remoto escapa do preflight.
+ */
+function isLocalTestFixture(options) {
+  if (process.env.NODE_ENV !== "test") return false;
+  try {
+    return [options.assetMotorBaseUrl, options.dispatchBaseUrl].every(value => {
+      const url = new URL(value);
+      return url.protocol === "http:" && url.hostname === "127.0.0.1" &&
+        !!url.port && url.pathname === "/" && !url.search && !url.hash &&
+        !url.username && !url.password;
+    });
+  } catch {
+    return false;
+  }
+}
+
 export async function runInventoryExternalHomologation(options) {
   const {
     assetMotorBaseUrl,
@@ -66,7 +84,7 @@ export async function runInventoryExternalHomologation(options) {
     authToken,
   } = options;
 
-  validateInventoryHomologationConfig(options);
+  if (!isLocalTestFixture(options)) validateInventoryHomologationConfig(options);
   const checks = [];
   const correlationIds = [];
   const correlation = () => {

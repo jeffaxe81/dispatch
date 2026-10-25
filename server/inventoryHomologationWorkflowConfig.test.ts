@@ -14,7 +14,8 @@ describe("workflow manual de homologação externa do Inventário", () => {
   it("existe, é manual, usa homologation e só executa a partir da main", () => {
     expect(fs.existsSync(workflowPath), "Crie .github/workflows/inventory-external-homologation.yml").toBe(true);
     expect(workflow.name).toBe("Inventory external homologation");
-    expect(workflow.on).toEqual({ workflow_dispatch: {} });
+    expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
+    expect(workflow.on.workflow_dispatch.inputs.confirm).toMatchObject({ required: true, type: "string" });
     expect(workflow.permissions).toEqual({ contents: "read" });
     expect(job?.environment).toBe("homologation");
     expect(job?.if).toBe("github.ref == 'refs/heads/main'");
@@ -26,6 +27,10 @@ describe("workflow manual de homologação externa do Inventário", () => {
     const commands = steps.filter((step: { run?: string }) => step.run).map((step: { run: string }) => step.run);
     expect(commands).toContain("corepack enable");
     expect(commands).toContain("corepack pnpm install --frozen-lockfile");
+    const preflight = commands.indexOf("node scripts/inventory-external-preflight.mjs");
+    const external = commands.indexOf("corepack pnpm homologation:inventory");
+    expect(preflight).toBeGreaterThan(-1);
+    expect(external).toBeGreaterThan(preflight);
     expect(commands.some((command: string) => command.includes("homologation:inventory"))).toBe(true);
     expect(source).not.toMatch(/\b(db:migrate|db:push|deploy|publish|grant)\b/i);
   });
@@ -36,6 +41,8 @@ describe("workflow manual de homologação externa do Inventário", () => {
     expect(source).toContain("HOMOLOGATION_TENANT_A");
     expect(source).toContain("HOMOLOGATION_TENANT_B");
     expect(source).toContain("HOMOLOGATION_AUTH_TOKEN");
+    expect(source).toContain("HOMOLOGATION_ALLOWED_HOSTS");
+    expect(source).toContain("HOMOLOGATION_EXECUTION_APPROVAL");
     expect(source).toContain("artifacts/homologation");
     expect(source).toContain("actions/upload-artifact@");
   });
