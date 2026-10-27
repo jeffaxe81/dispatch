@@ -181,6 +181,20 @@ describe("Gate passivo de release AXE Dispatch", () => {
     });
   });
 
+  it("exige que todos os gates aprovados se refiram ao mesmo SHA homologado", () => {
+    const m = withEvidence(original());
+    m.external_environment_tests[0].code_sha = "a".repeat(40);
+    m.external_environment_tests[1].code_sha = "b".repeat(40);
+    m.external_environment_tests[2].code_sha = "a".repeat(40);
+    const result = evaluateDispatchReadiness(m, now);
+    expect(result).toMatchObject({
+      decision: "NO_GO",
+      production_approved: false,
+      evidenced_gates: 3,
+    });
+    expect(result.findings).toContain("INCONSISTENT_EVIDENCE_SET");
+  });
+
   it("não concede GO, mesmo com os três gates evidenciados", () => {
     expect(evaluateDispatchReadiness(withEvidence(original()), now)).toMatchObject({
       decision: "MANUAL_GO_REVIEW_REQUIRED", production_approved: false,
