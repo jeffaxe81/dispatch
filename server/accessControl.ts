@@ -73,6 +73,12 @@ export function requiresExplicitTeamSelection(assignments: AccessAssignment[]) {
   return assignments.length > 0 && !assignments.some(assignment => assignment.defaultScope === "global");
 }
 
+/** A global audit ledger must not combine permission from a scoped assignment with an unrelated global role. */
+export function hasOnlyGlobalAssignmentsForAudit(assignments: AccessAssignment[]) {
+  // No dynamic roles means legacy permissions still decide through assertPermission.
+  return assignments.every(assignment => assignment.defaultScope === "global");
+}
+
 export async function getAccessSnapshot(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
