@@ -4,7 +4,9 @@ import type { TrpcContext } from "./_core/context";
 const mocks = vi.hoisted(() => ({
   assertPermission: vi.fn(),
   assertTeamScope: vi.fn(),
+  resolveAuthorizedTeamFilter: vi.fn(),
   createIncident: vi.fn(),
+  listIncidents: vi.fn(),
   updateIncident: vi.fn(),
   getIncidentById: vi.fn(),
   assignTeamToIncident: vi.fn(),
@@ -18,11 +20,13 @@ vi.mock("./accessControl", async importOriginal => ({
   ...(await importOriginal<typeof import("./accessControl")>()),
   assertPermission: mocks.assertPermission,
   assertTeamScope: mocks.assertTeamScope,
+  resolveAuthorizedTeamFilter: mocks.resolveAuthorizedTeamFilter,
 }));
 
 vi.mock("./db", async importOriginal => ({
   ...(await importOriginal<typeof import("./db")>()),
   createIncident: mocks.createIncident,
+  listIncidents: mocks.listIncidents,
   updateIncident: mocks.updateIncident,
   getIncidentById: mocks.getIncidentById,
   assignTeamToIncident: mocks.assignTeamToIncident,
@@ -36,12 +40,12 @@ import { appRouter } from "./routers";
 
 type IncidentStatus = "triagem" | "aguardando_despacho" | "despachada" | "aceita" | "em_atendimento" | "concluida";
 
-function context(role: "administrador" | "agente", teamId: number | null, id = role === "administrador" ? 1 : 7): TrpcContext {
+function context(role: "administrador" | "despachador" | "agente", teamId: number | null, id = role === "administrador" ? 1 : role === "despachador" ? 5 : 7): TrpcContext {
   return {
     user: {
       id,
       openId: `lifecycle-${role}`,
-      name: role === "administrador" ? "Administrador" : "Agente",
+      name: role === "administrador" ? "Administrador" : role === "despachador" ? "Despachador" : "Agente",
       email: `${role}@test.local`,
       loginMethod: "test",
       role: role === "administrador" ? "admin" : "user",
@@ -93,6 +97,8 @@ describe("ciclo tRPC de ocorrência e auditoria", () => {
     vi.clearAllMocks();
     mocks.assertPermission.mockResolvedValue(undefined);
     mocks.assertTeamScope.mockResolvedValue(undefined);
+    mocks.resolveAuthorizedTeamFilter.mockImplementation(async (_user, requestedTeamId) => requestedTeamId);
+    mocks.listIncidents.mockResolvedValue({ rows: [], total: 0 });
     mocks.createIncident.mockResolvedValue(incident("triagem").incident);
     mocks.updateIncident.mockResolvedValue(incident("triagem").incident);
     mocks.assignTeamToIncident.mockResolvedValue(incident("despachada").incident);
@@ -100,6 +106,16 @@ describe("ciclo tRPC de ocorrência e auditoria", () => {
     mocks.transitionIncident.mockImplementation(async ({ nextStatus }: { nextStatus: IncidentStatus }) => incident(nextStatus).incident);
     mocks.getIncidentAudit.mockResolvedValue([]);
     mocks.listOperationLogs.mockResolvedValue({ rows: [], total: 0 });
+  });
+
+  it("aplica o filtro autorizado de equipe/tenant antes de listar ocorrências para o despachador", async () => {
+    mocks.resolveAuthorizedTeamFilter.mockResolvedValueOnce(3);
+    const dispatcher = appRouter.createCaller(context("despachador", null));
+
+    await dispatcher.incidents.list({ page: 1, pageSize: 25, teamId: 3 });
+
+    expect(mocks.resolveAuthorizedTeamFilter).toHaveBeenCalledWith(expect.objectContaining({ id: 5, operationalRole: "despachador" }), 3, "occurrences.view");
+    expect(mocks.listIncidents).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 25, teamId: 3 }));
   });
 
   it("valida criação, atualização, despacho, aceite, atendimento, conclusão e consultas de auditoria", async () => {
