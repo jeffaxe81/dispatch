@@ -74,6 +74,7 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
   const findings: string[] = [];
   const pending: string[] = [];
   const evidencedCodeShas = new Set<string>();
+  const evidencedComponentVersions = new Set<string>();
   let evidenced = 0;
 
   if (!isRecord(manifest) || manifest.schema_version !== 1 ||
