@@ -401,8 +401,8 @@ export const appRouter = router({
     list: operationalProcedure
       .input(paginationInput.extend({ search: z.string().trim().max(120).optional(), status: statusEnum.optional(), priority: priorityEnum.optional(), teamId: z.number().int().positive().optional() }))
       .query(async ({ ctx, input }) => {
-        await assertPermission(ctx.user, "occurrences.view");
-        return listIncidents({ ...input, teamId: ctx.user.operationalRole === "agente" ? ctx.user.teamId ?? -1 : input.teamId });
+        const teamId = await resolveAuthorizedTeamFilter(ctx.user, input.teamId, "occurrences.view");
+        return listIncidents({ ...input, teamId });
       }),
     get: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const result = await getIncidentById(input.incidentId);
