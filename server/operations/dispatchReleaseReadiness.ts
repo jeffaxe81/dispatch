@@ -58,6 +58,13 @@ function isNamedEvidenceOwner(v: unknown): boolean {
 function isFullGitSha(v: unknown): boolean {
   return typeof v === "string" && /^[0-9a-f]{40}$/i.test(v);
 }
+function hasComponentVersions(v: unknown): boolean {
+  if (!isRecord(v)) return false;
+  const entries = Object.entries(v);
+  return entries.length > 0 && entries.every(([component, version]) =>
+    isMeaningfulGateText(component) && isMeaningfulGateText(version)
+  );
+}
 
 /**
  * Evaluates already recorded evidence only. Never changes runtime state,
@@ -115,6 +122,7 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
     }
     if (!isNamedEvidenceOwner(gate.owner) ||
         !isFullGitSha(gate.code_sha) ||
+        !hasComponentVersions(gate.component_versions) ||
         !isReviewedEvidenceTimestamp(gate.executed_at, isRecord(manifest) ? manifest.review_date : undefined, now) || !isSafeEvidenceUrl(gate.evidence_url)) {
       pending.push(id);
       findings.push("INCOMPLETE_EVIDENCE");
