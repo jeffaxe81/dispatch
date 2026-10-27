@@ -122,7 +122,20 @@ describe("auditoria de ocorrências — isolamento por equipe e tenant", () => {
     expect(mocks.getIncidentAudit).not.toHaveBeenCalled();
   });
 
-  it("autoriza auditoria sem equipe ao administrador com escopo global explícito", async () => {
+  it("nega auditoria sem equipe quando o escopo resolve uma equipe específica", async () => {
+    mocks.getIncidentById.mockResolvedValueOnce({
+      incident: { id: 42, assignedTeamId: null },
+    });
+    mocks.resolveAuthorizedTeamFilter.mockResolvedValueOnce(9);
+    const auditor = appRouter.createCaller(context("administrador", null));
+
+    await expect(auditor.incidents.audit({ incidentId: 42 })).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(mocks.getIncidentAudit).not.toHaveBeenCalled();
+  });
+
+    it("autoriza auditoria sem equipe ao administrador com escopo global explícito", async () => {
     mocks.getIncidentById.mockResolvedValueOnce({
       incident: { id: 42, assignedTeamId: null },
     });
