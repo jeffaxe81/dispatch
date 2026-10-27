@@ -195,6 +195,20 @@ describe("Gate passivo de release AXE Dispatch", () => {
     expect(result.findings).toContain("INCONSISTENT_EVIDENCE_SET");
   });
 
+  it("exige versões de componentes coerentes entre todos os gates aprovados", () => {
+    const m = withEvidence(original());
+    m.external_environment_tests[0].component_versions = { dispatch: "2.16.0", worker: "2026.10" };
+    m.external_environment_tests[1].component_versions = { dispatch: "2.16.1", worker: "2026.10" };
+    m.external_environment_tests[2].component_versions = { dispatch: "2.16.0", worker: "2026.10" };
+    const result = evaluateDispatchReadiness(m, now);
+    expect(result).toMatchObject({
+      decision: "NO_GO",
+      production_approved: false,
+      evidenced_gates: 3,
+    });
+    expect(result.findings).toContain("INCONSISTENT_COMPONENT_VERSIONS");
+  });
+
   it("não concede GO, mesmo com os três gates evidenciados", () => {
     expect(evaluateDispatchReadiness(withEvidence(original()), now)).toMatchObject({
       decision: "MANUAL_GO_REVIEW_REQUIRED", production_approved: false,
