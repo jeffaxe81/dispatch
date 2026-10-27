@@ -132,13 +132,16 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
     }
     evidenced++;
     evidencedCodeShas.add(gate.code_sha as string);
+    evidencedComponentVersions.add(JSON.stringify(Object.entries(gate.component_versions as Record<string, unknown>).sort(([a],[b]) => a.localeCompare(b))));
   }
   const evidenceSetConsistent = evidencedCodeShas.size <= 1;
+  const componentVersionsConsistent = evidencedComponentVersions.size <= 1;
   if (!evidenceSetConsistent) findings.push("INCONSISTENT_EVIDENCE_SET");
+  if (!componentVersionsConsistent) findings.push("INCONSISTENT_COMPONENT_VERSIONS");
   const structureErrors = ["INVALID_RELEASE_MANIFEST", "POLICY_UNSAFE", "REQUIRED_GATES_UNAVAILABLE", "UNKNOWN_GATE", "DUPLICATE_GATE", "MISSING_GATE", "INVALID_GATE"];
   const manifestValid = !findings.some(f => structureErrors.includes(f));
   return {
-    decision: manifestValid && pending.length === 0 && evidenceSetConsistent ? "MANUAL_GO_REVIEW_REQUIRED" : "NO_GO",
+    decision: manifestValid && pending.length === 0 && evidenceSetConsistent && componentVersionsConsistent ? "MANUAL_GO_REVIEW_REQUIRED" : "NO_GO",
     production_approved: false,
     ci_not_assessed: true,
     manifest_valid: manifestValid,
