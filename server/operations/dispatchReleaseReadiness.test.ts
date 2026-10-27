@@ -129,6 +129,29 @@ describe("Gate passivo de release AXE Dispatch", () => {
       expect(result.findings).toContain("INCOMPLETE_EVIDENCE");
     }
   });
+  it("exige SHA completo do código homologado em cada gate aprovado", () => {
+    const missing = withEvidence(original());
+    for (const g of missing.external_environment_tests) delete g.code_sha;
+    const missingResult = evaluateDispatchReadiness(missing, now);
+    expect(missingResult.decision).toBe("NO_GO");
+    expect(missingResult.evidenced_gates).toBe(0);
+    expect(missingResult.findings).toContain("INCOMPLETE_EVIDENCE");
+
+    const invalid = withEvidence(original());
+    for (const g of invalid.external_environment_tests) g.code_sha = "abc123";
+    const invalidResult = evaluateDispatchReadiness(invalid, now);
+    expect(invalidResult.decision).toBe("NO_GO");
+    expect(invalidResult.evidenced_gates).toBe(0);
+
+    const valid = withEvidence(original());
+    for (const g of valid.external_environment_tests) g.code_sha = "a".repeat(40);
+    expect(evaluateDispatchReadiness(valid, now)).toMatchObject({
+      decision: "MANUAL_GO_REVIEW_REQUIRED",
+      evidenced_gates: 3,
+      production_approved: false,
+    });
+  });
+
   it("não concede GO, mesmo com os três gates evidenciados", () => {
     expect(evaluateDispatchReadiness(withEvidence(original()), now)).toMatchObject({
       decision: "MANUAL_GO_REVIEW_REQUIRED", production_approved: false,
