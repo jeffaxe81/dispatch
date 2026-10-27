@@ -509,6 +509,9 @@ export const appRouter = router({
     }),
     audit: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "audit.view");
+      const incident = requireIncident(await getIncidentById(input.incidentId));
+      if (incident.assignedTeamId) await assertTeamScope(ctx.user, incident.assignedTeamId, "audit.view");
+      assertCanReadIncident(ctx.user, incident);
       return getIncidentAudit(input.incidentId);
     }),
     export: operationalProcedure
