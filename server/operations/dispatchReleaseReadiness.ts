@@ -55,6 +55,9 @@ function isNamedEvidenceOwner(v: unknown): boolean {
   if (!owner) return false;
   return !new Set(["to_be_assigned", "tbd", "unknown", "unassigned", "none", "n/a", "pending", "-"]).has(owner);
 }
+function isFullGitSha(v: unknown): boolean {
+  return typeof v === "string" && /^[0-9a-f]{40}$/i.test(v);
+}
 
 /**
  * Evaluates already recorded evidence only. Never changes runtime state,
@@ -111,6 +114,7 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
       continue;
     }
     if (!isNamedEvidenceOwner(gate.owner) ||
+        !isFullGitSha(gate.code_sha) ||
         !isReviewedEvidenceTimestamp(gate.executed_at, isRecord(manifest) ? manifest.review_date : undefined, now) || !isSafeEvidenceUrl(gate.evidence_url)) {
       pending.push(id);
       findings.push("INCOMPLETE_EVIDENCE");
