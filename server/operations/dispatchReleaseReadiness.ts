@@ -75,6 +75,7 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
   const pending: string[] = [];
   const evidencedCodeShas = new Set<string>();
   let evidenced = 0;
+  const evidencedCodeShas = new Set<string>();
 
   if (!isRecord(manifest) || manifest.schema_version !== 1 ||
       manifest.project !== "AXE Dispatch" ||
