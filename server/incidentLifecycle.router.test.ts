@@ -108,7 +108,8 @@ describe("ciclo tRPC de ocorrência e auditoria", () => {
       .mockResolvedValueOnce(incident("aguardando_despacho"))
       .mockResolvedValueOnce(incident("despachada"))
       .mockResolvedValueOnce(incident("aceita"))
-      .mockResolvedValueOnce(incident("em_atendimento"));
+      .mockResolvedValueOnce(incident("em_atendimento"))
+      .mockResolvedValueOnce(incident("concluida"));
 
     const administrator = appRouter.createCaller(context("administrador", null));
     const agent = appRouter.createCaller(context("agente", 3));
