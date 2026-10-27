@@ -72,6 +72,22 @@ describe("auditoria operacional global — isolamento RBAC/tenant", () => {
     expect(mocks.listOperationLogs).not.toHaveBeenCalled();
   });
 
+  it("nega papel misto global + organização para evitar herança de permissão ampliada", async () => {
+    mocks.getAccessSnapshot.mockResolvedValueOnce({
+      assignments: [
+        { ...scopedAssignment, defaultScope: "global", organizationId: null },
+        scopedAssignment,
+      ],
+      permissions: new Set(["audit.view"]),
+    });
+    const caller = appRouter.createCaller(context());
+
+    await expect(caller.audit.operations({ page: 1, pageSize: 25 })).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(mocks.listOperationLogs).not.toHaveBeenCalled();
+  });
+
   it("permite a leitura geral quando existe papel global explicitamente autorizado", async () => {
     mocks.getAccessSnapshot.mockResolvedValueOnce({
       assignments: [{ ...scopedAssignment, defaultScope: "global", organizationId: null }],
