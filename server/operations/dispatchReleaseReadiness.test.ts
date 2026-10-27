@@ -13,6 +13,7 @@ function withEvidence(m: any) {
     g.owner = "homologation-team";
     g.executed_at = "2026-10-25T10:00:00Z";
     g.evidence_url = "https://github.com/jeffaxe81/dispatch/issues/97";
+    g.code_sha = "a".repeat(40);
   }
   return m;
 }
