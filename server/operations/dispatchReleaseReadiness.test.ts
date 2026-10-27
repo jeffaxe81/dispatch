@@ -14,6 +14,7 @@ function withEvidence(m: any) {
     g.executed_at = "2026-10-25T10:00:00Z";
     g.evidence_url = "https://github.com/jeffaxe81/dispatch/issues/97";
     g.code_sha = "a".repeat(40);
+    g.component_versions = { dispatch: "2.16.0" };
   }
   return m;
 }
@@ -146,6 +147,33 @@ describe("Gate passivo de release AXE Dispatch", () => {
 
     const valid = withEvidence(original());
     for (const g of valid.external_environment_tests) g.code_sha = "a".repeat(40);
+    expect(evaluateDispatchReadiness(valid, now)).toMatchObject({
+      decision: "MANUAL_GO_REVIEW_REQUIRED",
+      evidenced_gates: 3,
+      production_approved: false,
+    });
+  });
+
+  it("exige versões dos componentes no registro de cada gate aprovado", () => {
+    const missing = withEvidence(original());
+    for (const g of missing.external_environment_tests) delete g.component_versions;
+    const missingResult = evaluateDispatchReadiness(missing, now);
+    expect(missingResult.decision).toBe("NO_GO");
+    expect(missingResult.evidenced_gates).toBe(0);
+    expect(missingResult.findings).toContain("INCOMPLETE_EVIDENCE");
+
+    const empty = withEvidence(original());
+    for (const g of empty.external_environment_tests) g.component_versions = {};
+    expect(evaluateDispatchReadiness(empty, now).evidenced_gates).toBe(0);
+
+    const placeholder = withEvidence(original());
+    for (const g of placeholder.external_environment_tests) g.component_versions = { dispatch: "TBD" };
+    expect(evaluateDispatchReadiness(placeholder, now).evidenced_gates).toBe(0);
+
+    const valid = withEvidence(original());
+    for (const g of valid.external_environment_tests) {
+      g.component_versions = { dispatch: "2.16.0", worker: "2026.10" };
+    }
     expect(evaluateDispatchReadiness(valid, now)).toMatchObject({
       decision: "MANUAL_GO_REVIEW_REQUIRED",
       evidenced_gates: 3,
