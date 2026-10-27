@@ -510,7 +510,16 @@ export const appRouter = router({
     audit: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "audit.view");
       const incident = requireIncident(await getIncidentById(input.incidentId));
-      if (incident.assignedTeamId) await assertTeamScope(ctx.user, incident.assignedTeamId, "audit.view");
+      if (incident.assignedTeamId) {
+        await assertTeamScope(ctx.user, incident.assignedTeamId, "audit.view");
+      } else {
+        // An unassigned incident has no team by which to verify a restricted tenant.
+        // Never use the bare incident ID to bypass dynamically scoped access.
+        const authorizedTeamId = await resolveAuthorizedTeamFilter(ctx.user, undefined, "audit.view");
+        if (authorizedTeamId !== undefined) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "A auditoria da ocorrência sem equipe não pertence ao escopo restrito." });
+        }
+      }
       assertCanReadIncident(ctx.user, incident);
       return getIncidentAudit(input.incidentId);
     }),
