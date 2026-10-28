@@ -14,7 +14,7 @@ describe("restrição conservadora da auditoria global", () => {
     expect(hasOnlyGlobalAssignmentsForAudit([])).toBe(true);
   });
 
-  it("permite apenas assignments com escopo global", () => {
+  it("permite apenas assignments globais canônicos", () => {
     expect(hasOnlyGlobalAssignmentsForAudit([assignment("global")])).toBe(true);
     expect(hasOnlyGlobalAssignmentsForAudit([assignment("global"), assignment("global")])).toBe(true);
   });
@@ -24,5 +24,11 @@ describe("restrição conservadora da auditoria global", () => {
       expect(hasOnlyGlobalAssignmentsForAudit([assignment(scope)])).toBe(false);
       expect(hasOnlyGlobalAssignmentsForAudit([assignment("global"), assignment(scope)])).toBe(false);
     }
+  });
+
+  it("nega vínculo marcado global quando carrega restrição persistida incompatível", () => {
+    expect(hasOnlyGlobalAssignmentsForAudit([{ ...assignment("global"), organizationId: 7 }])).toBe(false);
+    expect(hasOnlyGlobalAssignmentsForAudit([{ ...assignment("global"), organizationalUnitId: 2 }])).toBe(false);
+    expect(hasOnlyGlobalAssignmentsForAudit([{ ...assignment("global"), teamId: 3 }])).toBe(false);
   });
 });
