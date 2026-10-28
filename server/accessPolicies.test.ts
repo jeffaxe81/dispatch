@@ -18,4 +18,12 @@ describe("proteção de perfis padrão", () => {
     expect(isRoleScopeAssignmentValid({ defaultScope: "unidade", organizationId: 1, organizationalUnitId: 2 })).toBe(true);
     expect(isRoleScopeAssignmentValid({ defaultScope: "equipe", teamId: 3 })).toBe(true);
   });
+
+  it("rejeita campos de escopo incompatíveis para não ampliar papel silenciosamente", () => {
+    expect(isRoleScopeAssignmentValid({ defaultScope: "global", organizationId: 7 })).toBe(false);
+    expect(isRoleScopeAssignmentValid({ defaultScope: "global", teamId: 3 })).toBe(false);
+    expect(isRoleScopeAssignmentValid({ defaultScope: "organizacao", organizationId: 7, teamId: 3 })).toBe(false);
+    expect(isRoleScopeAssignmentValid({ defaultScope: "unidade", organizationId: 7, organizationalUnitId: 2, teamId: 3 })).toBe(false);
+    expect(isRoleScopeAssignmentValid({ defaultScope: "equipe", organizationId: 7, teamId: 3 })).toBe(false);
+  });
 });
