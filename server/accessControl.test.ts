@@ -56,6 +56,41 @@ describe("decisão de permissões RBAC", () => {
     expect(evaluateTeamScope([{ roleCode: "agente_campo", defaultScope: "equipe", organizationId: null, organizationalUnitId: null, teamId: 8 }], team)).toBe(false);
   });
 
+  it("falha fechado para atribuições de equipe, organização ou unidade com campos cruzados", () => {
+    const team = { id: 7, organizationId: 10, organizationalUnitId: 20 };
+    const malformed = [
+      { roleCode: "gestor", defaultScope: "organizacao", organizationId: 99, organizationalUnitId: null, teamId: 7 },
+      { roleCode: "gestor", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: 20, teamId: null },
+      { roleCode: "supervisor", defaultScope: "unidade", organizationId: 10, organizationalUnitId: 20, teamId: 7 },
+      { roleCode: "agente_campo", defaultScope: "equipe", organizationId: 10, organizationalUnitId: null, teamId: 7 },
+      { roleCode: "admin", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: 7 },
+    ];
+    for (const assignment of malformed) {
+      expect(evaluateTeamScope([assignment] as any, team)).toBe(false);
+    }
+    expect(evaluateTeamScope([
+      { roleCode: "agente_campo", defaultScope: "equipe", organizationId: null, organizationalUnitId: null, teamId: 7 },
+    ], team)).toBe(true);
+  });
+
+  it("não concede Super Administrador por papel restrito ou global malformado", () => {
+    const restricted = [{ roleCode: "super_administrador", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: null, teamId: null }] as const;
+    const malformedGlobal = [{ roleCode: "super_administrador", defaultScope: "global", organizationId: 10, organizationalUnitId: null, teamId: null }] as const;
+    const canonicalGlobal = [{ roleCode: "super_administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }] as const;
+    expect(hasSuperAdministratorAssignment(restricted as any)).toBe(false);
+    expect(hasSuperAdministratorAssignment(malformedGlobal as any)).toBe(false);
+    expect(hasSuperAdministratorAssignment(canonicalGlobal as any)).toBe(true);
+  });
+
+  it("não amplia aprovação por tenant quando o administrador é de uma unidade", () => {
+    const unitAdmin = [{ roleCode: "administrador", defaultScope: "unidade", organizationId: 10, organizationalUnitId: 20, teamId: null }] as const;
+    const malformedOrgAdmin = [{ roleCode: "administrador", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: 20, teamId: null }] as const;
+    const canonicalOrgAdmin = [{ roleCode: "administrador", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: null, teamId: null }] as const;
+    expect(hasAdministratorAssignmentForOrganization(unitAdmin as any, 10)).toBe(false);
+    expect(hasAdministratorAssignmentForOrganization(malformedOrgAdmin as any, 10)).toBe(false);
+    expect(hasAdministratorAssignmentForOrganization(canonicalOrgAdmin as any, 10)).toBe(true);
+  });
+
   it("não permite que escopo global atravesse a empresa ativa", () => {
     const globalAssignment = [{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }] as const;
     const sameTenantTeam = { id: 7, organizationId: 10, organizationalUnitId: 20 };
