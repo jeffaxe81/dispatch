@@ -25,7 +25,13 @@ export type AccessAssignment = {
 };
 
 export function hasSuperAdministratorAssignment(assignments: AccessAssignment[]) {
-  return assignments.some(assignment => assignment.roleCode === "super_administrador");
+  return assignments.some(assignment =>
+    assignment.roleCode === "super_administrador"
+    && assignment.defaultScope === "global"
+    && assignment.organizationId === null
+    && assignment.organizationalUnitId === null
+    && assignment.teamId === null
+  );
 }
 
 export function hasAdministratorAssignment(assignments: AccessAssignment[]) {
@@ -41,7 +47,10 @@ export function hasAdministratorAssignmentForOrganization(assignments: AccessAss
       && assignment.organizationalUnitId === null
       && assignment.teamId === null;
     if (assignment.defaultScope === "global") return isCanonicalGlobal;
-    return assignment.organizationId === organizationId;
+    return assignment.defaultScope === "organizacao"
+      && assignment.organizationId === organizationId
+      && assignment.organizationalUnitId === null
+      && assignment.teamId === null;
   });
 }
 
@@ -63,19 +72,29 @@ export function resolveEffectivePermissions(input: { active: boolean; operationa
 export function evaluateTeamScope(assignments: AccessAssignment[], team: { organizationId: number | null; organizationalUnitId: number | null; id: number }, activeOrganizationId?: number | null) {
   if (activeOrganizationId !== undefined && activeOrganizationId !== null && team.organizationId !== activeOrganizationId) return false;
   return assignments.some(assignment => {
-    if (
-      assignment.defaultScope === "global"
+    if (assignment.defaultScope === "global") {
+      return assignment.organizationId === null
+        && assignment.organizationalUnitId === null
+        && assignment.teamId === null;
+    }
+    if (assignment.defaultScope === "organizacao") {
+      return assignment.organizationId !== null
+        && assignment.organizationId === team.organizationId
+        && assignment.organizationalUnitId === null
+        && assignment.teamId === null;
+    }
+    if (["unidade", "departamento", "grupo"].includes(assignment.defaultScope)) {
+      return assignment.organizationId !== null
+        && assignment.organizationId === team.organizationId
+        && assignment.organizationalUnitId !== null
+        && assignment.organizationalUnitId === team.organizationalUnitId
+        && assignment.teamId === null;
+    }
+    return assignment.defaultScope === "equipe"
       && assignment.organizationId === null
       && assignment.organizationalUnitId === null
-      && assignment.teamId === null
-    ) return true;
-    if (assignment.defaultScope === "global") return false;
-    if (assignment.teamId === team.id) return true;
-    if (assignment.defaultScope === "organizacao") return assignment.organizationId !== null && assignment.organizationId === team.organizationId;
-    if (["unidade", "departamento", "grupo"].includes(assignment.defaultScope)) {
-      return assignment.organizationId === team.organizationId && assignment.organizationalUnitId !== null && assignment.organizationalUnitId === team.organizationalUnitId;
-    }
-    return false;
+      && assignment.teamId !== null
+      && assignment.teamId === team.id;
   });
 }
 
