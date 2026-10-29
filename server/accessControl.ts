@@ -99,7 +99,9 @@ export function evaluateTeamScope(assignments: AccessAssignment[], team: { organ
 }
 
 export function requiresExplicitTeamSelection(assignments: AccessAssignment[]) {
-  return assignments.length > 0 && !assignments.some(assignment =>
+  // A global role cannot widen a permission granted by a separate scoped role.
+  // Only exclusively canonical global assignments may omit the team filter.
+  return assignments.length > 0 && !assignments.every(assignment =>
     assignment.defaultScope === "global"
     && assignment.organizationId === null
     && assignment.organizationalUnitId === null
