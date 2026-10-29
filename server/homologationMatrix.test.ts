@@ -5,6 +5,7 @@ import type { TrpcContext } from "./_core/context";
 const mocks = vi.hoisted(() => ({
   assertPermission: vi.fn(),
   assertSuperAdministrator: vi.fn(),
+  getAccessSnapshot: vi.fn(),
   resolveAuthorizedTeamFilter: vi.fn(),
   getDashboardData: vi.fn(),
   createIncident: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("./accessControl", async importOriginal => ({
   ...(await importOriginal<typeof import("./accessControl")>()),
   assertPermission: mocks.assertPermission,
   assertSuperAdministrator: mocks.assertSuperAdministrator,
+  getAccessSnapshot: mocks.getAccessSnapshot,
   resolveAuthorizedTeamFilter: mocks.resolveAuthorizedTeamFilter,
 }));
 
@@ -75,6 +77,8 @@ describe("matriz controlada de homologação", () => {
     vi.clearAllMocks();
     mocks.assertPermission.mockResolvedValue(undefined);
     mocks.assertSuperAdministrator.mockResolvedValue(undefined);
+    // A matriz funciona sem banco real: escopo global simulado e explícito.
+    mocks.getAccessSnapshot.mockResolvedValue({ assignments: [{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }], permissions: new Set(["audit.view"]) });
     mocks.resolveAuthorizedTeamFilter.mockImplementation(async (user: unknown, teamId: number | undefined, permission: string) => { await mocks.assertPermission(user, permission); return teamId; });
     mocks.getDashboardData.mockResolvedValue({ counters: {}, queue: [], teams: [], map: { incidents: [], teams: [] } });
     mocks.createIncident.mockResolvedValue({ id: 41, code: "HOMOLOG-41" });
@@ -108,6 +112,7 @@ describe("matriz controlada de homologação", () => {
     expect(mocks.createIncident).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 901 }));
     expect(mocks.createTeam).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 901 }));
     expect(mocks.createVehicle).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 901 }));
+    expect(mocks.getAccessSnapshot).toHaveBeenCalledWith(901);
   });
 
   it("simula a administração de usuários, acessos e catálogo local de permissões", async () => {

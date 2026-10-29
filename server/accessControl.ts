@@ -36,7 +36,11 @@ export function hasAdministratorAssignmentForOrganization(assignments: AccessAss
   if (!Number.isInteger(organizationId) || organizationId <= 0) return false;
   return assignments.some(assignment => {
     if (assignment.roleCode !== "administrador") return false;
-    if (assignment.defaultScope === "global") return true;
+    const isCanonicalGlobal = assignment.defaultScope === "global"
+      && assignment.organizationId === null
+      && assignment.organizationalUnitId === null
+      && assignment.teamId === null;
+    if (assignment.defaultScope === "global") return isCanonicalGlobal;
     return assignment.organizationId === organizationId;
   });
 }
@@ -59,7 +63,13 @@ export function resolveEffectivePermissions(input: { active: boolean; operationa
 export function evaluateTeamScope(assignments: AccessAssignment[], team: { organizationId: number | null; organizationalUnitId: number | null; id: number }, activeOrganizationId?: number | null) {
   if (activeOrganizationId !== undefined && activeOrganizationId !== null && team.organizationId !== activeOrganizationId) return false;
   return assignments.some(assignment => {
-    if (assignment.defaultScope === "global") return true;
+    if (
+      assignment.defaultScope === "global"
+      && assignment.organizationId === null
+      && assignment.organizationalUnitId === null
+      && assignment.teamId === null
+    ) return true;
+    if (assignment.defaultScope === "global") return false;
     if (assignment.teamId === team.id) return true;
     if (assignment.defaultScope === "organizacao") return assignment.organizationId !== null && assignment.organizationId === team.organizationId;
     if (["unidade", "departamento", "grupo"].includes(assignment.defaultScope)) {
@@ -70,7 +80,23 @@ export function evaluateTeamScope(assignments: AccessAssignment[], team: { organ
 }
 
 export function requiresExplicitTeamSelection(assignments: AccessAssignment[]) {
-  return assignments.length > 0 && !assignments.some(assignment => assignment.defaultScope === "global");
+  return assignments.length > 0 && !assignments.some(assignment =>
+    assignment.defaultScope === "global"
+    && assignment.organizationId === null
+    && assignment.organizationalUnitId === null
+    && assignment.teamId === null
+  );
+}
+
+/** A global audit ledger must not combine permission from a scoped or malformed assignment with an unrelated global role. */
+export function hasOnlyGlobalAssignmentsForAudit(assignments: AccessAssignment[]) {
+  // No dynamic roles means legacy permissions still decide through assertPermission.
+  return assignments.every(assignment =>
+    assignment.defaultScope === "global"
+    && assignment.organizationId === null
+    && assignment.organizationalUnitId === null
+    && assignment.teamId === null
+  );
 }
 
 export async function getAccessSnapshot(userId: number) {

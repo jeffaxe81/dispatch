@@ -12,7 +12,7 @@ import {
   assertOperation,
   assertOwnTeam,
 } from "./authorization";
-import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, resolveAuthorizedTeamFilter } from "./accessControl";
+import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getAccessSnapshot, getEffectiveAccess, hasOnlyGlobalAssignmentsForAudit, resolveAuthorizedTeamFilter } from "./accessControl";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername } from "./localAuth";
 import { systemRouter } from "./_core/systemRouter";
@@ -509,6 +509,18 @@ export const appRouter = router({
     }),
     audit: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "audit.view");
+      const incident = requireIncident(await getIncidentById(input.incidentId));
+      if (incident.assignedTeamId) {
+        await assertTeamScope(ctx.user, incident.assignedTeamId, "audit.view");
+      } else {
+        // An unassigned incident cannot be scoped through its assigned team.
+        // A mixed global/scoped role set cannot grant access to an unscoped audit entry.
+        const snapshot = await getAccessSnapshot(ctx.user.id);
+        if (!hasOnlyGlobalAssignmentsForAudit(snapshot.assignments)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "A auditoria da ocorrência sem equipe requer escopo global autorizado." });
+        }
+      }
+      assertCanReadIncident(ctx.user, incident);
       return getIncidentAudit(input.incidentId);
     }),
     export: operationalProcedure
@@ -532,6 +544,12 @@ export const appRouter = router({
       .input(paginationInput.extend({ resourceType: z.string().trim().min(2).max(80).optional(), search: z.string().trim().max(120).optional() }))
       .query(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "audit.view");
+        // The global audit ledger has no tenant filter. A dynamically scoped role
+        // must not read every organization's operations until a tenant read model exists.
+        const snapshot = await getAccessSnapshot(ctx.user.id);
+        if (!hasOnlyGlobalAssignmentsForAudit(snapshot.assignments)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "A auditoria geral requer escopo global autorizado." });
+        }
         return listOperationLogs(input);
       }),
   }),
