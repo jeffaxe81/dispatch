@@ -103,6 +103,14 @@ describe("decisão de permissões RBAC", () => {
     expect(requiresExplicitTeamSelection([{ roleCode: "gestor", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: null, teamId: null }])).toBe(true);
     expect(requiresExplicitTeamSelection([{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }])).toBe(false);
     expect(requiresExplicitTeamSelection([])).toBe(false);
+    expect(requiresExplicitTeamSelection([
+      { roleCode: "leitor", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null },
+      { roleCode: "gestor", defaultScope: "organizacao", organizationId: 10, organizationalUnitId: null, teamId: null },
+    ])).toBe(true);
+    expect(requiresExplicitTeamSelection([
+      { roleCode: "leitor", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null },
+      { roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null },
+    ])).toBe(false);
   });
 
   it("reconhece exclusivamente a atribuição do perfil Super Administrador", () => {
