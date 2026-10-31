@@ -4,6 +4,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { drizzle } from "drizzle-orm/mysql2";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import { assertEmptyAuditMysqlDatabase, getAuditMysqlTestSettings } from "./test/auditMysqlEnvironment";
+import { listOwnDeniedPermissions, recordDeniedPermission } from "./deniedPermissionAudit";
 
 type Grant = {
   roleCode: string;
@@ -253,4 +254,27 @@ describe("AXED-F091 — read model real com MySQL 8.4 e dois tenants sintéticos
     await expect(read(orgA, { page: 0 })).rejects.toThrow(/paginação/i);
     await expect(read(orgA, { pageSize: 101 })).rejects.toThrow(/paginação/i);
   });
+  it("F097: MySQL real separa eventos de acesso negado pelo autor autenticado", async () => {
+    const foreignUser = await insert("INSERT INTO users (openId, name) VALUES (?, ?)",
+      ["denied-foreign-user", "Outro usuário sintético"]);
+    await recordDeniedPermission(userId, "occurrences.edit");
+    await recordDeniedPermission(foreignUser, "teams.view");
+    const mine = await listOwnDeniedPermissions(userId, 20);
+    const foreign = await listOwnDeniedPermissions(foreignUser, 20);
+    expect(mine.map(x => x.permission)).toContain("occurrences.edit");
+    expect(mine.map(x => x.permission)).not.toContain("teams.view");
+    expect(foreign.map(x => x.permission)).toContain("teams.view");
+    expect(foreign.map(x => x.permission)).not.toContain("occurrences.edit");
+  });
+
+  it("F097: sanitiza identificador sensível antes de persistir e evita vazamento pelo F091", async () => {
+    await recordDeniedPermission(userId, "token=segredo_do_cliente");
+    const mine = await listOwnDeniedPermissions(userId, 20);
+    expect(mine.some(x => x.permission === "unknown")).toBe(true);
+    expect(JSON.stringify(mine)).not.toContain("segredo_do_cliente");
+    await assignRole("audit_global", "global", null);
+    const tenantRead = await read(orgA);
+    expect(tenantRead.rows.some(x => x.audit.resourceType === "access_denied")).toBe(false);
+  });
+
 });

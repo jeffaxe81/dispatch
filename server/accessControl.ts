@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { accessPermissions, accessRoles, rolePermissions, teams, userRoleAssignments, type User } from "../drizzle/schema";
 import type { OperationalRole } from "../shared/operations";
 import { getDb } from "./db";
+import { recordDeniedPermission } from "./deniedPermissionAudit";
 import { ENV } from "./_core/env";
 
 export type PermissionCode = string;
@@ -114,8 +115,12 @@ export async function getEffectiveAccess(user: CurrentUser) {
 }
 
 export async function assertPermission(user: CurrentUser, permission: PermissionCode) {
-  if (!user.active) throw new TRPCError({ code: "FORBIDDEN", message: "Usuário operacional inativo." });
+  if (!user.active) {
+    await recordDeniedPermission(user.id, "account.inactive");
+    throw new TRPCError({ code: "FORBIDDEN", message: "Usuário operacional inativo." });
+  }
   if (!(await hasPermission(user, permission))) {
+    await recordDeniedPermission(user.id, permission);
     throw new TRPCError({ code: "FORBIDDEN", message: "Permissão insuficiente para esta operação." });
   }
 }
