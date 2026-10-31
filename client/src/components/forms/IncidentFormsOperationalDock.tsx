@@ -39,6 +39,7 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
 
   const canFill = Boolean(capabilities.data?.canFill);
   const canCorrect = Boolean(capabilities.data?.canCorrectResponses);
+  const incidentForPrefill = trpc.incidents.get.useQuery({ incidentId }, { enabled: open && validIncident && canFill, retry: false });
   const bindings = (query.data?.bindings ?? []) as HydratedBinding[];
   const submissions = ((query.data?.submissions ?? []) as OperationalSubmission[]).map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }));
   const items = useMemo(() => deriveIncidentFormItems(bindings, submissions.map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }))), [bindings, submissions]);
@@ -67,6 +68,11 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
               formName={currentBinding.name?.trim() || `Formulário #${currentBinding.formId}`} definition={currentBinding.definition}
               state={currentItem.state} submissionId={currentSubmission?.id} initialAnswers={currentSubmission?.answers ?? {}}
               canFill={canFill} canCorrect={canCorrect} onClose={() => setSelected(null)}
+              authorizedIncidentPrefill={incidentForPrefill.data?.incident ? {
+                code: incidentForPrefill.data.incident.code,
+                category: incidentForPrefill.data.incident.category,
+                priority: incidentForPrefill.data.incident.priority,
+              } : null}
               onStart={async input => { const result = await start.mutateAsync(input); await refresh(); return result; }}
               onSubmit={async input => { const result = await submit.mutateAsync(input); await refresh(); return result; }}
               onCorrect={async input => { const result = await correct.mutateAsync(input); await refresh(); return result; }}
