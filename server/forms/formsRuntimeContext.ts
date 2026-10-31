@@ -15,6 +15,7 @@ export type FormsRuntimeDependencies = {
   getAccessSnapshot(userId: number): Promise<{ assignments: unknown[]; permissions: Set<string> }>;
   findAuthorizedOrganizationIds?(user: User): Promise<number[]>;
   assertIncidentScope(user: User, tenantId: number, incidentId: string): Promise<void>;
+  resolveIncidentCategory?(user: User, tenantId: number, incidentId: string): Promise<string>;
   assertFieldActivityScope(user: User, tenantId: number, fieldActivityId: string): Promise<void>;
   assertSubmissionScope(user: User, tenantId: number, submissionId: number): Promise<void>;
   createService: FormsContextPorts["createService"];
@@ -51,6 +52,14 @@ async function assertIncidentScope(user: User, tenantId: number, incidentId: str
   assertCanReadIncident(user, row.incident);
 }
 
+async function resolveIncidentCategory(user: User, tenantId: number, incidentId: string) {
+  if (!/^\d+$/.test(incidentId)) throw new Error("Identificador da ocorrência inválido.");
+  const row = await getIncidentForTenant(tenantId, Number(incidentId));
+  if (!row) throw new Error("Ocorrência não encontrada no tenant.");
+  assertCanReadIncident(user, row.incident);
+  return row.incident.category;
+}
+
 async function assertFieldActivityScope(user: User, tenantId: number, fieldActivityId: string) {
   if (!/^\d+$/.test(fieldActivityId)) throw new Error("Identificador da atividade de campo inválido.");
   const db = await getDb();
@@ -85,6 +94,7 @@ export function createFormsRuntimeContextFactory(
     getAccessSnapshot,
     findAuthorizedOrganizationIds: async user => (await listAuthorizedTenants(user)).map(tenant => tenant.id),
     assertIncidentScope,
+    resolveIncidentCategory,
     assertFieldActivityScope,
     assertSubmissionScope,
     createService: tenantId => formsServiceFactory.createService(tenantId) as ReturnType<FormsContextPorts["createService"]>,
@@ -103,6 +113,7 @@ export function createFormsRuntimeContextFactory(
         }),
         createService: dependencies.createService,
         assertIncidentScope: dependencies.assertIncidentScope,
+        resolveIncidentCategory: dependencies.resolveIncidentCategory,
         assertFieldActivityScope: dependencies.assertFieldActivityScope,
         assertSubmissionScope: dependencies.assertSubmissionScope,
         hasPermission: async (user, permission: FormPermission) => {
