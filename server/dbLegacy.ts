@@ -971,7 +971,7 @@ export async function confirmOwnShiftHandoff(input: OwnTeamHandoff & { requestId
       .where(eq(workShiftEvents.id, input.requestId)).limit(1).for("update"))[0];
     const confirmations = request ? await tx.select({ id: workShiftEvents.id }).from(workShiftEvents)
       .where(and(eq(workShiftEvents.sessionId, request.sessionId), eq(workShiftEvents.eventType, "handoff_confirmed"),
-        sql`JSON_EXTRACT(${workShiftEvents.metadata}, '$.handoffRequestId') = ${input.requestId}`)).limit(1) : [];
+        sql`JSON_EXTRACT(${workShiftEvents.metadata}, '$.handoffRequestId') = ${input.requestId}`)).limit(1).for("update") : [];
     const validatedRequest = request?.eventType === "handoff_requested" && request.sessionTeamId === input.teamId
       ? { recipientUserId: Number(request.metadata?.recipientUserId), teamId: Number(request.metadata?.teamId), occurredAt: request.occurredAt }
       : null;
