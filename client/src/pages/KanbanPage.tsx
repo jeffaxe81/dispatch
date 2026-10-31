@@ -10,7 +10,7 @@ import { priorityClasses, priorityLabels, statusLabels } from "@/lib/operational
 import { formatIncidentAge, prepareKanbanRows, type KanbanSortOrder } from "@/lib/kanbanQueue";
 import { trpc } from "@/lib/trpc";
 import { GripVertical } from "lucide-react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
 const boardColumns = ["triagem", "aguardando_despacho", "despachada", "aceita", "em_atendimento", "pausada", "concluida"] as const;
