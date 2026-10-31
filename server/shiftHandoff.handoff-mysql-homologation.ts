@@ -47,9 +47,9 @@ beforeAll(async () => {
   recipientA = await user("recipient-a", teamA);
   otherA = await user("other-a", teamA);
   actorB = await user("actor-b", teamB);
-  actorSession = await insert("INSERT INTO work_shift_sessions (user_id, team_id, started_at, status) VALUES (?, ?, UTC_TIMESTAMP(), 'active')",
+  actorSession = await insert("INSERT INTO work_shift_sessions (user_id, team_id, started_at, work_shift_session_status) VALUES (?, ?, UTC_TIMESTAMP(), 'active')",
     [actorA, teamA]);
-  await insert("INSERT INTO work_shift_sessions (user_id, team_id, started_at, status) VALUES (?, ?, UTC_TIMESTAMP(), 'active')",
+  await insert("INSERT INTO work_shift_sessions (user_id, team_id, started_at, work_shift_session_status) VALUES (?, ?, UTC_TIMESTAMP(), 'active')",
     [actorB, teamB]);
 }, 120_000);
 
@@ -101,7 +101,7 @@ describe("AXED-F037 — confirmação real entre usuários e tenants em MySQL 8.
     const confirmed = await confirmOwnShiftHandoff({ ...scope(recipientA), requestId: sent.requestId });
     expect(confirmed.confirmed).toBe(true);
     const [session] = await conn.query<RowDataPacket[]>(
-      "SELECT status, ended_at FROM work_shift_sessions WHERE id = ?", [actorSession]);
+      "SELECT work_shift_session_status AS status, ended_at FROM work_shift_sessions WHERE id = ?", [actorSession]);
     expect(session[0].status).toBe("active");
     expect(session[0].ended_at).toBeNull();
     expect((await listOwnPendingShiftHandoffs(scope(recipientA))).map(x => x.requestId))
