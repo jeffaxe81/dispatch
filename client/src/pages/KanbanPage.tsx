@@ -8,6 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useRefreshSettings } from "@/hooks/useRefreshSettings";
 import { priorityClasses, priorityLabels, statusLabels } from "@/lib/operational";
 import { formatIncidentAge, formatStageAge, prepareKanbanRows, stageSampleAverageMinutes, type KanbanSortOrder } from "@/lib/kanbanQueue";
+import { deleteUserTenantKanbanView, loadUserTenantKanbanViews, saveUserTenantKanbanView, type SavedKanbanView } from "@/lib/kanbanSavedViews";
 import { trpc } from "@/lib/trpc";
 import { GripVertical } from "lucide-react";
 import React, { useEffect, useState } from "react";
@@ -163,9 +164,24 @@ function KanbanContent() {
   const [openedFrom, setOpenedFrom] = useState("");
   const [openedThrough, setOpenedThrough] = useState("");
   const [bottleneckThresholdMinutes, setBottleneckThresholdMinutes] = useState(120);
+  const [savedViews, setSavedViews] = useState<SavedKanbanView[]>([]);
+  const [viewName, setViewName] = useState("");
+  const [selectedView, setSelectedView] = useState("nenhuma");
+  const [viewMessage, setViewMessage] = useState("");
   const utils = trpc.useUtils();
   const refresh = useRefreshSettings();
   const teams = trpc.teams.list.useQuery(undefined, { retry: false });
+  const tenantSelection = trpc.tenant.selection.useQuery(undefined, { enabled: Boolean(user), retry: false });
+  const activeOrganizationId = tenantSelection.data?.activeOrganizationId;
+  useEffect(() => {
+    if (!user?.id || !activeOrganizationId) {
+      setSavedViews([]);
+      setSelectedView("nenhuma");
+      return;
+    }
+    setSavedViews(loadUserTenantKanbanViews(window.localStorage, user.id, activeOrganizationId));
+    setSelectedView("nenhuma");
+  }, [user?.id, activeOrganizationId]);
   const openedBefore = openedThrough ? new Date(Date.parse(openedThrough + "T00:00:00.000Z") + 86_400_000) : undefined;
   const dateRangeInvalid = Boolean(openedFrom && openedThrough && openedFrom > openedThrough);
   const filters: KanbanFilters = {
@@ -177,6 +193,41 @@ function KanbanContent() {
   // Remount each column when the server-side filters change, resetting its
   // page independently to 1. Changing the client-side sort does not reset pages.
   const filtersKey = [priority, search, teamFilter, openedFrom, openedThrough].join("|");
+  const saveCurrentView = () => {
+    if (!user?.id || !activeOrganizationId) return;
+    try {
+      const next = saveUserTenantKanbanView(window.localStorage, user.id, activeOrganizationId, {
+        name: viewName, priority, search, sortOrder, teamFilter, openedFrom, openedThrough,
+      });
+      setSavedViews(next);
+      setSelectedView(viewName.trim());
+      setViewMessage("Visão salva neste dispositivo, exclusivamente para este usuário e empresa.");
+    } catch (err) {
+      setViewMessage(err instanceof Error ? err.message : "Não foi possível salvar a visão.");
+    }
+  };
+  const restoreView = (name: string) => {
+    setSelectedView(name);
+    const view = savedViews.find(entry => entry.name === name);
+    if (!view) return;
+    setPriority(view.priority);
+    setSearch(view.search);
+    setSortOrder(view.sortOrder);
+    setTeamFilter(view.teamFilter === "todas" || (teams.data ?? []).some(({ team }) => String(team.id) === view.teamFilter) ? view.teamFilter : "todas");
+    setOpenedFrom(view.openedFrom);
+    setOpenedThrough(view.openedThrough);
+    setViewMessage("Visão aplicada; o servidor continuará validando permissões e escopo.");
+  };
+  const deleteCurrentView = () => {
+    if (!user?.id || !activeOrganizationId || selectedView === "nenhuma") return;
+    try {
+      setSavedViews(deleteUserTenantKanbanView(window.localStorage, user.id, activeOrganizationId, selectedView));
+      setSelectedView("nenhuma");
+      setViewMessage("Visão excluída deste dispositivo.");
+    } catch {
+      setViewMessage("Não foi possível excluir a visão.");
+    }
+  };
   const transition = trpc.incidents.transition.useMutation({
     onSuccess: () => {
       void utils.incidents.list.invalidate();
@@ -247,6 +298,28 @@ function KanbanContent() {
         <label className="min-w-36 text-xs font-medium text-slate-700">Aberta até (inclusive)
           <input type="date" aria-label="Abertura até" value={openedThrough} min={openedFrom || undefined} onChange={event => setOpenedThrough(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm font-normal" />
         </label>
+      </div>
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3">
+        <label className="min-w-44 text-xs font-medium text-slate-700">Nome da visão
+          <input aria-label="Nome da visão Kanban" type="text" maxLength={60} value={viewName}
+            onChange={event => setViewName(event.target.value)}
+            placeholder="Minha fila"
+            className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal" />
+        </label>
+        <Button variant="outline" size="sm" disabled={!user?.id || !activeOrganizationId || viewName.trim().length < 2} onClick={saveCurrentView}>Salvar visão</Button>
+        <div className="min-w-52">
+          <p className="mb-1 text-xs font-medium text-slate-700">Visões salvas</p>
+          <Select value={selectedView} onValueChange={restoreView}>
+            <SelectTrigger aria-label="Selecionar visão Kanban" className="h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="nenhuma">Selecionar visão</SelectItem>
+              {savedViews.map(view => <SelectItem key={view.name} value={view.name}>{view.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button variant="outline" size="sm" disabled={selectedView === "nenhuma" || !user?.id || !activeOrganizationId} onClick={deleteCurrentView}>Excluir visão</Button>
+        <p className="w-full text-xs text-slate-500">Apenas configurações de filtros são armazenadas neste navegador; nenhuma ocorrência é salva. Visões são separadas por usuário e empresa ativa.</p>
+        {viewMessage && <p role="status" className="w-full text-xs text-slate-700">{viewMessage}</p>}
       </div>
       {dateRangeInvalid && <p role="alert" className="text-sm text-rose-700">O fim do período não pode ser anterior ao início.</p>}
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
