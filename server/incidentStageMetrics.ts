@@ -21,7 +21,7 @@ const STAGE_ENTRY_EVENTS = [
 export async function withIncidentStageEntry<T extends IncidentRow>(
   db: Db,
   authorizedRows: readonly T[],
-): Promise<Array<T & { stageEnteredAt: Date | null }>> {
+): Promise<Array<T & { incident: T["incident"] & { stageEnteredAt: Date | null } }>> {
   if (!authorizedRows.length) return [];
   const ids = [...new Set(authorizedRows.map(row => row.incident.id))];
   const entries = await db.select({
@@ -44,6 +44,9 @@ export async function withIncidentStageEntry<T extends IncidentRow>(
   }
   return authorizedRows.map(row => ({
     ...row,
-    stageEnteredAt: lookup.get(row.incident.id + ":" + row.incident.status) ?? null,
+    incident: {
+      ...row.incident,
+      stageEnteredAt: lookup.get(row.incident.id + ":" + row.incident.status) ?? null,
+    },
   }));
 }
