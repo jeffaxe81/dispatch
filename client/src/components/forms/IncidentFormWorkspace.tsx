@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import type { FormAnswers, FormSchemaDefinition } from "@shared/forms";
 import { FormRenderer, type FormAttachmentSelectionKind } from "./FormRenderer";
 import type { IncidentFormState } from "./IncidentFormsPanel";
+import { proposeAuthorizedIncidentFormPrefill, type AuthorizedIncidentPrefillSource } from "@/lib/incidentFormPrefill";
 
 type StartInput = { formId: number; formVersionId: number; contextType: "incident"; contextId: string };
 type SubmitInput = StartInput & { submissionId?: number; answers: FormAnswers };
@@ -17,6 +18,7 @@ export type IncidentFormWorkspaceProps = {
   state: IncidentFormState;
   submissionId?: number;
   initialAnswers?: FormAnswers;
+  authorizedIncidentPrefill?: AuthorizedIncidentPrefillSource | null;
   canFill?: boolean;
   canCorrect?: boolean;
   onStart(input: StartInput): Promise<unknown>;
@@ -132,6 +134,15 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
       <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">O envio ou a correção deste formulário não altera automaticamente o status da ocorrência.</div>
       {error && <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
+      {canFill && state === "in_progress" && !correctionMode && props.authorizedIncidentPrefill && (
+        <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3">
+          <button type="button" disabled={busy} onClick={() => setAnswers(current =>
+            proposeAuthorizedIncidentFormPrefill(props.definition, current, props.authorizedIncidentPrefill ?? null))}
+            className="rounded-md border border-sky-500 bg-white px-3 py-2 text-sm font-medium text-sky-900 disabled:opacity-50"
+          >Preencher campos autorizados da ocorrência</button>
+          <p className="mt-1 text-xs text-sky-800">Somente código, categoria e prioridade compatíveis com campos vazios. Verifique os dados antes de enviar.</p>
+        </div>
+      )}
       <div className="mt-4">
         <FormRenderer definition={props.definition} values={answers} readOnly={!editable || busy} attachmentsReadOnly={attachmentsReadOnly || busy} onChange={(key, value) => setAnswers(current => ({ ...current, [key]: value }))} onAttachmentSelected={uploadAttachment} />
       </div>
