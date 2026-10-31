@@ -56,7 +56,7 @@ async function audit(resourceType: string, resourceId: number, action: string, a
 }
 
 async function addRole(code: string, scope: Grant["defaultScope"], permissionId: number) {
-  const id = await insert("INSERT INTO access_roles (code, name, default_scope) VALUES (?, ?, ?)", [code, code, scope]);
+  const id = await insert("INSERT INTO access_roles (code, name, role_scope) VALUES (?, ?, ?)", [code, code, scope]);
   await conn.execute("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)", [id, permissionId]);
   roleIds[code] = id;
 }
