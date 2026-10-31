@@ -21,6 +21,7 @@ vi.mock("@/lib/trpc", () => ({
       dashboard: { summary: { invalidate: mocks.invalidations } },
     }),
     teams: { list: { useQuery: () => ({ data: [], isError: false }) } },
+    tenant: { selection: { useQuery: () => ({ data: { activeOrganizationId: 1 }, isLoading: false }) } },
     incidents: {
       list: {
         useQuery: (input: { status: string; page: number; pageSize: number }, options: { enabled: boolean }) => {
