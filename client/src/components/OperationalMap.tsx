@@ -1,5 +1,6 @@
 import { MapView } from "@/components/Map";
 import type { GeoJsonLineString } from "@shared/gis";
+import { evaluateTeamPositionFreshness, summarizeTeamPositionFreshness } from "@/lib/teamPositionFreshness";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 const LeafletOperationalMap = lazy(() => import("@/components/LeafletOperationalMap"));
@@ -64,6 +65,8 @@ export function OperationalMap({ incidents, teams, settings, route }: { incident
   const [mapUnavailable, setMapUnavailable] = useState(false);
   const [openStreetMapUnavailable, setOpenStreetMapUnavailable] = useState(false);
   const [mapAttempt, setMapAttempt] = useState(0);
+  const [staleAfterMinutes, setStaleAfterMinutes] = useState(5);
+  const freshnessSummary = summarizeTeamPositionFreshness(teams, new Date(), staleAfterMinutes);
   const markerRefs = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
 
   useEffect(() => {
@@ -91,12 +94,13 @@ export function OperationalMap({ incidents, teams, settings, route }: { incident
       const latitude = Number(team.lastLatitude);
       const longitude = Number(team.lastLongitude);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+      const freshness = evaluateTeamPositionFreshness(team, new Date(), staleAfterMinutes);
       markers.push(
         new google.maps.marker.AdvancedMarkerElement({
           map,
           position: { lat: latitude, lng: longitude },
-          title: `${team.code} — ${team.name}`,
-          content: markerElement(`${team.code}: ${team.status}`, "#147ab7", "▣"),
+          title: `${team.code} — ${team.name} · ${freshness === "stale" ? "posição desatualizada" : freshness === "unknown" ? "horário da posição desconhecido" : "posição atual"}`,
+          content: markerElement(`${team.code}: ${team.status} · ${freshness}`, freshness === "stale" ? "#b45309" : freshness === "unknown" ? "#64748b" : "#147ab7", "▣"),
         }),
       );
     });
@@ -105,7 +109,7 @@ export function OperationalMap({ incidents, teams, settings, route }: { incident
     return () => markers.forEach(marker => {
       marker.map = null;
     });
-  }, [incidents, map, teams]);
+  }, [incidents, map, teams, staleAfterMinutes]);
 
   const fallbackMode = settings?.fallbackMode ?? "automatic";
   const { useOpenStreetMap, showGoogleOnlyUnavailable: googleOnlyUnavailable, degraded } = resolveOperationalMapMode(fallbackMode, mapUnavailable, openStreetMapUnavailable);
@@ -125,9 +129,22 @@ export function OperationalMap({ incidents, teams, settings, route }: { incident
         }}
         onMapError={() => { setMap(null); setMapUnavailable(true); }}
       />}
-      {useOpenStreetMap && <Suspense fallback={<div role="status" className="flex h-[430px] w-full items-center justify-center bg-slate-100 text-sm text-slate-500">Carregando mapa OpenStreetMap...</div>}><LeafletOperationalMap center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} incidents={incidents} teams={teams.map(team => ({ id: team.id, latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name, status: team.status }))} route={route} onTileError={() => setOpenStreetMapUnavailable(true)} /></Suspense>}
+      {useOpenStreetMap && <Suspense fallback={<div role="status" className="flex h-[430px] w-full items-center justify-center bg-slate-100 text-sm text-slate-500">Carregando mapa OpenStreetMap...</div>}><LeafletOperationalMap center={{ lat: settings?.centerLatitude ?? -27.0976, lng: settings?.centerLongitude ?? -48.9104 }} zoom={settings?.defaultZoom ?? 13} incidents={incidents} teams={teams.map(team => ({ id: team.id, latitude: team.lastLatitude, longitude: team.lastLongitude, code: team.code, name: team.name, status: team.status + (evaluateTeamPositionFreshness(team, new Date(), staleAfterMinutes) === "stale" ? " · posição desatualizada" : "") }))} route={route} onTileError={() => setOpenStreetMapUnavailable(true)} /></Suspense>}
       {degraded && <div role="alert" className="absolute left-4 top-16 max-w-sm rounded-lg border border-amber-300/90 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur"><p className="font-semibold">GIS degradado</p><p className="mt-0.5 leading-4">O mapa base externo apresentou falha. Ocorrências, equipes e demais funções operacionais continuam disponíveis; valide rotas externas antes de usá-las para decisão.</p></div>}
       {googleOnlyUnavailable && <div role="status" className="absolute right-4 top-4 max-w-xs rounded-lg border border-amber-200/90 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur"><p className="font-semibold">Google Maps indisponível</p><p className="mt-0.5 leading-4">Modo somente Google ativo. Altere a contingência nas Configurações.</p></div>}
+      <div className="pointer-events-auto absolute bottom-14 right-4 z-10 max-w-xs rounded-lg border border-white/80 bg-white/95 px-3 py-2 text-xs text-slate-800 shadow-sm backdrop-blur" role="status">
+        <label className="block font-semibold text-slate-900" htmlFor="stale-position-limit">Limite de atualização (min)</label>
+        <input id="stale-position-limit" type="number" min={1} max={1440} step={1}
+          aria-label="Limite para posição desatualizada em minutos"
+          className="mt-1 h-8 w-24 rounded-md border border-slate-300 bg-white px-2 text-sm"
+          value={staleAfterMinutes}
+          onChange={event => {
+            const value = Number(event.target.value);
+            if (Number.isSafeInteger(value) && value >= 1 && value <= 1440) setStaleAfterMinutes(value);
+          }} />
+        <p className="mt-1">{freshnessSummary.stale} posição(ões) desatualizada(s); {freshnessSummary.unknown} sem horário confiável.</p>
+        {freshnessSummary.stale > 0 && <p role="alert" className="mt-1 font-semibold text-amber-800">Atenção: não use posições antigas para decisões de despacho sem confirmação.</p>}
+      </div>
       <div className="pointer-events-none absolute left-4 top-4 rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm backdrop-blur">
         <p className="font-semibold text-slate-900">Mapa operacional</p>
         <p>{incidents.length} ocorrência(s) · {teams.filter(team => team.lastLatitude && team.lastLongitude).length} equipe(s) posicionada(s)</p>
