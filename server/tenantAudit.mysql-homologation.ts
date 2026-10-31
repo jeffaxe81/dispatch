@@ -109,7 +109,7 @@ beforeAll(async () => {
   teamA2 = await insert("INSERT INTO teams (code, name, agency, organization_id) VALUES (?, ?, ?, ?)", ["audit_A2", "A2", "Local", orgA]);
   teamB1 = await insert("INSERT INTO teams (code, name, agency, organization_id) VALUES (?, ?, ?, ?)", ["audit_B1", "B1", "Local", orgB]);
   userId = await insert(
-    "INSERT INTO users (openId, name, operationalRole, active) VALUES (?, ?, 'administrador', true)",
+    "INSERT INTO users (openId, name) VALUES (?, ?)",
     ["audit-actor", "Auditor synthetic"],
   );
 
