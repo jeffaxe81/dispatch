@@ -40,6 +40,7 @@ import {
   integrationWebhooks,
 } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
+import { requirePriorityChangeJustification } from "./priorityChangeJustification";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import type { WorkShiftAction } from "../shared/workShifts";
@@ -239,6 +240,7 @@ export async function updateIncident(input: {
   actorUserId: number;
   category?: string;
   priority?: IncidentPriority;
+  priorityChangeReason?: string;
   requesterName?: string | null;
   requesterContact?: string | null;
   description?: string;
@@ -250,6 +252,7 @@ export async function updateIncident(input: {
   return db.transaction(async tx => {
     const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
+    const priorityChangeReason = requirePriorityChangeJustification(before.priority, input.priority, input.priorityChangeReason);
     const patch: Partial<typeof incidents.$inferInsert> = { updatedAt: new Date() };
     if (input.category !== undefined) patch.category = input.category;
     if (input.priority !== undefined) patch.priority = input.priority;
@@ -268,7 +271,7 @@ export async function updateIncident(input: {
       eventType: "occurrence_updated",
       previousStatus: before.status,
       nextStatus: after.status,
-      message: "Dados da ocorrência atualizados.",
+      message: priorityChangeReason ? "Prioridade alterada com justificativa auditada." : "Dados da ocorrência atualizados.",
     });
     await tx.insert(auditLogs).values({
       resourceType: "incident",
@@ -276,7 +279,7 @@ export async function updateIncident(input: {
       action: "update",
       actorUserId: input.actorUserId,
       beforeData: snapshotIncident(before),
-      afterData: snapshotIncident(after),
+      afterData: priorityChangeReason ? { ...snapshotIncident(after), priorityChangeReason } : snapshotIncident(after),
     });
     return after;
   });
