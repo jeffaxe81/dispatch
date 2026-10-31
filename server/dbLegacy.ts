@@ -40,6 +40,7 @@ import {
   integrationWebhooks,
 } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
+import { withIncidentStageEntry } from "./incidentStageMetrics";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import type { WorkShiftAction } from "../shared/workShifts";
 import { ENV } from "./_core/env";
@@ -165,7 +166,7 @@ export async function listIncidents(input: IncidentListInput) {
       .offset((input.page - 1) * input.pageSize),
     db.select({ total: count() }).from(incidents).where(where),
   ]);
-  return { rows, total: Number(totalRows[0]?.total ?? 0) };
+  return { rows: await withIncidentStageEntry(db, rows), total: Number(totalRows[0]?.total ?? 0) };
 }
 
 export async function getIncidentById(incidentId: number) {

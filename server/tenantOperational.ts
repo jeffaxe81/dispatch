@@ -5,6 +5,7 @@ import { incidents, organizations, teams, users, vehicles, type User } from "../
 import type { IncidentPriority, IncidentStatus } from "../shared/operations";
 import { ENV } from "./_core/env";
 import { getAccessSnapshot } from "./accessControl";
+import { withIncidentStageEntry } from "./incidentStageMetrics";
 import { createIncident, createTeam, createVehicle, getDb, type IncidentListInput, type OperationalReportInput } from "./db";
 
 type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
@@ -106,7 +107,7 @@ export async function listIncidentsForTenant(tenantId: number, input: IncidentLi
       .offset((input.page - 1) * input.pageSize),
     db.select({ total: count() }).from(incidents).innerJoin(incidentTenantScopes, eq(incidentTenantScopes.incidentId, incidents.id)).where(where),
   ]);
-  return { rows, total: Number(totalRows[0]?.total ?? 0) };
+  return { rows: await withIncidentStageEntry(db, rows), total: Number(totalRows[0]?.total ?? 0) };
 }
 
 export async function getIncidentForTenant(tenantId: number, incidentId: number) {
