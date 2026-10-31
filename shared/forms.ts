@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { INCIDENT_STATUSES, type IncidentStatus } from "./operations";
 
 export const FORM_FIELD_TYPES = [
   "short_text", "long_text", "number", "currency", "date", "time", "date_time",
@@ -21,6 +22,7 @@ const answerFieldBase = {
   key: fieldKeySchema,
   label: labelSchema,
   required: z.boolean().default(false),
+  requiredOnStatuses: z.array(z.enum(INCIDENT_STATUSES)).min(1).max(INCIDENT_STATUSES.length).optional(),
 };
 
 const textLimits = {
@@ -217,7 +219,7 @@ function validateAnswerValue(field: Exclude<FormFieldDefinition, { type: "sectio
   }
 }
 
-export function validateFormAnswers(schemaInput: unknown, answersInput: unknown): FormAnswerValidationResult {
+export function validateFormAnswers(schemaInput: unknown, answersInput: unknown, context: { incidentStatus?: IncidentStatus } = {}): FormAnswerValidationResult {
   const schemaResult = formSchemaDefinitionSchema.safeParse(schemaInput);
   if (!schemaResult.success) return { success: false, issues: schemaResult.error.issues };
 
@@ -237,7 +239,12 @@ export function validateFormAnswers(schemaInput: unknown, answersInput: unknown)
   answerFields.forEach(field => {
     const value = answers[field.key];
     if (isBlank(value)) {
-      if (field.required) issues.push(issue([field.key], `${field.label} é obrigatório.`));
+      if (field.required || (field.requiredOnStatuses?.length && context.incidentStatus === undefined)) {
+        issues.push(issue([field.key], context.incidentStatus === undefined && field.requiredOnStatuses?.length
+          ? `${field.label} exige confirmação da fase da ocorrência.` : `${field.label} é obrigatório.`));
+      } else if (context.incidentStatus && field.requiredOnStatuses?.includes(context.incidentStatus)) {
+        issues.push(issue([field.key], `${field.label} é obrigatório na fase ${context.incidentStatus}.`));
+      }
       return;
     }
     if (!validateAnswerValue(field, value)) issues.push(issue([field.key], `Valor inválido para ${field.label}.`));
