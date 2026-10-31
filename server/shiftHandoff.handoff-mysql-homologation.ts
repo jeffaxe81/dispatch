@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createConnection, createPool, type Connection, type Pool } from "mysql2/promise";
+import { createConnection, type Connection } from "mysql2/promise";
+import { createPool, type Pool } from "mysql2";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { drizzle } from "drizzle-orm/mysql2";
 import { migrate } from "drizzle-orm/mysql2/migrator";
@@ -54,7 +55,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   setDbForTesting(null);
-  if (pool) await pool.end();
+  if (pool) await new Promise<void>((resolve, reject) => pool.end(error => error ? reject(error) : resolve()));
   if (conn) await conn.end();
 });
 
