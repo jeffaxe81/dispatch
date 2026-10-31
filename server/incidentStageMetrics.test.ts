@@ -32,17 +32,17 @@ describe("AXED-F011 — estágio de ocorrência é derivado de histórico audita
     ];
     const output = await withIncidentStageEntry(fake.db, input);
     expect(output).toEqual([
-      { ...input[0], stageEnteredAt: enteredAt },
-      { ...input[1], stageEnteredAt: null },
-      { ...input[2], stageEnteredAt: null },
+      { ...input[0], incident: { ...input[0].incident, stageEnteredAt: enteredAt } },
+      { ...input[1], incident: { ...input[1].incident, stageEnteredAt: null } },
+      { ...input[2], incident: { ...input[2].incident, stageEnteredAt: null } },
     ]);
-    expect(input).not.toHaveProperty("stageEnteredAt");
+    expect(input[0].incident).not.toHaveProperty("stageEnteredAt");
     expect(fake.q.select).toHaveBeenCalledOnce();
   });
   it("não converte evento com data inválida em horário de etapa", async () => {
     const fake = fakeDb([{ incidentId: 22, nextStatus: "triagem", enteredAt: new Date("invalid") }]);
     const output = await withIncidentStageEntry(fake.db, [{ incident: { id: 22, status: "triagem" } }]);
-    expect(output[0].stageEnteredAt).toBeNull();
+    expect(output[0].incident.stageEnteredAt).toBeNull();
   });
   it("mantém a consulta restrita à página filtrada por tenant e status", () => {
     const stage = fs.readFileSync(path.resolve(import.meta.dirname, "incidentStageMetrics.ts"), "utf8");
