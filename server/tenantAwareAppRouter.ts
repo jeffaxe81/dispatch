@@ -1,3 +1,4 @@
+import { incidentListInputSchema } from "./incidentListValidation";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { INCIDENT_PRIORITIES, INCIDENT_STATUSES, INCIDENT_TRANSITIONS } from "../shared/operations";
@@ -101,12 +102,13 @@ const tenantOverrides = router({
   }),
   incidents: router({
     list: operationalProcedure
-      .input(paginationInput.extend({ search: z.string().trim().max(120).optional(), status: statusEnum.optional(), priority: priorityEnum.optional(), teamId: z.number().int().positive().optional() }))
+      .input(incidentListInputSchema)
       .query(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "occurrences.view");
         const tenantId = await tenantFor(ctx);
         const teamId = ctx.user.operationalRole === "agente" ? ctx.user.teamId ?? -1 : input.teamId;
         if (teamId && teamId > 0) await assertTeamTenant(tenantId, teamId);
+        if (teamId && teamId > 0) await assertTeamScope(ctx.user, teamId, "occurrences.view", tenantId);
         return listIncidentsForTenant(tenantId, { ...input, teamId });
       }),
     get: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {

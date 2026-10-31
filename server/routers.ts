@@ -1,3 +1,4 @@
+import { incidentListInputSchema } from "./incidentListValidation";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
@@ -399,10 +400,12 @@ export const appRouter = router({
   }),
   incidents: router({
     list: operationalProcedure
-      .input(paginationInput.extend({ search: z.string().trim().max(120).optional(), status: statusEnum.optional(), priority: priorityEnum.optional(), teamId: z.number().int().positive().optional() }))
+      .input(incidentListInputSchema)
       .query(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "occurrences.view");
-        return listIncidents({ ...input, teamId: ctx.user.operationalRole === "agente" ? ctx.user.teamId ?? -1 : input.teamId });
+        const teamId = ctx.user.operationalRole === "agente" ? ctx.user.teamId ?? -1 : input.teamId;
+        if (teamId && teamId > 0) await assertTeamScope(ctx.user, teamId, "occurrences.view");
+        return listIncidents({ ...input, teamId });
       }),
     get: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const result = await getIncidentById(input.incidentId);
