@@ -117,6 +117,8 @@ export type IncidentListInput = {
   status?: IncidentStatus;
   priority?: IncidentPriority;
   teamId?: number;
+  openedFrom?: Date;
+  openedBefore?: Date;
 };
 
 function snapshotIncident(row: typeof incidents.$inferSelect) {
@@ -148,6 +150,8 @@ export async function listIncidents(input: IncidentListInput) {
   if (input.status) filters.push(eq(incidents.status, input.status));
   if (input.priority) filters.push(eq(incidents.priority, input.priority));
   if (input.teamId) filters.push(eq(incidents.assignedTeamId, input.teamId));
+  if (input.openedFrom) filters.push(gte(incidents.createdAt, input.openedFrom));
+  if (input.openedBefore) filters.push(lt(incidents.createdAt, input.openedBefore));
   const where = filters.length ? and(...filters) : undefined;
   const [rows, totalRows] = await Promise.all([
     db
