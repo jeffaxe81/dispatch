@@ -15,6 +15,8 @@ export type FormsRuntimeDependencies = {
   getAccessSnapshot(userId: number): Promise<{ assignments: unknown[]; permissions: Set<string> }>;
   findAuthorizedOrganizationIds?(user: User): Promise<number[]>;
   assertIncidentScope(user: User, tenantId: number, incidentId: string): Promise<void>;
+  resolveIncidentStatus?(user: User, tenantId: number, incidentId: string): Promise<string>;
+  resolveSubmissionIncidentStatus?(user: User, tenantId: number, submissionId: number): Promise<string | undefined>;
   resolveIncidentCategory?(user: User, tenantId: number, incidentId: string): Promise<string>;
   assertFieldActivityScope(user: User, tenantId: number, fieldActivityId: string): Promise<void>;
   assertSubmissionScope(user: User, tenantId: number, submissionId: number): Promise<void>;
@@ -60,6 +62,25 @@ async function resolveIncidentCategory(user: User, tenantId: number, incidentId:
   return row.incident.category;
 }
 
+async function resolveIncidentStatus(user: User, tenantId: number, incidentId: string): Promise<string> {
+  if (!/^\\d+$/.test(incidentId)) throw new Error("Identificador da ocorrência inválido.");
+  const row = await getIncidentForTenant(tenantId, Number(incidentId));
+  if (!row) throw new Error("Ocorrência não encontrada neste tenant.");
+  assertCanReadIncident(user, row.incident);
+  return row.incident.status;
+}
+async function resolveSubmissionIncidentStatus(user: User, tenantId: number, submissionId: number): Promise<string | undefined> {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const rows = await db.select({ contextType: formSubmissions.contextType, contextId: formSubmissions.contextId })
+    .from(formSubmissions).where(and(eq(formSubmissions.tenantId, tenantId), eq(formSubmissions.id, submissionId))).limit(1);
+  const item = rows[0];
+  if (!item) throw new Error("Submissão fora da empresa autorizada.");
+  if (item.contextType !== "incident") return undefined;
+  if (!item.contextId) throw new Error("Submissão sem ocorrência válida.");
+  return resolveIncidentStatus(user, tenantId, item.contextId);
+}
+
 async function assertFieldActivityScope(user: User, tenantId: number, fieldActivityId: string) {
   if (!/^\d+$/.test(fieldActivityId)) throw new Error("Identificador da atividade de campo inválido.");
   const db = await getDb();
@@ -95,6 +116,8 @@ export function createFormsRuntimeContextFactory(
     findAuthorizedOrganizationIds: async user => (await listAuthorizedTenants(user)).map(tenant => tenant.id),
     assertIncidentScope,
     resolveIncidentCategory,
+    resolveIncidentStatus,
+    resolveSubmissionIncidentStatus,
     assertFieldActivityScope,
     assertSubmissionScope,
     createService: tenantId => formsServiceFactory.createService(tenantId) as ReturnType<FormsContextPorts["createService"]>,
@@ -113,6 +136,8 @@ export function createFormsRuntimeContextFactory(
         }),
         createService: dependencies.createService,
         assertIncidentScope: dependencies.assertIncidentScope,
+        resolveIncidentStatus: dependencies.resolveIncidentStatus,
+        resolveSubmissionIncidentStatus: dependencies.resolveSubmissionIncidentStatus,
         resolveIncidentCategory: dependencies.resolveIncidentCategory,
         assertFieldActivityScope: dependencies.assertFieldActivityScope,
         assertSubmissionScope: dependencies.assertSubmissionScope,
