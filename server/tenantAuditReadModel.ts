@@ -1,4 +1,4 @@
-import { and, count, desc, eq, exists, gt, inArray, isNull, like, or, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, exists, gt, inArray, isNull, like, or, type AnyColumn, type SQL } from "drizzle-orm";
 import {
   accessPermissions, accessRoles, auditLogs, incidentAssignments, incidentEvidence, incidents,
   rolePermissions, teams, userRoleAssignments, vehicles,
@@ -69,8 +69,8 @@ export function sanitizeTenantAuditSnapshot(data: unknown): Record<string, unkno
 
 function scopedTeamCondition(
   scope: TenantAuditVisibility,
-  teamId: typeof teams.id,
-  organizationalUnitId: typeof teams.organizationalUnitId,
+  teamId: AnyColumn,
+  organizationalUnitId: AnyColumn,
 ): SQL | undefined {
   if (scope.allTenant) return undefined;
   const rules: SQL[] = [];
