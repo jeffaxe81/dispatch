@@ -157,6 +157,7 @@ const tenantOverrides = router({
         incidentId: z.number().int().positive(),
         category: z.string().trim().min(3).max(160).optional(),
         priority: priorityEnum.optional(),
+        priorityChangeReason: z.string().trim().max(500).optional(),
         requesterName: z.string().trim().max(200).nullable().optional(),
         requesterContact: z.string().trim().max(80).nullable().optional(),
         description: z.string().trim().min(5).max(5000).optional(),
