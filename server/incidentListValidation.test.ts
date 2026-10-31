@@ -75,8 +75,10 @@ describe("AXED-F013/F014/F018: contrato de listagem tenant-aware", () => {
     expect(s).toContain("Filtrar equipe no Kanban");
     expect(s).toContain("Abertura desde");
     expect(s).toContain("Abertura até");
-    expect(s).toContain("setPage(current => Math.min(totalPages, current + 1))");
-    expect(s).toContain("page, pageSize,");
+    expect(s).toContain("function KanbanColumn(");
+    expect(s).toContain("setPage(value => Math.min(totalPages, value + 1))");
+    expect(s).toContain("status, page, pageSize: COLUMN_PAGE_SIZE,");
+    expect(s).toContain("status, page, pageSize: COLUMN_PAGE_SIZE,");
     expect(s).toContain("openedBefore,");
     expect(s).toContain("teamId: teamFilter");
   });
