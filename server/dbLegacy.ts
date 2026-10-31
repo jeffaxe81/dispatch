@@ -901,7 +901,7 @@ export async function controlOwnWorkShift(input: {
 
 type OwnTeamHandoff = { actorUserId: number; teamId: number; tenantId: number };
 
-async function requireOwnShiftTeam(db: Awaited<ReturnType<typeof requireDb>>, input: OwnTeamHandoff) {
+async function requireOwnShiftTeam(db: Pick<Awaited<ReturnType<typeof requireDb>>, "select">, input: OwnTeamHandoff) {
   const team = (await db.select({ organizationId: teams.organizationId }).from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
   if (!team || team.organizationId !== input.tenantId) throw new Error("Equipe fora da organização ativa.");
 }
@@ -917,7 +917,7 @@ export async function listOwnShiftHandoffCandidates(input: OwnTeamHandoff) {
 export async function requestOwnShiftHandoff(input: OwnTeamHandoff & { recipientUserId: number; note: string }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    await requireOwnShiftTeam(tx as typeof db, input);
+    await requireOwnShiftTeam(tx, input);
     const session = (await tx.select({ id: workShiftSessions.id, status: workShiftSessions.status, teamId: workShiftSessions.teamId })
       .from(workShiftSessions).where(and(eq(workShiftSessions.userId, input.actorUserId),
         inArray(workShiftSessions.status, ["active", "paused"])))
@@ -962,7 +962,7 @@ export async function listOwnPendingShiftHandoffs(input: OwnTeamHandoff) {
 export async function confirmOwnShiftHandoff(input: OwnTeamHandoff & { requestId: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    await requireOwnShiftTeam(tx as typeof db, input);
+    await requireOwnShiftTeam(tx, input);
     const request = (await tx.select({
       id: workShiftEvents.id, sessionId: workShiftEvents.sessionId, occurredAt: workShiftEvents.occurredAt,
       eventType: workShiftEvents.eventType, metadata: workShiftEvents.metadata,
