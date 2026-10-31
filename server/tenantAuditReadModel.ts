@@ -135,6 +135,7 @@ export async function listTenantOperationLogs(input: {
     .where(and(
       eq(incidentTenantScopes.incidentId, auditLogs.resourceId),
       eq(incidentTenantScopes.organizationId, input.organizationId),
+      scope.allTenant ? undefined : eq(teams.organizationId, input.organizationId),
       scopedTeamCondition(scope, incidents.assignedTeamId, teams.organizationalUnitId),
     )));
 
@@ -157,6 +158,7 @@ export async function listTenantOperationLogs(input: {
     .where(and(
       eq(incidentEvidence.id, auditLogs.resourceId),
       eq(incidentTenantScopes.organizationId, input.organizationId),
+      scope.allTenant ? undefined : eq(teams.organizationId, input.organizationId),
       scopedTeamCondition(scope, incidents.assignedTeamId, teams.organizationalUnitId),
     )));
 
@@ -172,6 +174,7 @@ export async function listTenantOperationLogs(input: {
     .leftJoin(teams, eq(teams.id, vehicles.teamId))
     .where(and(eq(vehicles.id, auditLogs.resourceId),
       eq(vehicleTenantScopes.organizationId, input.organizationId),
+      scope.allTenant ? undefined : eq(teams.organizationId, input.organizationId),
       scopedTeamCondition(scope, vehicles.teamId, teams.organizationalUnitId))));
 
   const resourceOwned = or(
@@ -203,6 +206,7 @@ export async function listTenantOperationLogs(input: {
     rows: rows.map(({ audit }) => ({
       audit: {
         ...audit,
+        actorUserId: null, // Do not expose global actor identities across organizational boundaries.
         beforeData: sanitizeTenantAuditSnapshot(audit.beforeData),
         afterData: sanitizeTenantAuditSnapshot(audit.afterData),
       },
