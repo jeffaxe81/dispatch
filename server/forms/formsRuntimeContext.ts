@@ -63,7 +63,7 @@ async function resolveIncidentCategory(user: User, tenantId: number, incidentId:
 }
 
 async function resolveIncidentStatus(user: User, tenantId: number, incidentId: string): Promise<string> {
-  if (!/^\\d+$/.test(incidentId)) throw new Error("Identificador da ocorrência inválido.");
+  if (!/^\d+$/.test(incidentId)) throw new Error("Identificador da ocorrência inválido.");
   const row = await getIncidentForTenant(tenantId, Number(incidentId));
   if (!row) throw new Error("Ocorrência não encontrada neste tenant.");
   assertCanReadIncident(user, row.incident);
