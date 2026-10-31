@@ -456,7 +456,7 @@ export const appRouter = router({
         return permanentlyDeleteIncident({ ...input, actorUserId: ctx.user.id });
       }),
     transition: operationalProcedure
-      .input(z.object({ incidentId: z.number().int().positive(), nextStatus: statusEnum, note: z.string().trim().min(3).max(1000) }))
+      .input(z.object({ incidentId: z.number().int().positive(), nextStatus: statusEnum, expectedStatus: statusEnum.optional(), note: z.string().trim().min(3).max(1000) }))
       .mutation(async ({ ctx, input }) => {
         const incident = requireIncident(await getIncidentById(input.incidentId));
         await assertPermission(ctx.user, input.nextStatus === "concluida" ? "occurrences.close" : "occurrences.transition");
