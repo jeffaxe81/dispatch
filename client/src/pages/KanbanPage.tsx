@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useRefreshSettings } from "@/hooks/useRefreshSettings";
 import { priorityClasses, priorityLabels, statusLabels } from "@/lib/operational";
-import { formatIncidentAge, prepareKanbanRows, type KanbanSortOrder } from "@/lib/kanbanQueue";
+import { formatIncidentAge, formatStageAge, prepareKanbanRows, stageSampleAverageMinutes, type KanbanSortOrder } from "@/lib/kanbanQueue";
 import { trpc } from "@/lib/trpc";
 import { GripVertical } from "lucide-react";
 import React, { useEffect, useState } from "react";
@@ -40,7 +40,7 @@ const allowed: Record<string, TargetStatus[]> = {
 
 /** Each column owns its page and server-filtered count; no global 100-item slice. */
 function KanbanColumn({
-  status, filters, interval, disabled, dragging, onDragStart, onDragEnd, onMove,
+  status, filters, interval, disabled, dragging, onDragStart, onDragEnd, onMove, bottleneckThresholdMinutes,
 }: {
   status: BoardStatus;
   filters: KanbanFilters;
@@ -50,6 +50,7 @@ function KanbanColumn({
   onDragStart: (incident: DraggedIncident) => void;
   onDragEnd: () => void;
   onMove: (incident: DraggedIncident, status: TargetStatus, source: "kanban" | "selector") => void;
+  bottleneckThresholdMinutes: number;
 }) {
   const [, navigate] = useLocation();
   const [page, setPage] = useState(1);
@@ -68,6 +69,8 @@ function KanbanColumn({
     query: filters.search,
     sort: filters.sortOrder,
   });
+  const stageSample = stageSampleAverageMinutes(cards, new Date());
+  const isBottleneck = stageSample.averageMinutes !== null && stageSample.averageMinutes > bottleneckThresholdMinutes;
 
   useEffect(() => {
     if (list.data && page > totalPages) setPage(totalPages);
@@ -89,6 +92,9 @@ function KanbanColumn({
         <Badge variant="secondary" className="bg-white text-slate-600">{total} no total</Badge>
       </div>
       <QueryState loading={list.isLoading} error={list.error} label={statusLabels[status]} />
+      {isBottleneck && <p role="note" className="mx-2 mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+        Gargalo na amostra: média {stageSample.averageMinutes} min; limite {bottleneckThresholdMinutes} min. {stageSample.observed}/{stageSample.total} cartões desta página possuem evento auditado.
+      </p>}
       <div className="space-y-3 p-2">
         {cards.map(({ incident, teamCode }) => (
           <article
@@ -104,6 +110,7 @@ function KanbanColumn({
                 <p className="truncate text-sm font-semibold text-slate-900">{incident.category}</p>
                 <p className="mt-1 truncate text-[11px] text-slate-500">{incident.code}</p>
                 <p className="mt-1 text-[11px] font-medium text-slate-600">{formatIncidentAge(incident.createdAt, new Date())}</p>
+                <p className="mt-1 text-[11px] font-medium text-sky-700">{formatStageAge(incident.stageEnteredAt, new Date())}</p>
               </button>
             </div>
             <div className="mt-3 flex flex-wrap gap-1">
@@ -155,6 +162,7 @@ function KanbanContent() {
   const [teamFilter, setTeamFilter] = useState("todas");
   const [openedFrom, setOpenedFrom] = useState("");
   const [openedThrough, setOpenedThrough] = useState("");
+  const [bottleneckThresholdMinutes, setBottleneckThresholdMinutes] = useState(120);
   const utils = trpc.useUtils();
   const refresh = useRefreshSettings();
   const teams = trpc.teams.list.useQuery(undefined, { retry: false });
@@ -213,9 +221,19 @@ function KanbanContent() {
           <p className="mb-1 text-xs font-medium text-slate-700">Ordenar cartões</p>
           <Select value={sortOrder} onValueChange={value => setSortOrder(value as KanbanSortOrder)}>
             <SelectTrigger aria-label="Ordenar ocorrências no Kanban" className="h-9"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="priority">Maior prioridade nesta página</SelectItem><SelectItem value="oldest">Mais antigas nesta página</SelectItem><SelectItem value="newest">Mais recentes nesta página</SelectItem></SelectContent>
+            <SelectContent><SelectItem value="priority">Maior prioridade nesta página</SelectItem><SelectItem value="oldest">Mais antigas nesta página</SelectItem><SelectItem value="newest">Mais recentes nesta página</SelectItem><SelectItem value="stage-oldest">Mais tempo na etapa nesta página</SelectItem></SelectContent>
           </Select>
         </div>
+        <label className="min-w-40 text-xs font-medium text-slate-700">Limite de gargalo (min)
+          <input type="number" aria-label="Limite de gargalo em minutos" min={1} max={10080} step={1}
+            value={bottleneckThresholdMinutes}
+            onChange={event => {
+              const value = Number(event.target.value);
+              if (Number.isSafeInteger(value) && value >= 1 && value <= 10080) setBottleneckThresholdMinutes(value);
+            }}
+            className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm font-normal"
+          />
+        </label>
         <div className="min-w-44">
           <p className="mb-1 text-xs font-medium text-slate-700">Equipe atribuída</p>
           <Select value={teamFilter} onValueChange={setTeamFilter}>
@@ -232,7 +250,7 @@ function KanbanContent() {
       </div>
       {dateRangeInvalid && <p role="alert" className="text-sm text-rose-700">O fim do período não pode ser anterior ao início.</p>}
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
-      <p className="text-xs text-slate-500">Cada contagem representa a etapa inteira conforme os filtros. A ordenação é aplicada somente aos cartões carregados em cada página de 20; não representa uma ordenação global de prioridades.</p>
+      <p className="text-xs text-slate-500">Cada contagem representa a etapa inteira conforme os filtros. A ordenação e a média de gargalo consideram apenas cartões carregados em cada página de 20. Tempos de etapa exigem eventos auditados; indisponibilidade não é substituída pela data de abertura.</p>
       <div className="overflow-x-auto pb-4">
         <div className="grid min-w-[1500px] grid-cols-7 gap-3">
           {boardColumns.map(status => (
@@ -246,6 +264,7 @@ function KanbanContent() {
               onDragStart={setDragging}
               onDragEnd={() => setDragging(null)}
               onMove={move}
+              bottleneckThresholdMinutes={bottleneckThresholdMinutes}
             />
           ))}
         </div>
