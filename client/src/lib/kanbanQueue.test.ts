@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ageMinutesSinceCreation, formatIncidentAge, prepareKanbanRows, type KanbanQueueFilters } from "./kanbanQueue";
+import { ageMinutesSinceCreation, formatIncidentAge, formatStageAge, stageAgeMinutes, stageSampleAverageMinutes, prepareKanbanRows, type KanbanQueueFilters } from "./kanbanQueue";
 
 const filters: KanbanQueueFilters = { priority: "todas", query: "", sort: "priority" };
 const rows = [
@@ -65,5 +65,48 @@ describe("Mês 2: fila Kanban - filtro, prioridade e tempo de abertura", () => {
       { incident: { id: 2, code: "BB", category: "B", priority: "alta", createdAt: "2026-10-31T11:00:00Z" } },
     ];
     expect(prepareKanbanRows(identical, filters).map(x => x.incident.id)).toEqual([2, 9]);
+  });
+});
+
+
+describe("AXED-F011/F012/F015: estágio baseado em eventos e amostra de gargalo", () => {
+  const now = new Date("2026-10-31T18:00:00.000Z");
+  const withStages = [
+    { incident: { id: 11, code: "A", category: "A", priority: "baixa", createdAt: "2026-10-29T00:00:00Z", stageEnteredAt: "2026-10-31T15:00:00Z" } },
+    { incident: { id: 12, code: "B", category: "B", priority: "alta", createdAt: "2026-10-28T00:00:00Z", stageEnteredAt: "2026-10-31T17:30:00Z" } },
+    { incident: { id: 13, code: "C", category: "C", priority: "critica", createdAt: "2026-10-27T00:00:00Z", stageEnteredAt: null } },
+  ];
+  it("mostra permanência na etapa, distinta do tempo de abertura", () => {
+    expect(stageAgeMinutes(withStages[0].incident.stageEnteredAt, now)).toBe(180);
+    expect(formatStageAge(withStages[0].incident.stageEnteredAt, now)).toBe("Na etapa há 3 h");
+    expect(formatIncidentAge(withStages[0].incident.createdAt, now)).not.toEqual("Na etapa há 3 h");
+  });
+  it("sem evento auditado não inventa idade da etapa usando abertura", () => {
+    expect(stageAgeMinutes(null, now)).toBeNull();
+    expect(formatStageAge(null, now)).toBe("Tempo na etapa indisponível");
+    expect(formatStageAge("invalid", now)).toBe("Tempo na etapa indisponível");
+    expect(stageAgeMinutes("2026-11-01T00:00:00Z", now)).toBeNull();
+  });
+  it("ordena maior permanência primeiro dentro da página e deixa desconhecidos ao fim", () => {
+    const ordered = prepareKanbanRows(withStages, { ...filters, sort: "stage-oldest" });
+    expect(ordered.map(row => row.incident.id)).toEqual([11, 12, 13]);
+    expect(withStages.map(row => row.incident.id)).toEqual([11, 12, 13]);
+  });
+  it("não mistura criticidade com permanência no estágio", () => {
+    const unordered = [withStages[2], withStages[1], withStages[0]];
+    expect(prepareKanbanRows(unordered, { ...filters, sort: "stage-oldest" }).map(row => row.incident.id)).toEqual([11, 12, 13]);
+    expect(prepareKanbanRows(unordered, { ...filters, sort: "priority" }).map(row => row.incident.id)).toEqual([13, 12, 11]);
+  });
+  it("calcula média apenas de eventos válidos da amostra e relata cobertura", () => {
+    expect(stageSampleAverageMinutes(withStages, now)).toEqual({ averageMinutes: 105, observed: 2, total: 3 });
+    expect(stageSampleAverageMinutes([{ incident: { stageEnteredAt: null } }], now)).toEqual({ averageMinutes: null, observed: 0, total: 1 });
+  });
+  it("preserva desempate estável sem eventos de etapa e não altera fonte original", () => {
+    const empty = [
+      { incident: { id: 3, code: "C", category: "C", priority: "alta", createdAt: "2026-10-30", stageEnteredAt: null } },
+      { incident: { id: 1, code: "A", category: "A", priority: "alta", createdAt: "2026-10-30", stageEnteredAt: null } },
+    ];
+    expect(prepareKanbanRows(empty, { ...filters, sort: "stage-oldest" }).map(row => row.incident.id)).toEqual([1, 3]);
+    expect(empty.map(row => row.incident.id)).toEqual([3, 1]);
   });
 });
