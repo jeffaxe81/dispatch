@@ -42,6 +42,7 @@ import {
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 import { requirePriorityChangeJustification } from "./priorityChangeJustification";
 import { assertCurrentIncidentTransition } from "./incidentTransitionConcurrency";
+import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import type { WorkShiftAction } from "../shared/workShifts";
@@ -895,6 +896,95 @@ export async function controlOwnWorkShift(input: {
     };
 
     return executeOwnWorkShiftAction(store, input);
+  });
+}
+
+type OwnTeamHandoff = { actorUserId: number; teamId: number; tenantId: number };
+
+async function requireOwnShiftTeam(db: Pick<Awaited<ReturnType<typeof requireDb>>, "select">, input: OwnTeamHandoff) {
+  const team = (await db.select({ organizationId: teams.organizationId }).from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
+  if (!team || team.organizationId !== input.tenantId) throw new Error("Equipe fora da organização ativa.");
+}
+
+export async function listOwnShiftHandoffCandidates(input: OwnTeamHandoff) {
+  const db = await requireDb();
+  await requireOwnShiftTeam(db, input);
+  return db.select({ id: users.id, name: users.name }).from(users).where(and(
+    eq(users.teamId, input.teamId), eq(users.active, true), ne(users.id, input.actorUserId),
+  )).orderBy(users.id).limit(100);
+}
+
+export async function requestOwnShiftHandoff(input: OwnTeamHandoff & { recipientUserId: number; note: string }) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    await requireOwnShiftTeam(tx, input);
+    const session = (await tx.select({ id: workShiftSessions.id, status: workShiftSessions.status, teamId: workShiftSessions.teamId })
+      .from(workShiftSessions).where(and(eq(workShiftSessions.userId, input.actorUserId),
+        inArray(workShiftSessions.status, ["active", "paused"])))
+      .orderBy(desc(workShiftSessions.startedAt)).limit(1).for("update"))[0] ?? null;
+    const recipient = (await tx.select({ id: users.id, teamId: users.teamId, active: users.active })
+      .from(users).where(eq(users.id, input.recipientUserId)).limit(1))[0] ?? null;
+    const note = assertShiftHandoffRequest({ actorUserId: input.actorUserId, teamId: input.teamId, recipient, session, note: input.note });
+    const [created] = await tx.insert(workShiftEvents).values({
+      sessionId: session!.id, eventType: "handoff_requested", occurredAt: new Date(),
+      actorUserId: input.actorUserId, reason: note,
+      metadata: { recipientUserId: input.recipientUserId, teamId: input.teamId },
+    }).$returningId();
+    if (!created) throw new Error("Não foi possível registrar a passagem.");
+    return { requestId: created.id, confirmed: false as const };
+  });
+}
+
+export async function listOwnPendingShiftHandoffs(input: OwnTeamHandoff) {
+  const db = await requireDb();
+  await requireOwnShiftTeam(db, input);
+  const since = new Date(Date.now() - HANDOFF_WINDOW_MS);
+  const requests = await db.select({
+    id: workShiftEvents.id, sessionId: workShiftEvents.sessionId, occurredAt: workShiftEvents.occurredAt,
+    senderUserId: workShiftEvents.actorUserId, note: workShiftEvents.reason,
+    metadata: workShiftEvents.metadata,
+  }).from(workShiftEvents).innerJoin(workShiftSessions, eq(workShiftEvents.sessionId, workShiftSessions.id))
+    .where(and(eq(workShiftSessions.teamId, input.teamId),
+      eq(workShiftEvents.eventType, "handoff_requested"), gte(workShiftEvents.occurredAt, since)))
+    .orderBy(desc(workShiftEvents.occurredAt)).limit(100);
+  const mine = requests.filter(row => Number(row.metadata?.recipientUserId) === input.actorUserId &&
+    Number(row.metadata?.teamId) === input.teamId);
+  if (!mine.length) return [];
+  const confirmations = await db.select({ metadata: workShiftEvents.metadata }).from(workShiftEvents)
+    .where(and(eq(workShiftEvents.eventType, "handoff_confirmed"),
+      inArray(workShiftEvents.sessionId, [...new Set(mine.map(row => row.sessionId))])));
+  const confirmedIds = new Set(confirmations.map(row => Number(row.metadata?.handoffRequestId)));
+  return mine.filter(row => !confirmedIds.has(row.id)).map(row => ({
+    requestId: row.id, senderUserId: row.senderUserId, occurredAt: row.occurredAt, note: row.note,
+  }));
+}
+
+export async function confirmOwnShiftHandoff(input: OwnTeamHandoff & { requestId: number }) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    await requireOwnShiftTeam(tx, input);
+    const request = (await tx.select({
+      id: workShiftEvents.id, sessionId: workShiftEvents.sessionId, occurredAt: workShiftEvents.occurredAt,
+      eventType: workShiftEvents.eventType, metadata: workShiftEvents.metadata,
+      sessionTeamId: workShiftSessions.teamId,
+    }).from(workShiftEvents).innerJoin(workShiftSessions, eq(workShiftEvents.sessionId, workShiftSessions.id))
+      .where(eq(workShiftEvents.id, input.requestId)).limit(1).for("update"))[0];
+    const confirmations = request ? await tx.select({ id: workShiftEvents.id }).from(workShiftEvents)
+      .where(and(eq(workShiftEvents.sessionId, request.sessionId), eq(workShiftEvents.eventType, "handoff_confirmed"),
+        sql`JSON_EXTRACT(${workShiftEvents.metadata}, '$.handoffRequestId') = ${input.requestId}`)).limit(1).for("update") : [];
+    const validatedRequest = request?.eventType === "handoff_requested" && request.sessionTeamId === input.teamId
+      ? { recipientUserId: Number(request.metadata?.recipientUserId), teamId: Number(request.metadata?.teamId), occurredAt: request.occurredAt }
+      : null;
+    assertShiftHandoffConfirmation({
+      actorUserId: input.actorUserId, teamId: input.teamId, request: validatedRequest,
+      now: new Date(), alreadyConfirmed: confirmations.length > 0,
+    });
+    const [saved] = await tx.insert(workShiftEvents).values({
+      sessionId: request!.sessionId, eventType: "handoff_confirmed", occurredAt: new Date(),
+      actorUserId: input.actorUserId, metadata: { handoffRequestId: input.requestId, teamId: input.teamId },
+    }).$returningId();
+    if (!saved) throw new Error("Falha ao registrar confirmação de plantão.");
+    return { requestId: input.requestId, confirmed: true as const, confirmedAt: new Date() };
   });
 }
 

@@ -54,6 +54,10 @@ import {
   getOwnCurrentWorkShift,
   listOwnWorkShiftHistory,
   controlOwnWorkShift,
+  listOwnShiftHandoffCandidates,
+  listOwnPendingShiftHandoffs,
+  requestOwnShiftHandoff,
+  confirmOwnShiftHandoff,
   getOwnProfilePhoto,
   getSolutionResetPreview,
   getSimulatedIntegrationMetrics,
@@ -154,6 +158,32 @@ export const appRouter = router({
     }),
   }),
   workShifts: router({
+    handoffCandidates: operationalProcedure.query(async ({ ctx }) => {
+      await assertPermission(ctx.user, "work_shifts.control");
+      const tenantId = await requireActiveTenant(ctx.user, ctx.req);
+      if (!ctx.user.teamId) throw new TRPCError({ code: "FORBIDDEN", message: "Equipe ativa obrigatória." });
+      return listOwnShiftHandoffCandidates({ actorUserId: ctx.user.id, teamId: ctx.user.teamId, tenantId });
+    }),
+    pendingHandoffs: operationalProcedure.query(async ({ ctx }) => {
+      await assertPermission(ctx.user, "work_shifts.control");
+      const tenantId = await requireActiveTenant(ctx.user, ctx.req);
+      if (!ctx.user.teamId) throw new TRPCError({ code: "FORBIDDEN", message: "Equipe ativa obrigatória." });
+      return listOwnPendingShiftHandoffs({ actorUserId: ctx.user.id, teamId: ctx.user.teamId, tenantId });
+    }),
+    requestHandoff: operationalProcedure.input(z.object({
+      recipientUserId: z.number().int().positive(), note: z.string().trim().min(10).max(1000),
+    })).mutation(async ({ ctx, input }) => {
+      await assertPermission(ctx.user, "work_shifts.control");
+      const tenantId = await requireActiveTenant(ctx.user, ctx.req);
+      if (!ctx.user.teamId) throw new TRPCError({ code: "FORBIDDEN", message: "Equipe ativa obrigatória." });
+      return requestOwnShiftHandoff({ actorUserId: ctx.user.id, teamId: ctx.user.teamId, tenantId, ...input });
+    }),
+    confirmHandoff: operationalProcedure.input(z.object({ requestId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      await assertPermission(ctx.user, "work_shifts.control");
+      const tenantId = await requireActiveTenant(ctx.user, ctx.req);
+      if (!ctx.user.teamId) throw new TRPCError({ code: "FORBIDDEN", message: "Equipe ativa obrigatória." });
+      return confirmOwnShiftHandoff({ actorUserId: ctx.user.id, teamId: ctx.user.teamId, tenantId, ...input });
+    }),
     current: operationalProcedure.query(async ({ ctx }) => {
       await assertPermission(ctx.user, "work_shifts.view");
       return getOwnCurrentWorkShift(ctx.user.id);
