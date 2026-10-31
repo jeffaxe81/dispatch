@@ -583,6 +583,38 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
   });
 }
 
+/**
+ * F046: explicit authenticated confirmation from a bounded offline draft.
+ * Lock and compare the expected status again: never auto-replay stale notes.
+ */
+export async function recordConfirmedOfflineIncidentNote(input: {
+  incidentId: number; actorUserId: number; expectedStatus: IncidentStatus; note: string;
+}) {
+  const db = await requireDb();
+  const note = input.note.trim();
+  if (note.length < 3 || note.length > 1000) throw new Error("Anotação de 3 a 1000 caracteres obrigatória.");
+  return db.transaction(async tx => {
+    const current = (await tx.select({
+      id: incidents.id, status: incidents.status, assignedTeamId: incidents.assignedTeamId,
+    }).from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
+    if (!current) throw new Error("Ocorrência não encontrada.");
+    if (current.status !== input.expectedStatus) {
+      throw new Error("Ocorrência alterada desde a última lista autorizada. Atualize antes de sincronizar.");
+    }
+    const [record] = await tx.insert(incidentEvents).values({
+      incidentId: input.incidentId, actorUserId: input.actorUserId, teamId: current.assignedTeamId,
+      eventType: "offline_note_confirmed", previousStatus: current.status, nextStatus: current.status,
+      message: note, metadata: { manualSync: true },
+    }).$returningId();
+    await tx.insert(auditLogs).values({
+      resourceType: "incident", resourceId: input.incidentId, actorUserId: input.actorUserId,
+      action: "offline_note_confirmed", beforeData: { status: current.status },
+      afterData: { status: current.status, eventId: record.id, manualSync: true },
+    });
+    return { eventId: record.id, synchronized: true as const };
+  });
+}
+
 export async function assignTeamToIncident(input: { incidentId: number; teamId: number; vehicleId?: number; actorUserId: number; estimatedArrivalMinutes?: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
