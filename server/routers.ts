@@ -99,6 +99,7 @@ import {
   recordTeamLocation,
   respondToAssignment,
   transitionIncident,
+  recordConfirmedOfflineIncidentNote,
   updateAccessRole,
   updateIncident,
   updateOperationalUser,
@@ -455,6 +456,16 @@ export const appRouter = router({
         await assertSuperAdministrator(ctx.user);
         return permanentlyDeleteIncident({ ...input, actorUserId: ctx.user.id });
       }),
+    confirmOfflineNote: operationalProcedure.input(z.object({
+      incidentId: z.number().int().positive(), expectedStatus: statusEnum,
+      note: z.string().trim().min(3).max(1000),
+    })).mutation(async ({ ctx, input }) => {
+      await assertPermission(ctx.user, "occurrences.transition");
+      const incident = requireIncident(await getIncidentById(input.incidentId));
+      assertCanReadIncident(ctx.user, incident);
+      if (incident.assignedTeamId) await assertTeamScope(ctx.user, incident.assignedTeamId, "occurrences.transition");
+      return recordConfirmedOfflineIncidentNote({ ...input, actorUserId: ctx.user.id });
+    }),
     transition: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), nextStatus: statusEnum, expectedStatus: statusEnum.optional(), note: z.string().trim().min(3).max(1000) }))
       .mutation(async ({ ctx, input }) => {
