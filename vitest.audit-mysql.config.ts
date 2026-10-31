@@ -6,7 +6,7 @@ export default defineConfig({
   root,
   test: {
     environment: "node",
-    include: ["server/tenantAudit.mysql-homologation.ts"],
+    include: ["server/tenantAudit.audit-mysql-homologation.ts"],
     fileParallelism: false,
     minWorkers: 1,
     maxWorkers: 1,
