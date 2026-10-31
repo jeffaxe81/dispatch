@@ -40,7 +40,7 @@ beforeAll(async () => {
   teamB = await insert("INSERT INTO teams (code, name, agency, organization_id) VALUES (?, ?, ?, ?)",
     ["HANDOFF-B", "Equipe B", "Local", orgB]);
   async function user(code: string, teamId: number) {
-    return insert("INSERT INTO users (openId, name, team_id, active) VALUES (?, ?, ?, true)",
+    return insert("INSERT INTO users (openId, name, teamId, active) VALUES (?, ?, ?, true)",
       ["handoff-" + code, "Usuário " + code, teamId]);
   }
   actorA = await user("actor-a", teamA);
