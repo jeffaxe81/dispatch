@@ -22,6 +22,7 @@ import {
   updateVehicleStatus,
 } from "./db";
 import { rankTeamCandidates } from "./gisService";
+import { listTenantOperationLogs } from "./tenantAuditReadModel";
 import { OsrmRouteProvider } from "./routingProvider";
 import { appRouter } from "./routers";
 import {
@@ -99,6 +100,20 @@ const tenantOverrides = router({
         return saveDashboardFilter({ userId: ctx.user.id, ...input });
       }),
     }),
+  }),
+  audit: router({
+    operations: operationalProcedure
+      .input(paginationInput.extend({
+        resourceType: z.string().trim().min(2).max(80).optional(),
+        search: z.string().trim().max(120).optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        await assertPermission(ctx.user, "audit.view");
+        const organizationId = await tenantFor(ctx);
+        return listTenantOperationLogs({
+          ...input, organizationId, actorUserId: ctx.user.id,
+        });
+      }),
   }),
   incidents: router({
     list: operationalProcedure
