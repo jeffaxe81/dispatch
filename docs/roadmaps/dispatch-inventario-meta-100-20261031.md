@@ -57,3 +57,10 @@ Esses itens podem se sobrepor às frentes R07 e R13 e **não** devem ser somados
 3. Não decompor artificialmente uma mesma capacidade em dezenas de nomes apenas para atingir 100.
 4. Para chegar a 100, é necessária **expansão aprovada do roadmap** com funcionalidades distintas e critérios de aceite.
 5. Produção, migrations, notificações externas e dados reais permanecem fora deste ciclo.
+
+
+## Desdobramento solicitado em 31/10/2026
+
+A pedido do responsável pelo projeto, as frentes listadas foram desdobradas em **100 capacidades candidatas**, sem ampliar o escopo macro: [consultar matriz AXED-F001 a AXED-F100](./dispatch-100-capacidades-desdobradas-20261031.md).
+
+**Atenção:** a matriz define itens para refinamento e conferência de lacunas, não confirma que existam 100 funcionalidades novas não implementadas. Este inventário continua correto: o roadmap original tinha 22 frentes macro; as novas 100 entradas são uma decomposição dessas frentes. Se o refinamento exigir nova frente, solicitar autorização antes de incluí-la.
