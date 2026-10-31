@@ -71,6 +71,8 @@ describe("AXED-F091: minimização, busca, paginação e autorização no servid
     expect(source).toContain("eq(incidentTenantScopes.organizationId, input.organizationId)");
     expect(source).toContain("eq(vehicleTenantScopes.organizationId, input.organizationId)");
     expect(source).toContain("eq(teams.organizationId, input.organizationId)");
+    expect(source).toContain("scope.allTenant ? undefined : eq(teams.organizationId, input.organizationId)");
+    expect(source).toContain("actorUserId: null");
     expect(source).toContain("eq(incidentAssignments.id, auditLogs.resourceId)");
     expect(source).toContain("eq(incidentEvidence.id, auditLogs.resourceId)");
     expect(source).toContain("eq(auditLogs.resourceType, \"incident\")");
