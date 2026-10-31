@@ -8,12 +8,13 @@ type FormBinding = { formId: number; formVersionId: number; contextType: string;
  */
 export function mergeAuthorizedIncidentCategoryBindings<T extends FormBinding>(
   incidentId: string,
+  trustedCategory: string | undefined,
   direct: readonly T[],
   category: readonly T[],
 ): Array<T & { inheritedFromCategory: boolean }> {
   if (!/^\d+$/.test(incidentId) || Number(incidentId) <= 0)
     throw new Error("Identificador da ocorrência inválido.");
-  const directForms = new Set(direct.map(row => row.formId));
+  const directForms = new Set(direct.filter(row => row.contextType === "incident" && row.contextId === incidentId).map(row => row.formId));
   const result: Array<T & { inheritedFromCategory: boolean }> = [];
   const seenForms = new Set<number>();
   for (const row of direct) {
@@ -23,7 +24,7 @@ export function mergeAuthorizedIncidentCategoryBindings<T extends FormBinding>(
     result.push({ ...row, inheritedFromCategory: false });
   }
   for (const row of category) {
-    if (row.contextType !== "incident_category" || !row.contextId.trim()) continue;
+    if (!trustedCategory || row.contextType !== "incident_category" || row.contextId !== trustedCategory) continue;
     if (directForms.has(row.formId) || seenForms.has(row.formId)) continue;
     seenForms.add(row.formId);
     result.push({ ...row, contextType: "incident", contextId: incidentId, inheritedFromCategory: true });
