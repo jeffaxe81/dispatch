@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
+import { clearDispatchDataOnLogout } from "@/lib/dispatchSensitiveStorage";
 import { useCallback, useEffect, useMemo } from "react";
 
 type UseAuthOptions = {
@@ -34,19 +35,13 @@ export function useAuth(options?: UseAuthOptions) {
       }
       throw error;
     } finally {
-      try {
-        sessionStorage.removeItem("axe-dispatch-local-user");
-      } catch {}
+      if (typeof window !== "undefined") clearDispatchDataOnLogout(window.localStorage, window.sessionStorage);
       utils.auth.me.setData(undefined, null);
       await utils.auth.me.invalidate();
     }
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
-    localStorage.setItem(
-      "axe-dispatch-local-user",
-      JSON.stringify(meQuery.data)
-    );
     return {
       user: meQuery.data ?? null,
       loading: meQuery.isLoading || logoutMutation.isPending,
@@ -60,6 +55,13 @@ export function useAuth(options?: UseAuthOptions) {
     logoutMutation.error,
     logoutMutation.isPending,
   ]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try { window.localStorage.removeItem("axe-dispatch-local-user"); } catch {}
+      try { window.sessionStorage.removeItem("axe-dispatch-local-user"); } catch {}
+    }
+  }, []);
 
   useEffect(() => {
     if (!redirectOnUnauthenticated) return;
