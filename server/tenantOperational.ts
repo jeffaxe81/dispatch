@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, like, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, like, lt, lte, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { incidentTenantScopes, vehicleTenantScopes } from "../drizzle/tenantScopeSchema";
 import { incidents, organizations, teams, users, vehicles, type User } from "../drizzle/schema";
@@ -91,6 +91,8 @@ export async function listIncidentsForTenant(tenantId: number, input: IncidentLi
   if (input.status) filters.push(eq(incidents.status, input.status));
   if (input.priority) filters.push(eq(incidents.priority, input.priority));
   if (input.teamId) filters.push(eq(incidents.assignedTeamId, input.teamId));
+  if (input.openedFrom) filters.push(gte(incidents.createdAt, input.openedFrom));
+  if (input.openedBefore) filters.push(lt(incidents.createdAt, input.openedBefore));
   const where = and(...filters);
   const [rows, totalRows] = await Promise.all([
     db.select({ incident: incidents, teamCode: teams.code, teamName: teams.name, vehiclePrefix: vehicles.prefix })
