@@ -41,6 +41,7 @@ import {
 } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 import { requirePriorityChangeJustification } from "./priorityChangeJustification";
+import { assertCurrentIncidentTransition } from "./incidentTransitionConcurrency";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import type { WorkShiftAction } from "../shared/workShifts";
@@ -542,11 +543,12 @@ export async function listOperationLogs(input: { page: number; pageSize: number;
   return { rows, total: Number(totalRows[0]?.total ?? 0) };
 }
 
-export async function transitionIncident(input: { incidentId: number; actorUserId: number; nextStatus: IncidentStatus; note: string }) {
+export async function transitionIncident(input: { incidentId: number; actorUserId: number; nextStatus: IncidentStatus; note: string; expectedStatus?: IncidentStatus }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
+    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
+    assertCurrentIncidentTransition(before.status, input.nextStatus, input.expectedStatus);
     const now = new Date();
     const patch: Partial<typeof incidents.$inferInsert> = { status: input.nextStatus, updatedAt: now };
     if (input.nextStatus === "aceita") patch.acceptedAt = now;

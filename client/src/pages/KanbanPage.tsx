@@ -234,7 +234,10 @@ function KanbanContent() {
       void utils.dashboard.summary.invalidate();
       setError("");
     },
-    onError: mutationError => setError(mutationError.message),
+    onError: mutationError => {
+      setError(mutationError.message);
+      void utils.incidents.list.invalidate();
+    },
   });
   const allowedRole = ["despachador", "supervisor", "administrador"].includes(user?.operationalRole ?? "");
 
@@ -244,7 +247,7 @@ function KanbanContent() {
       return;
     }
     transition.mutate({
-      incidentId: incident.id, nextStatus,
+      incidentId: incident.id, nextStatus, expectedStatus: incident.status as TargetStatus,
       note: source === "kanban" ? "Situação atualizada pelo quadro Kanban." : "Situação atualizada pelo seletor operacional.",
     });
   };
