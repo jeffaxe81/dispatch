@@ -6,6 +6,7 @@ export type FormsContextPorts = {
   resolveTenantId(user: { userId: number; teamId: number | null; selectedTenantId?: number | null }): Promise<number>;
   hasPermission(user: User, permission: FormPermission): Promise<boolean>;
   assertIncidentScope(user: User, tenantId: number, incidentId: string): Promise<void>;
+  resolveIncidentCategory?(user: User, tenantId: number, incidentId: string): Promise<string>;
   assertFieldActivityScope(user: User, tenantId: number, fieldActivityId: string): Promise<void>;
   assertSubmissionScope(user: User, tenantId: number, submissionId: number): Promise<void>;
   createService(tenantId: number): Record<string, (...args: any[]) => any>;
@@ -26,6 +27,7 @@ export async function createFormsRequestContext(
     service,
     hasPermission: (permission: FormPermission) => ports.hasPermission(user, permission),
     assertIncidentScope: (incidentId: string) => ports.assertIncidentScope(user, tenantId, incidentId),
+    resolveIncidentCategory: ports.resolveIncidentCategory ? (incidentId: string) => ports.resolveIncidentCategory!(user, tenantId, incidentId) : undefined,
     assertFieldActivityScope: (fieldActivityId: string) => ports.assertFieldActivityScope(user, tenantId, fieldActivityId),
     assertSubmissionScope: (submissionId: number) => ports.assertSubmissionScope(user, tenantId, submissionId),
   };
