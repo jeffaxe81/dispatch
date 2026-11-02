@@ -57,6 +57,7 @@ function KanbanColumn({
   const [page, setPage] = useState(1);
   const list = trpc.incidents.list.useQuery({
     status, page, pageSize: COLUMN_PAGE_SIZE,
+    sortOrder: filters.sortOrder,
     priority: filters.priority === "todas" ? undefined : filters.priority,
     search: filters.search.trim() || undefined,
     teamId: filters.teamId,

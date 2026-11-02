@@ -6,6 +6,7 @@ import type { IncidentPriority, IncidentStatus } from "../shared/operations";
 import { ENV } from "./_core/env";
 import { getAccessSnapshot } from "./accessControl";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
+import { incidentListOrder } from "./incidentListOrder";
 import { createIncident, createTeam, createVehicle, getDb, type IncidentListInput, type OperationalReportInput } from "./db";
 
 type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
@@ -102,7 +103,7 @@ export async function listIncidentsForTenant(tenantId: number, input: IncidentLi
       .leftJoin(teams, eq(incidents.assignedTeamId, teams.id))
       .leftJoin(vehicles, eq(incidents.assignedVehicleId, vehicles.id))
       .where(where)
-      .orderBy(desc(incidents.createdAt))
+      .orderBy(...incidentListOrder(input.sortOrder))
       .limit(input.pageSize)
       .offset((input.page - 1) * input.pageSize),
     db.select({ total: count() }).from(incidents).innerJoin(incidentTenantScopes, eq(incidentTenantScopes.incidentId, incidents.id)).where(where),

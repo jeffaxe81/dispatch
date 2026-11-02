@@ -44,6 +44,7 @@ import { requirePriorityChangeJustification } from "./priorityChangeJustificatio
 import { assertCurrentIncidentTransition } from "./incidentTransitionConcurrency";
 import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
+import { incidentListOrder } from "./incidentListOrder";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import type { WorkShiftAction } from "../shared/workShifts";
 import { ENV } from "./_core/env";
@@ -120,6 +121,7 @@ export type IncidentListInput = {
   search?: string;
   status?: IncidentStatus;
   priority?: IncidentPriority;
+  sortOrder?: "priority" | "oldest" | "newest" | "stage-oldest";
   teamId?: number;
   openedFrom?: Date;
   openedBefore?: Date;
@@ -164,7 +166,7 @@ export async function listIncidents(input: IncidentListInput) {
       .leftJoin(teams, eq(incidents.assignedTeamId, teams.id))
       .leftJoin(vehicles, eq(incidents.assignedVehicleId, vehicles.id))
       .where(where)
-      .orderBy(desc(incidents.createdAt))
+      .orderBy(...incidentListOrder(input.sortOrder))
       .limit(input.pageSize)
       .offset((input.page - 1) * input.pageSize),
     db.select({ total: count() }).from(incidents).where(where),
