@@ -15,6 +15,7 @@ vi.mock("@/hooks/useRefreshSettings", () => ({ useRefreshSettings: () => ({ inte
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ incidents: { list: { invalidate: mocks.invalidate }, timeline: { invalidate: mocks.invalidate }, evidence: { list: { invalidate: mocks.invalidate } } }, dashboard: { summary: { invalidate: mocks.invalidate } } }),
+    tenant: { selection: { useQuery: () => ({ data: { activeOrganizationId: 2 }, isLoading: false }) } },
     access: { me: { useQuery: () => ({ data: { permissions: mocks.permissions }, isLoading: false }) } },
     incidents: {
       list: { useQuery: () => ({ data: { rows: mocks.rows.length ? mocks.rows : defaultRows }, isLoading: false, isFetching: false, error: null, refetch: mocks.refetch }) },
