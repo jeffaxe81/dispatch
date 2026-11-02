@@ -124,3 +124,35 @@ describe("AXED-F046 — falha de rede sem replay automático", () => {
     expect(screen.getByRole("button", {name:/Recusar/i}).hasAttribute("disabled")).toBe(true);
   });
 });
+
+
+describe("AXED-F046 — revalidação obrigatória após reconexão", () => {
+  it("mantém ações bloqueadas até o servidor confirmar a lista atual", async () => {
+    let resolveRefetch!: (value: any) => void;
+    mocks.refetch.mockImplementationOnce(() => new Promise(resolve => {resolveRefetch = resolve;}));
+    const view = render(<AgentPage />);
+    mocks.isOnline = false;
+    view.rerender(<AgentPage />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Sem conexão/);
+    mocks.isOnline = true;
+    view.rerender(<AgentPage />);
+    await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/Conexão restabelecida/)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(/Atualização operacional/i), {target:{value:"Reavaliação de campo"}});
+    expect(screen.getByRole("button", {name:/Concluir/i}).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", {name:/Guardar rascunho/i})).toBeTruthy();
+    resolveRefetch({data:{rows:defaultRows},error:null});
+    await waitFor(() => expect(screen.queryByText(/Conexão restabelecida/)).toBeNull());
+    expect(screen.getByRole("button", {name:/Concluir/i}).hasAttribute("disabled")).toBe(false);
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+  it("permanece bloqueado após falha e oferece revalidação manual", async () => {
+    mocks.refetch.mockResolvedValueOnce({data:undefined,error:new Error("offline")});
+    const view=render(<AgentPage />);
+    mocks.isOnline=false; view.rerender(<AgentPage />);
+    mocks.isOnline=true; view.rerender(<AgentPage />);
+    await waitFor(() => expect(screen.getByText(/Não foi possível atualizar as atribuições/)).toBeTruthy());
+    expect(screen.getByRole("button", {name:/Revalidar atribuições/i})).toBeTruthy();
+    expect(screen.getByRole("button", {name:/Concluir/i}).hasAttribute("disabled")).toBe(true);
+  });
+});
