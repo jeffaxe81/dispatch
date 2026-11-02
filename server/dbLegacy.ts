@@ -926,7 +926,9 @@ export async function requestOwnShiftHandoff(input: OwnTeamHandoff & { recipient
       .from(users).where(eq(users.id, input.recipientUserId)).limit(1))[0] ?? null;
     const note = assertShiftHandoffRequest({ actorUserId: input.actorUserId, teamId: input.teamId, recipient, session, note: input.note });
     const [created] = await tx.insert(workShiftEvents).values({
-      sessionId: session!.id, eventType: "handoff_requested", occurredAt: new Date(),
+      sessionId: session!.id, eventType: "handoff_requested",
+      // MySQL TIMESTAMP(0) rounds fractional seconds; truncate to prevent future-dated requests.
+      occurredAt: new Date(Math.floor(Date.now() / 1000) * 1000),
       actorUserId: input.actorUserId, reason: note,
       metadata: { recipientUserId: input.recipientUserId, teamId: input.teamId },
     }).$returningId();
