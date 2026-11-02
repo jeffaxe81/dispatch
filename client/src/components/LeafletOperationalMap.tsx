@@ -47,6 +47,9 @@ const priorityPathOptions: Record<string, { color: string; fillColor: string }> 
 };
 
 function asLatLng(point: GeoPoint): LatLngExpression | null {
+  if (point.latitude === null || point.longitude === null ||
+      (typeof point.latitude === "string" && !point.latitude.trim()) ||
+      (typeof point.longitude === "string" && !point.longitude.trim())) return null;
   const latitude = Number(point.latitude);
   const longitude = Number(point.longitude);
   if (

@@ -93,8 +93,9 @@ export function OperationalMap({ incidents, teams, settings, route }: { incident
     teams.forEach(team => {
       const latitude = Number(team.lastLatitude);
       const longitude = Number(team.lastLongitude);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
       const freshness = evaluateTeamPositionFreshness(team, new Date(), staleAfterMinutes);
+      // F060: never render a missing/invalid team location as phantom (0,0).
+      if (freshness === "unavailable" || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
       markers.push(
         new google.maps.marker.AdvancedMarkerElement({
           map,
@@ -142,12 +143,13 @@ export function OperationalMap({ incidents, teams, settings, route }: { incident
             const value = Number(event.target.value);
             if (Number.isSafeInteger(value) && value >= 1 && value <= 1440) setStaleAfterMinutes(value);
           }} />
-        <p className="mt-1">{freshnessSummary.stale} posição(ões) desatualizada(s); {freshnessSummary.unknown} sem horário confiável.</p>
+        <p className="mt-1">{freshnessSummary.stale} posição(ões) desatualizada(s); {freshnessSummary.unknown} sem horário confiável; {freshnessSummary.unavailable} sem localização disponível.</p>
+        {freshnessSummary.unavailable > 0 && <p role="note" className="mt-1 text-amber-800">Equipes sem coordenadas não são exibidas no mapa nem consideradas posicionadas.</p>}
         {freshnessSummary.stale > 0 && <p role="alert" className="mt-1 font-semibold text-amber-800">Atenção: não use posições antigas para decisões de despacho sem confirmação.</p>}
       </div>
       <div className="pointer-events-none absolute left-4 top-4 rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm backdrop-blur">
         <p className="font-semibold text-slate-900">Mapa operacional</p>
-        <p>{incidents.length} ocorrência(s) · {teams.filter(team => team.lastLatitude && team.lastLongitude).length} equipe(s) posicionada(s)</p>
+        <p>{incidents.length} ocorrência(s) · {(freshnessSummary.current + freshnessSummary.stale + freshnessSummary.unknown)} equipe(s) posicionada(s)</p>
       </div>
       <div className="pointer-events-none absolute bottom-4 left-4 flex flex-wrap gap-2 rounded-xl border border-white/70 bg-white/90 p-2 text-[11px] text-slate-700 shadow-sm backdrop-blur">
         {Object.entries(priorityColor).map(([priority, color]) => (
