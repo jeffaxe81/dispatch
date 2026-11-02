@@ -20,6 +20,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { getSimulatedIntegrationsOverview } from "./integrations";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { requireActiveTenant } from "./tenantOperational";
+import { listOwnDeniedPermissions } from "./deniedPermissionAudit";
 import {
   assignTeamToIncident,
   addIncidentEvidence,
@@ -617,6 +618,7 @@ export const appRouter = router({
   }),
   access: router({
     me: operationalProcedure.query(({ ctx }) => getEffectiveAccess(ctx.user)),
+    myDeniedPermissions: operationalProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(20) })).query(({ ctx, input }) => listOwnDeniedPermissions(ctx.user.id, input.limit)),
     bootstrapState: operationalProcedure.query(async ({ ctx }) => {
       const [organizationExists, access] = await Promise.all([
         hasAnyOrganization(),
