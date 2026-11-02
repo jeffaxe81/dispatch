@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 
-export function ShiftHandoffPanel() {
+export function ShiftHandoffPanel({ online = true }: { online?: boolean }) {
   const [recipient, setRecipient] = useState("");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
@@ -36,8 +36,8 @@ export function ShiftHandoffPanel() {
           className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" value={note} onChange={e => setNote(e.target.value)}/>
       </label>
       <button type="button" className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-        disabled={!recipient || note.trim().length < 10 || request.isPending}
-        onClick={() => request.mutate({ recipientUserId: Number(recipient), note: note.trim() })}>
+        disabled={!online || !recipient || note.trim().length < 10 || request.isPending}
+        onClick={() => { if (online) request.mutate({ recipientUserId: Number(recipient), note: note.trim() }); }}>
         Solicitar passagem
       </button>
     </div>}
@@ -47,10 +47,11 @@ export function ShiftHandoffPanel() {
         <div>Solicitação #{row.requestId}, usuário #{row.senderUserId ?? "—"} · {new Date(row.occurredAt).toLocaleString("pt-BR")}
           <p className="text-xs text-slate-600">{row.note}</p>
         </div>
-        <button type="button" disabled={confirm.isPending} onClick={() => confirm.mutate({requestId: row.requestId})}
+        <button type="button" disabled={!online || confirm.isPending} onClick={() => { if (online) confirm.mutate({requestId: row.requestId}); }}
           className="rounded border border-sky-700 px-3 py-2 text-xs text-sky-800 disabled:opacity-50">Confirmar</button>
       </div>)}
     </div>}
+    {!online && <p role="status" className="mt-2 text-xs text-amber-800">Conexão indisponível: passagem e confirmação bloqueadas até restabelecimento.</p>}
     {message && <p role="status" className="mt-2 text-sm text-sky-800">{message}</p>}
     {(request.error || confirm.error) && <p role="alert" className="mt-2 text-sm text-rose-700">{request.error?.message ?? confirm.error?.message}</p>}
   </section>;
