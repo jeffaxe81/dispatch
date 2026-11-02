@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  loadAgentNoteDraft, loadLastAuthorizedAssignments,
+  loadAgentNoteDraft, loadAuthorizedAssignmentSnapshot,
   saveAgentNoteDraft, saveLastAuthorizedAssignments,
   type AgentOfflineAssignment, type AgentOfflineScope,
 } from "@/lib/agentOffline";
@@ -20,7 +20,12 @@ type Props = {
  * A snapshot is NOT authority to operate on an incident when offline.
  */
 export function AgentOfflinePanel({ scope, assignments, canSave, activeIncidentId, note, onRestoreNote }: Props) {
-  const [snapshot, setSnapshot] = useState<AgentOfflineAssignment[] | null>(null);
+  const [snapshot, setSnapshot] = useState<{ rows: AgentOfflineAssignment[]; expiresAt: number } | null>(null);
+  useEffect(() => {
+    if (!snapshot) return;
+    const handle = window.setTimeout(() => setSnapshot(null), Math.max(0, snapshot.expiresAt - Date.now()));
+    return () => window.clearTimeout(handle);
+  }, [snapshot?.expiresAt]);
   const [message, setMessage] = useState("");
   const local = () => window.sessionStorage;
   const saveList = () => {
@@ -34,9 +39,9 @@ export function AgentOfflinePanel({ scope, assignments, canSave, activeIncidentI
   };
   const openList = () => {
     try {
-      const saved = loadLastAuthorizedAssignments(local(), scope);
+      const saved = loadAuthorizedAssignmentSnapshot(local(), scope);
       setSnapshot(saved);
-      setMessage(saved.length ? "Cópia temporária para consulta, não autoriza operações offline." : "Sem cópia válida ou prazo de 15 minutos expirado.");
+      setMessage(saved?.rows.length ? "Cópia temporária para consulta, não autoriza operações offline." : "Sem cópia válida ou prazo de 15 minutos expirado.");
     } catch {
       setSnapshot([]);
       setMessage("Não foi possível ler o resumo local.");
@@ -80,9 +85,9 @@ export function AgentOfflinePanel({ scope, assignments, canSave, activeIncidentI
         </> : null}
       </div>
       {message && <p role="status" className="text-xs text-sky-800">{message}</p>}
-      {snapshot && <div className="space-y-1" aria-label="Resumo temporário autorizado">
-        {snapshot.map(item => <p key={item.id} className="text-xs text-slate-700">{item.code} — {item.category} — {item.status}</p>)}
-        {!snapshot.length && <p className="text-xs text-slate-500">Nenhuma ocorrência armazenada ou cache expirado.</p>}
+      {snapshot && Date.now() < snapshot.expiresAt && <div className="space-y-1" aria-label="Resumo temporário autorizado">
+        {snapshot.rows.map(item => <p key={item.id} className="text-xs text-slate-700">{item.code} — {item.category} — {item.status}</p>)}
+        {!snapshot.rows.length && <p className="text-xs text-slate-500">Nenhuma ocorrência armazenada ou cache expirado.</p>}
       </div>}
     </CardContent>
   </Card>;
