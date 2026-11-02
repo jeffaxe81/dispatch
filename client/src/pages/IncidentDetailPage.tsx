@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useRefreshSettings } from "@/hooks/useRefreshSettings";
 import { canViewEmbeddedApplications } from "@/lib/embeddedAppAccess";
+import { parseDispatchCoordinates } from "@/lib/dispatchTeamPosition";
 import { describeIncidentStatusTransition } from "@/lib/incidentTimeline";
 import { formatDateTime, priorityClasses, priorityLabels, statusClasses, statusLabels } from "@/lib/operational";
 import { trpc } from "@/lib/trpc";
@@ -61,16 +62,18 @@ function IncidentDetailContent() {
   const teams = trpc.teams.list.useQuery(undefined, { enabled: assignOpen });
   const mapSettings = trpc.settings.operationalMap.useQuery(undefined, { enabled: assignOpen });
   const incident = detail.data?.incident;
-  const availablePositionedTeams = (teams.data ?? [])
-    .filter(row => row.team.status === "disponivel")
-    .filter(row => Number.isFinite(Number(row.team.lastLatitude)) && Number.isFinite(Number(row.team.lastLongitude)))
-    .map(row => ({
+  const availablePositionedTeams = (teams.data ?? []).flatMap(row => {
+    if (row.team.status !== "disponivel") return [];
+    const position = parseDispatchCoordinates(row.team.lastLatitude, row.team.lastLongitude);
+    if (!position) return [];
+    return [{
       teamId: row.team.id,
       code: row.team.code,
       name: row.team.name,
       status: row.team.status,
-      position: { latitude: Number(row.team.lastLatitude), longitude: Number(row.team.lastLongitude) },
-    }));
+      position,
+    }];
+  });
   const rankedTeams = trpc.gis.rankCandidates.useQuery({
     incident: { latitude: Number(incident?.latitude ?? 0), longitude: Number(incident?.longitude ?? 0) },
     candidates: availablePositionedTeams,
