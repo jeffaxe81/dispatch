@@ -43,7 +43,7 @@ export function AgentOfflinePanel({ scope, assignments, canSave, activeIncidentI
       setSnapshot(saved);
       setMessage(saved?.rows.length ? "Cópia temporária para consulta, não autoriza operações offline." : "Sem cópia válida ou prazo de 15 minutos expirado.");
     } catch {
-      setSnapshot([]);
+      setSnapshot(null);
       setMessage("Não foi possível ler o resumo local.");
     }
   };
