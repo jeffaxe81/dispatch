@@ -36,7 +36,7 @@ function write<T>(storage: StoragePort, key: string, scope: AgentOfflineScope, p
   const value: Envelope<T> = { version: 1, scope, createdAt: now, expiresAt: now + AGENT_OFFLINE_TTL_MS, payload };
   storage.setItem(key, JSON.stringify(value));
 }
-function read<T>(storage: StoragePort, key: string, scope: AgentOfflineScope, validator: (value: unknown) => value is T, now: number): T | null {
+function read<T>(storage: StoragePort, key: string, scope: AgentOfflineScope, validator: (value: unknown) => value is T, now: number): Envelope<T> | null {
   let raw: string | null = null;
   try {
     raw = storage.getItem(key);
@@ -50,7 +50,7 @@ function read<T>(storage: StoragePort, key: string, scope: AgentOfflineScope, va
       typeof e.createdAt !== "number" || typeof e.expiresAt !== "number" ||
       !Number.isFinite(now) || e.createdAt > now || e.expiresAt !== e.createdAt + AGENT_OFFLINE_TTL_MS ||
       now >= e.expiresAt || !validator(e.payload)) throw new Error("Cache expirado ou não autorizado.");
-    return e.payload;
+    return e as Envelope<T>;
   } catch {
     try { storage.removeItem(key); } catch { /* storage unavailable */ }
     return null;
@@ -68,7 +68,12 @@ export function saveLastAuthorizedAssignments(storage: StoragePort, scope: Agent
   write(storage, agentOfflineKey(scope, "list"), scope, safe, now);
 }
 export function loadLastAuthorizedAssignments(storage: StoragePort, scope: AgentOfflineScope, now = Date.now()): AgentOfflineAssignment[] {
-  return read(storage, agentOfflineKey(scope, "list"), scope, validList, now) ?? [];
+  return loadAuthorizedAssignmentSnapshot(storage, scope, now)?.rows ?? [];
+}
+/** Return the original deadline so the UI can erase already-open snapshots on expiry. */
+export function loadAuthorizedAssignmentSnapshot(storage: StoragePort, scope: AgentOfflineScope, now = Date.now()): { rows: AgentOfflineAssignment[]; expiresAt: number } | null {
+  const envelope = read(storage, agentOfflineKey(scope, "list"), scope, validList, now);
+  return envelope ? { rows: envelope.payload, expiresAt: envelope.expiresAt } : null;
 }
 /** F042: manual in-tab note draft, never a server event or a queued mutation. */
 export function saveAgentNoteDraft(storage: StoragePort, scope: AgentOfflineScope, incidentId: number, note: string, now = Date.now()) {
@@ -80,7 +85,7 @@ function validNote(value: unknown): value is string {
   return typeof value === "string" && value.trim().length >= 3 && value.length <= 1000;
 }
 export function loadAgentNoteDraft(storage: StoragePort, scope: AgentOfflineScope, incidentId: number, now = Date.now()) {
-  return read(storage, agentOfflineKey(scope, "note", incidentId), scope, validNote, now);
+  return read(storage, agentOfflineKey(scope, "note", incidentId), scope, validNote, now)?.payload ?? null;
 }
 export function deleteAgentNoteDraft(storage: StoragePort, scope: AgentOfflineScope, incidentId: number) {
   storage.removeItem(agentOfflineKey(scope, "note", incidentId));
