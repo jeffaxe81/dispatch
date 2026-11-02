@@ -110,7 +110,8 @@ describe("AXED-F046 — falha de rede sem replay automático", () => {
     mocks.isOnline = false;
     render(<AgentPage />);
     expect(screen.getByRole("alert").textContent).toMatch(/Sem conexão/);
-    expect(screen.getByRole("button", {name:/Iniciar/i}).hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByPlaceholderText(/Atualização operacional/i), {target: {value: "Atendimento confirmado em campo"}});
+    expect(screen.getByRole("button", {name:/Concluir/i}).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", {name:/Selecionar arquivos/i}).hasAttribute("disabled")).toBe(false);
     expect(screen.getByRole("button", {name:/Guardar rascunho/i})).toBeTruthy();
     expect(mocks.upload).not.toHaveBeenCalled();
