@@ -4,12 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const defaultRows = [{ incident: { id: 12, code: "OCO-12", category: "Atendimento", priority: "alta", status: "em_atendimento", address: "Rua Central, 10", description: "Verificar situação." } }];
-const mocks = vi.hoisted(() => ({ upload: vi.fn(), invalidate: vi.fn(), refetch: vi.fn(), uploadError: null as Error | null, currentUser: { id: 8, teamId: 4 as number | null, operationalRole: "agente", active: true }, permissions: ["occurrences.view", "occurrences.transition"], rows: [] as any[] }));
+const mocks = vi.hoisted(() => ({ isOnline: true, upload: vi.fn(), invalidate: vi.fn(), refetch: vi.fn(), uploadError: null as Error | null, currentUser: { id: 8, teamId: 4 as number | null, operationalRole: "agente", active: true }, permissions: ["occurrences.view", "occurrences.transition"], rows: [] as any[] }));
 
 vi.mock("@/components/DashboardLayout", () => ({ default: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("@/components/QueryState", () => ({ QueryState: () => null }));
 vi.mock("@/components/RefreshControls", () => ({ RefreshControls: () => <button>Atualizar</button> }));
 vi.mock("@/_core/hooks/useAuth", () => ({ useAuth: () => ({ user: mocks.currentUser }) }));
+vi.mock("@/hooks/useNetworkConnectivity", () => ({ useNetworkConnectivity: () => mocks.isOnline }));
 vi.mock("@/hooks/useAgentLocation", () => ({ useAgentLocation: () => ({ state: "idle", message: "" }) }));
 vi.mock("@/hooks/useRefreshSettings", () => ({ useRefreshSettings: () => ({ interval: false, setInterval: vi.fn() }) }));
 vi.mock("@/lib/trpc", () => ({
@@ -31,7 +32,7 @@ vi.mock("@/lib/trpc", () => ({
 
 import AgentPage from "./AgentPage";
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); mocks.uploadError = null; mocks.currentUser = { id: 8, teamId: 4, operationalRole: "agente", active: true }; mocks.permissions = ["occurrences.view", "occurrences.transition"]; mocks.rows = []; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); mocks.isOnline = true; mocks.uploadError = null; mocks.currentUser = { id: 8, teamId: 4, operationalRole: "agente", active: true }; mocks.permissions = ["occurrences.view", "occurrences.transition"]; mocks.rows = []; });
 
 describe("AgentPage evidências", () => {
   it("aceita múltiplos anexos e prepara um envio individual para cada arquivo do lote", async () => {
@@ -102,4 +103,24 @@ describe("AgentPage evidências", () => {
     expect(screen.queryByLabelText(/ativar compartilhamento de localização/i)).toBeNull();
   });
 
+});
+
+describe("AXED-F046 — falha de rede sem replay automático", () => {
+  it("mostra aviso e bloqueia mudanças de status e envio, preservando o rascunho local", () => {
+    mocks.isOnline = false;
+    render(<AgentPage />);
+    expect(screen.getByRole("alert").textContent).toMatch(/Sem conexão/);
+    fireEvent.change(screen.getByPlaceholderText(/Atualização operacional/i), {target: {value: "Atendimento confirmado em campo"}});
+    expect(screen.getByRole("button", {name:/Concluir/i}).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", {name:/Selecionar arquivos/i}).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", {name:/Guardar rascunho/i})).toBeTruthy();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+  it("mantém a confirmação de despacho suspensa sem conexão", () => {
+    mocks.isOnline = false;
+    mocks.rows = [{incident:{id:12,code:"OCO-12",category:"Atendimento",priority:"alta",status:"despachada",address:"Rua",description:"Ação"}}];
+    render(<AgentPage />);
+    expect(screen.getByRole("button", {name:/Aceitar despacho/i}).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", {name:/Recusar/i}).hasAttribute("disabled")).toBe(true);
+  });
 });
