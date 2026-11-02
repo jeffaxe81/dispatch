@@ -15,7 +15,7 @@ import { useRefreshSettings } from "@/hooks/useRefreshSettings";
 import { priorityClasses, priorityLabels, statusClasses, statusLabels } from "@/lib/operational";
 import { trpc } from "@/lib/trpc";
 import { Check, FileText, ImageIcon, MapPin, Navigation, Paperclip, PauseCircle, PlayCircle, Radio, Upload, X } from "lucide-react";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 const MAX_EVIDENCE_BYTES = 8 * 1024 * 1024;
 const MAX_EVIDENCE_FILES = 10;
@@ -120,6 +120,8 @@ function AgentContent() {
   const { user } = useAuth();
   const [sharing, setSharing] = useState(false);
   const online = useNetworkConnectivity();
+  // Connectivity restoration must not restart field location sharing implicitly.
+  useEffect(() => { if (!online) setSharing(false); }, [online]);
   const [note, setNote] = useState("");
   const utils = trpc.useUtils();
   const refresh = useRefreshSettings();
