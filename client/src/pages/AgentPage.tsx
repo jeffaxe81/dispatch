@@ -1,6 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { QueryState } from "@/components/QueryState";
 import { AgentOfflinePanel } from "@/components/AgentOfflinePanel";
+import { ShiftHandoffPanel } from "@/components/ShiftHandoffPanel";
 import { RefreshControls } from "@/components/RefreshControls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -142,6 +143,7 @@ function AgentContent() {
 
   return <div className="mx-auto max-w-2xl space-y-4 pb-8 sm:pt-3">
     <header className="rounded-2xl bg-[linear-gradient(130deg,#0f172a,#075985)] p-5 text-white shadow-lg shadow-slate-900/10"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[.15em] text-cyan-200"><Radio className="h-3.5 w-3.5" />Canal de campo</div><h1 className="mt-3 text-2xl font-semibold">Minha operação</h1><p className="mt-1 text-sm text-sky-100">Receba despachos, atualize o atendimento e compartilhe localização quando autorizado.</p></div><RefreshControls compact interval={refresh.interval} onIntervalChange={refresh.setInterval} onRefresh={() => assignments.refetch()} refreshing={assignments.isFetching} className="[&_button]:border-white/30 [&_button]:bg-white/10 [&_button]:text-white [&_button:hover]:bg-white/20 [&_[data-slot=select-trigger]]:border-white/30 [&_[data-slot=select-trigger]]:bg-white/10 [&_[data-slot=select-trigger]]:text-white" /></div></header>
+    {((access.data?.permissions ?? []).includes("*") || ((access.data?.permissions ?? []).includes("work_shifts.control") && (access.data?.permissions ?? []).includes("work_shifts.view"))) && <ShiftHandoffPanel />}
     <QueryState loading={assignments.isLoading} error={assignments.error} label="despachos" />
     {offlineScope && <AgentOfflinePanel key={`${offlineScope.userId}-${offlineScope.organizationId}-${offlineScope.teamId}`} scope={offlineScope}
       assignments={rows.map(({ incident }) => ({ id: incident.id, code: incident.code, category: incident.category, status: incident.status }))}
