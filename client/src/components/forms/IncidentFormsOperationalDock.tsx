@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from "react";
 import type { FormAnswers, FormSchemaDefinition } from "@shared/forms";
 import { trpc } from "@/lib/trpc";
-import { IncidentFormsPanel, deriveIncidentFormItems, type IncidentFormItem } from "./IncidentFormsPanel";
+import { IncidentFormsPanel, deriveIncidentFormItems, type IncidentFormItem, type FormSupervisorReview } from "./IncidentFormsPanel";
 import { IncidentFormWorkspace } from "./IncidentFormWorkspace";
 
 type HydratedBinding = { id: number; formId: number; formVersionId: number; name?: string | null; contextId: string; definition: FormSchemaDefinition };
-type OperationalSubmission = { id: number; formId: number; formVersionId: number; status: "in_progress" | "submitted" | "corrected"; revision?: number | null; answers?: FormAnswers | null };
+type OperationalSubmission = { id: number; formId: number; formVersionId: number; status: "in_progress" | "submitted" | "corrected"; revision?: number | null; answers?: FormAnswers | null; review?: FormSupervisorReview | null };
 
 export function activeSubmissionFor(item: IncidentFormItem, submissions: OperationalSubmission[]) {
   return submissions.filter(submission => submission.formId === item.formId && submission.formVersionId === item.formVersionId).sort((a, b) => Number(b.revision ?? 1) - Number(a.revision ?? 1) || b.id - a.id)[0] ?? null;
@@ -35,10 +35,12 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
   const start = trpc.forms.startSubmission.useMutation();
   const submit = trpc.forms.submit.useMutation();
   const correct = trpc.forms.correct.useMutation();
+  const review = trpc.forms.review.useMutation();
   const uploadAttachment = trpc.forms.uploadAttachment.useMutation();
 
   const canFill = Boolean(capabilities.data?.canFill);
   const canCorrect = Boolean(capabilities.data?.canCorrectResponses);
+  const canReview = Boolean(capabilities.data?.canReviewResponses);
   const incidentForPrefill = trpc.incidents.get.useQuery({ incidentId }, { enabled: open && validIncident && canFill, retry: false });
   const bindings = (query.data?.bindings ?? []) as HydratedBinding[];
   const submissions = ((query.data?.submissions ?? []) as OperationalSubmission[]).map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }));
@@ -64,10 +66,11 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
           {!query.isLoading && !query.error && !currentItem && <IncidentFormsPanel bindings={bindings} submissions={submissions.map(submission => ({ ...submission, revision: Number(submission.revision ?? 1) }))} onOpen={setSelected} />}
           {currentItem && currentBinding && (
             <IncidentFormWorkspace
+              key={`${currentBinding.id}:${currentSubmission?.id ?? "new"}:${currentSubmission?.revision ?? 1}`}
               incidentId={String(incidentId)} formId={currentBinding.formId} formVersionId={currentBinding.formVersionId}
               formName={currentBinding.name?.trim() || `Formulário #${currentBinding.formId}`} definition={currentBinding.definition}
-              state={currentItem.state} submissionId={currentSubmission?.id} initialAnswers={currentSubmission?.answers ?? {}}
-              canFill={canFill} canCorrect={canCorrect} onClose={() => setSelected(null)}
+              state={currentItem.state} submissionId={currentSubmission?.id} revision={Number(currentSubmission?.revision ?? 1)} review={currentSubmission?.review ?? null} initialAnswers={currentSubmission?.answers ?? {}}
+              canFill={canFill} canCorrect={canCorrect} canReview={canReview} onClose={() => setSelected(null)}
               authorizedIncidentPrefill={incidentForPrefill.data?.incident ? {
                 code: incidentForPrefill.data.incident.code,
                 category: incidentForPrefill.data.incident.category,
@@ -76,6 +79,7 @@ export function IncidentFormsOperationalDock({ incidentId }: { incidentId: numbe
               onStart={async input => { const result = await start.mutateAsync(input); await refresh(); return result; }}
               onSubmit={async input => { const result = await submit.mutateAsync(input); await refresh(); return result; }}
               onCorrect={async input => { const result = await correct.mutateAsync(input); await refresh(); return result; }}
+              onReview={async input => { const result = await review.mutateAsync(input); await refresh(); return result; }}
               onUploadAttachment={async ({ submissionId, fieldKey, kind, file }) => uploadAttachment.mutateAsync({ submissionId, fieldKey, kind, fileName: file.name, mimeType: file.type, base64: await fileToBase64(file) })}
             />
           )}
