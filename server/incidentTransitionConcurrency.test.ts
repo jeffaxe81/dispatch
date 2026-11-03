@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { TRPCError } from "@trpc/server";
-import { assertCurrentIncidentTransition } from "./incidentTransitionConcurrency";
+import { assertCurrentIncidentTransition, assertExpectedIncidentStatusRevision } from "./incidentTransitionConcurrency";
 
 describe("AXED-F020 — primeira barreira contra transição concorrente", () => {
   it("admite uma transição válida quando o estado informado corresponde ao banco", () => {
@@ -45,6 +45,40 @@ describe("AXED-F020 — primeira barreira contra transição concorrente", () =>
     for (const name of ["routers.ts", "tenantAwareAppRouter.ts"]) {
       const router = fs.readFileSync(path.resolve(import.meta.dirname, name), "utf8");
       expect(router).toContain("expectedStatus: statusEnum.optional()");
+    }
+  });
+});
+
+describe("AXED-F020 — CAS monotônico contra ABA",()=>{
+  it("impede transição baseada na mesma etapa antiga, mas revisão diferente",()=>{
+    expect(()=>assertCurrentIncidentTransition("em_atendimento","pausada","em_atendimento")).not.toThrow();
+    expect(()=>assertExpectedIncidentStatusRevision(7,5)).toThrow(/Recarregue a fila/);
+    expect(()=>assertExpectedIncidentStatusRevision(7,7)).not.toThrow();
+  });
+  it("rejeita revision inválida; mantém contrato status-only de consumidor legado",()=>{
+    expect(()=>assertExpectedIncidentStatusRevision(0)).toThrow(/Revisão/);
+    expect(()=>assertExpectedIncidentStatusRevision(7,0)).toThrow(/Recarregue a fila/);
+    expect(()=>assertExpectedIncidentStatusRevision(7)).not.toThrow();
+  });
+  it("incrementa em todas as três rotas de status e valida CAS antes do encerramento",()=>{
+    const src=fs.readFileSync(path.resolve(import.meta.dirname,"dbLegacy.ts"),"utf8");
+    const a=src.indexOf("export async function transitionIncident(");
+    const b=src.indexOf("export async function assignTeamToIncident(");
+    const c=src.indexOf("export async function respondToAssignment(");
+    const d=src.indexOf("export async function ",c+20);
+    const chunks=[src.slice(a,b),src.slice(b,c),src.slice(c,d)];
+    expect(chunks[0].indexOf("assertExpectedIncidentStatusRevision(")).toBeGreaterThan(chunks[0].indexOf('.for("update")'));
+    expect(chunks[0].indexOf("assertExpectedIncidentStatusRevision(")).toBeLessThan(chunks[0].indexOf("assertRequiredIncidentClosureForms("));
+    for(const chunk of chunks)expect(chunk).toContain("statusRevision: sql");
+    expect(chunks[1]).toContain('.for("update")');
+    expect(chunks[2]).toContain('.for("update")');
+    for(const path of ["routers.ts","tenantAwareAppRouter.ts"]){
+      const api=fs.readFileSync(path.resolve(import.meta.dirname,path),"utf8");
+      expect(api).toContain("expectedStatusRevision: z.number().int().positive().optional()");
+    }
+    for(const path of ["KanbanPage.tsx","IncidentDetailPage.tsx","AgentPage.tsx"]){
+      const ui=fs.readFileSync(path.resolve(import.meta.dirname,"../client/src/pages/"+path),"utf8");
+      expect(ui).toContain("expectedStatusRevision: incident.statusRevision");
     }
   });
 });

@@ -18,7 +18,7 @@ const boardColumns = ["triagem", "aguardando_despacho", "despachada", "aceita", 
 type BoardStatus = (typeof boardColumns)[number];
 type TargetStatus = BoardStatus | "cancelada";
 type PriorityFilter = "todas" | "baixa" | "media" | "alta" | "critica";
-type DraggedIncident = { id: number; status: string };
+type DraggedIncident = { id: number; status: string; statusRevision: number };
 type KanbanFilters = {
   priority: PriorityFilter;
   search: string;
@@ -106,7 +106,7 @@ function KanbanColumn({
           <article
             key={incident.id}
             draggable
-            onDragStart={() => onDragStart({ id: incident.id, status: incident.status })}
+            onDragStart={() => onDragStart({ id: incident.id, status: incident.status, statusRevision: incident.statusRevision })}
             onDragEnd={onDragEnd}
             className="cursor-grab rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing"
           >
@@ -124,7 +124,7 @@ function KanbanColumn({
               {teamCode && <Badge className="border-0 bg-sky-50 text-[10px] text-sky-800 ring-1 ring-sky-100">{teamCode}</Badge>}
             </div>
             <div className="mt-3">
-              <Select value={incident.status} onValueChange={value => onMove({ id: incident.id, status: incident.status }, value as TargetStatus, "selector")}>
+              <Select value={incident.status} onValueChange={value => onMove({ id: incident.id, status: incident.status, statusRevision: incident.statusRevision }, value as TargetStatus, "selector")}>
                 <SelectTrigger className="h-8 text-[11px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {[incident.status, ...allowed[incident.status]].map(nextStatus => (
@@ -252,7 +252,7 @@ function KanbanContent() {
       return;
     }
     transition.mutate({
-      incidentId: incident.id, nextStatus, expectedStatus: incident.status as TargetStatus,
+      incidentId: incident.id, nextStatus, expectedStatus: incident.status as TargetStatus, expectedStatusRevision: incident.statusRevision,
       note: source === "kanban" ? "Situação atualizada pelo quadro Kanban." : "Situação atualizada pelo seletor operacional.",
     });
   };
