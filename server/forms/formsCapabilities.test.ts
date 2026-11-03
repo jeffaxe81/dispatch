@@ -22,6 +22,7 @@ describe("D-008 capabilities", () => {
       canFill: true,
       canViewResponses: true,
       canCorrectResponses: false,
+      canReviewResponses: false,
       canManage: false,
       canCreate: true,
       canEdit: true,
@@ -38,6 +39,6 @@ describe("D-008 capabilities", () => {
   it("não depende de método do service nem concede permissão", async () => {
     const ctx = context([]);
     const result = await createFormsApi(ctx).capabilities();
-    expect(result).toEqual({ canView: false, canFill: false, canViewResponses: false, canCorrectResponses: false, canManage: false, canCreate: false, canEdit: false, canPublish: false, canDisable: false });
+    expect(result).toEqual({ canView: false, canFill: false, canViewResponses: false, canCorrectResponses: false, canReviewResponses: false, canManage: false, canCreate: false, canEdit: false, canPublish: false, canDisable: false });
   });
 });

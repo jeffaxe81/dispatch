@@ -29,3 +29,13 @@ describe("AXED-F030 — conferência informativa pré-encerramento", () => {
     expect(screen.getByText(/Todos os formulários vinculados/)).toBeTruthy();
   });
 });
+
+describe("AXED-F029 — sinalização de revisão",()=>{
+  it("informa devolução e considera a resposta devolvida pendente na conferência",()=>{
+    const reviewed={id:20,formId:3,formVersionId:5,status:"submitted" as const,revision:1,review:{revision:1,decision:"returned" as const,reason:"Inconsistência"}};
+    const items=deriveIncidentFormItems(bindings,[reviewed]);
+    expect(deriveIncidentFormReadiness(items)).toMatchObject({total:2,completed:0,allSubmitted:false});
+    render(<IncidentFormsPanel bindings={bindings} submissions={[reviewed]} onOpen={()=>{}}/>);
+    expect(screen.getByText("Devolvido para correção")).toBeTruthy();
+  });
+});

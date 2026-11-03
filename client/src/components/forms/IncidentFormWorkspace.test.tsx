@@ -77,3 +77,26 @@ describe("D-008 operational form workspace", () => {
     expect(screen.getByText(/informe o motivo da correção/i)).toBeTruthy();
   });
 });
+describe("AXED-F029 — interface de supervisão", () => {
+  it("exige justificativa ao devolver e informa o resultado auditado", async () => {
+    const onReview = vi.fn(async (input:any) => ({...input, revision:2, reviewerUserId:9, reviewedAt:new Date()}));
+    render(<IncidentFormWorkspace {...base} state="corrected" submissionId={21} revision={2} canReview onReview={onReview} canCorrect={false} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button",{name:/Devolver para correção/i}));
+    fireEvent.click(screen.getByRole("button",{name:/Confirmar decisão/i}));
+    expect(onReview).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText(/Informe o motivo da devolução/i)).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/Justificativa.*obrigatória/i),{target:{value:"Faltam detalhes da vistoria"}});
+    fireEvent.click(screen.getByRole("button",{name:/Confirmar decisão/i}));
+    await waitFor(()=>expect(onReview).toHaveBeenCalledWith({submissionId:21,expectedRevision:2,decision:"returned",reason:"Faltam detalhes da vistoria"}));
+    expect(screen.getByText(/Devolvido para correção.*revisão 2/)).toBeTruthy();
+  });
+  it("pode aprovar sem motivo e nunca apresenta ação a quem não tem permissão", async () => {
+    const onReview=vi.fn(async(input:any)=>({...input,revision:1}));
+    const view=render(<IncidentFormWorkspace {...base} state="submitted" submissionId={21} revision={1} canReview={false} onReview={onReview} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={vi.fn()} />);
+    expect(screen.queryByRole("button",{name:/Aprovar formulário/i})).toBeNull();
+    view.rerender(<IncidentFormWorkspace {...base} state="submitted" submissionId={21} revision={1} canReview onReview={onReview} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button",{name:/Aprovar formulário/i}));
+    fireEvent.click(screen.getByRole("button",{name:/Confirmar decisão/i}));
+    await waitFor(()=>expect(onReview).toHaveBeenCalledWith({submissionId:21,expectedRevision:1,decision:"approved",reason:""}));
+  });
+});

@@ -31,6 +31,21 @@ export const formSubmissionRevisions = mysqlTable("form_submission_revisions", {
   id: int("id").autoincrement().primaryKey(), submissionId: int("submission_id").notNull().references(() => formSubmissions.id, { onDelete: "restrict" }), tenantId: int("tenant_id").notNull().references(() => organizations.id), revision: int("revision").notNull(), answers: json("answers").$type<FormAnswers>().notNull(), reason: text("reason").notNull(), actorUserId: int("actor_user_id").notNull().references(() => users.id), beforeHash: varchar("before_hash", { length: 64 }), afterHash: varchar("after_hash", { length: 64 }).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(),
 }, table => [uniqueIndex("form_submission_revisions_revision_unique").on(table.submissionId, table.revision), index("form_submission_revisions_submission_created_idx").on(table.submissionId, table.createdAt)]);
 
+// F029: immutable, one supervisor decision per exact revision of the submission.
+export const formSubmissionReviews = mysqlTable("form_submission_reviews", {
+  id: int("id").autoincrement().primaryKey(),
+  tenantId: int("tenant_id").notNull().references(() => organizations.id),
+  submissionId: int("submission_id").notNull().references(() => formSubmissions.id, { onDelete: "restrict" }),
+  revision: int("revision").notNull(),
+  decision: mysqlEnum("decision", ["approved", "returned"]).notNull(),
+  reason: text("reason").notNull(),
+  reviewerUserId: int("reviewer_user_id").notNull().references(() => users.id),
+  reviewedAt: timestamp("reviewed_at").notNull(),
+}, table => [
+  uniqueIndex("form_submission_reviews_revision_unique").on(table.submissionId, table.revision),
+  index("form_submission_reviews_tenant_submission_idx").on(table.tenantId, table.submissionId),
+]);
+
 export const formAttachments = mysqlTable("form_attachments", {
   id: int("id").autoincrement().primaryKey(), tenantId: int("tenant_id").notNull().references(() => organizations.id), submissionId: int("submission_id").notNull().references(() => formSubmissions.id, { onDelete: "restrict" }), revisionId: int("revision_id").references(() => formSubmissionRevisions.id, { onDelete: "set null" }), fieldKey: varchar("field_key", { length: 120 }).notNull(), kind: mysqlEnum("kind", formAttachmentKindValues).notNull(), storageKey: varchar("storage_key", { length: 512 }).notNull(), fileName: varchar("file_name", { length: 255 }).notNull(), mimeType: varchar("mime_type", { length: 160 }).notNull(), sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(), sha256: varchar("sha256", { length: 64 }).notNull(), createdByUserId: int("created_by_user_id").notNull().references(() => users.id), createdAt: timestamp("created_at").defaultNow().notNull(),
 }, table => [index("form_attachments_submission_field_idx").on(table.submissionId, table.fieldKey)]);
@@ -49,5 +64,6 @@ export type FormSubmissionRecord = typeof formSubmissions.$inferSelect;
 export type InsertFormSubmissionRecord = typeof formSubmissions.$inferInsert;
 export type FormSubmissionRevisionRecord = typeof formSubmissionRevisions.$inferSelect;
 export type FormAttachmentRecord = typeof formAttachments.$inferSelect;
+export type FormSubmissionReviewRecord = typeof formSubmissionReviews.$inferSelect;
 export type FormDomainEventRecord = typeof formDomainEvents.$inferSelect;
 export type InsertFormDomainEventRecord = typeof formDomainEvents.$inferInsert;

@@ -26,6 +26,7 @@ export async function createFormsRequestContext(
   return {
     tenantId,
     userId: user.id,
+    operationalRole: user.operationalRole,
     service,
     hasPermission: (permission: FormPermission) => ports.hasPermission(user, permission),
     assertIncidentScope: (incidentId: string) => ports.assertIncidentScope(user, tenantId, incidentId),

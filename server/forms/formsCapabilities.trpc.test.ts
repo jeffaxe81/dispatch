@@ -18,6 +18,7 @@ describe("D-008 capabilities tRPC", () => {
       canFill: true,
       canViewResponses: false,
       canCorrectResponses: false,
+      canReviewResponses: false,
       canManage: false,
       canCreate: false,
       canEdit: false,

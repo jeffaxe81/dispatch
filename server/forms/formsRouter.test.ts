@@ -21,6 +21,7 @@ function context() {
       startSubmission: vi.fn(async input => input),
       submitForm: vi.fn(async input => input),
       correctSubmission: vi.fn(async input => input),
+      reviewSubmission: vi.fn(async input => input),
       forIncident: vi.fn(async input => input),
       uploadAttachment: vi.fn(async input => input),
     },

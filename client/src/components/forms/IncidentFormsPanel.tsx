@@ -1,9 +1,10 @@
 import React from "react";
 
 export type IncidentFormBinding = {id: number; formId: number; formVersionId: number; name?: string | null; contextId: string};
-export type IncidentFormSubmission = {id: number; formId: number; formVersionId: number; status: "in_progress" | "submitted" | "corrected"; revision: number};
+export type FormSupervisorReview = { revision: number; decision: "approved" | "returned"; reason: string; reviewerUserId?: number; reviewedAt?: Date | string };
+export type IncidentFormSubmission = {id: number; formId: number; formVersionId: number; status: "in_progress" | "submitted" | "corrected"; revision: number; review?: FormSupervisorReview | null};
 export type IncidentFormState = "not_started" | IncidentFormSubmission["status"];
-export type IncidentFormItem = IncidentFormBinding & {state: IncidentFormState; submissionId?: number; revision?: number};
+export type IncidentFormItem = IncidentFormBinding & {state: IncidentFormState; submissionId?: number; revision?: number; review?: FormSupervisorReview | null};
 const stateLabels: Record<IncidentFormState,string> = {
   not_started: "Não iniciado", in_progress: "Em preenchimento", submitted: "Enviado", corrected: "Corrigido",
 };
@@ -12,13 +13,13 @@ export function deriveIncidentFormItems(bindings: IncidentFormBinding[], submiss
     const related = submissions.filter(item => item.formId === binding.formId && item.formVersionId === binding.formVersionId)
       .sort((a,b) => b.revision - a.revision || b.id - a.id);
     const current = related[0];
-    return {...binding, state: current?.status ?? "not_started", submissionId: current?.id, revision: current?.revision};
+    return {...binding, state: current?.status ?? "not_started", submissionId: current?.id, revision: current?.revision, review: current?.review ?? null};
   });
 }
 /** F030 preflight is READ ONLY and never approves an incident transition. */
 export function deriveIncidentFormReadiness(items: readonly IncidentFormItem[]) {
-  const completed = items.filter(item => item.state === "submitted" || item.state === "corrected").length;
-  const pending = items.filter(item => item.state === "not_started" || item.state === "in_progress");
+  const completed = items.filter(item => (item.state === "submitted" || item.state === "corrected") && item.review?.decision !== "returned").length;
+  const pending = items.filter(item => item.state === "not_started" || item.state === "in_progress" || item.review?.decision === "returned");
   return {total: items.length, completed, pending, allSubmitted: items.length > 0 && pending.length === 0};
 }
 export function IncidentFormsPanel({bindings, submissions, onOpen, readOnly = false}: {
@@ -49,6 +50,8 @@ export function IncidentFormsPanel({bindings, submissions, onOpen, readOnly = fa
             <p className="mt-1 text-xs text-slate-500">Versão {item.formVersionId}{item.revision ? " · revisão " + item.revision : ""}</p></div>
           <div className="flex items-center gap-3">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{stateLabels[item.state]}</span>
+            {item.review?.decision === "approved" && <span className="text-xs font-semibold text-emerald-700">Aprovado pelo supervisor</span>}
+            {item.review?.decision === "returned" && <span className="text-xs font-semibold text-amber-800">Devolvido para correção</span>}
             <button type="button" disabled={readOnly} onClick={() => onOpen(item)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label={"Abrir formulário " + name}>Abrir formulário</button>
           </div>
         </article>;

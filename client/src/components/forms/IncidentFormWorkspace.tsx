@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import type { FormAnswers, FormSchemaDefinition } from "@shared/forms";
 import { FormRenderer, type FormAttachmentSelectionKind } from "./FormRenderer";
-import type { IncidentFormState } from "./IncidentFormsPanel";
+import type { IncidentFormState, FormSupervisorReview } from "./IncidentFormsPanel";
 import { proposeAuthorizedIncidentFormPrefill, type AuthorizedIncidentPrefillSource } from "@/lib/incidentFormPrefill";
 
 type StartInput = { formId: number; formVersionId: number; contextType: "incident"; contextId: string };
@@ -17,6 +17,10 @@ export type IncidentFormWorkspaceProps = {
   definition: FormSchemaDefinition;
   state: IncidentFormState;
   submissionId?: number;
+  revision?: number;
+  review?: FormSupervisorReview | null;
+  canReview?: boolean;
+  onReview?(input: { submissionId: number; expectedRevision: number; decision: "approved" | "returned"; reason: string }): Promise<FormSupervisorReview>;
   initialAnswers?: FormAnswers;
   authorizedIncidentPrefill?: AuthorizedIncidentPrefillSource | null;
   canFill?: boolean;
@@ -53,8 +57,12 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState<FormSupervisorReview | null>(props.review ?? null);
+  const [reviewDecision, setReviewDecision] = useState<"approved" | "returned" | null>(null);
+  const [reviewReason, setReviewReason] = useState("");
   const canFill = props.canFill ?? true;
   const canCorrect = props.canCorrect ?? true;
+  const canReview = Boolean(props.canReview && props.onReview);
 
   const editable = (canFill && state === "in_progress") || (canCorrect && correctionMode);
   const attachmentsReadOnly = correctionMode || state !== "in_progress";
@@ -121,6 +129,15 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
     });
   };
 
+  const confirmReview = () => void run(async () => {
+    if (!canReview || !props.onReview || !reviewDecision || !submissionId || !props.revision) throw new Error("Revisão indisponível neste contexto.");
+    if (reviewDecision === "returned" && reviewReason.trim().length < 3) throw new Error("Informe o motivo da devolução (mínimo de três caracteres).");
+    const outcome = await props.onReview({ submissionId, expectedRevision: props.revision, decision: reviewDecision, reason: reviewReason.trim() });
+    setReview(outcome);
+    setReviewDecision(null);
+    setReviewReason("");
+  });
+
   return (
     <section aria-label={`Preenchimento do formulário ${props.formName}`} className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -154,6 +171,28 @@ export function IncidentFormWorkspace(props: IncidentFormWorkspaceProps) {
         </div>
       )}
 
+      {(state === "submitted" || state === "corrected") && review && <div role="status" className={`mt-4 rounded-lg border p-3 text-sm ${review.decision === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+        <p className="font-semibold">{review.decision === "approved" ? "Aprovado pelo supervisor" : "Devolvido para correção"} · revisão {review.revision}</p>
+        {review.reason && <p className="mt-1">Justificativa: {review.reason}</p>}
+      </div>}
+      {canReview && (state === "submitted" || state === "corrected") && !review && submissionId && (
+        <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3">
+          <p className="text-sm font-semibold text-slate-900">Revisão do supervisor · revisão {props.revision ?? 1}</p>
+          <p className="mt-1 text-xs text-slate-600">Aprovação ou devolução auditada; não altera o status da ocorrência e não libera encerramento.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => setReviewDecision("approved")} className="rounded-md border border-emerald-600 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-800">Aprovar formulário</button>
+            <button type="button" disabled={busy} onClick={() => setReviewDecision("returned")} className="rounded-md border border-amber-600 bg-white px-3 py-1.5 text-sm font-semibold text-amber-900">Devolver para correção</button>
+          </div>
+          {reviewDecision && <div className="mt-3">
+            <label htmlFor="form-review-reason" className="block text-sm font-medium text-slate-800">Justificativa {reviewDecision === "returned" ? "(obrigatória)" : "(opcional)"}</label>
+            <textarea id="form-review-reason" value={reviewReason} onChange={event => setReviewReason(event.target.value)} disabled={busy} className="mt-1 min-h-20 w-full rounded-md border border-slate-300 bg-white p-2" />
+            <div className="mt-2 flex gap-2">
+              <button type="button" disabled={busy} onClick={confirmReview} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirmar decisão</button>
+              <button type="button" disabled={busy} onClick={() => { setReviewDecision(null); setReviewReason(""); }} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">Cancelar</button>
+            </div>
+          </div>}
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap gap-2">
         {canFill && state === "not_started" && <button type="button" disabled={busy} onClick={() => void start()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Iniciar preenchimento</button>}
         {canFill && state === "in_progress" && <button type="button" disabled={busy} onClick={() => void submit()} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Enviar formulário</button>}
