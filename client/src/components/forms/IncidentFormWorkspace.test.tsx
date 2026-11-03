@@ -84,7 +84,7 @@ describe("AXED-F029 — interface de supervisão", () => {
     fireEvent.click(screen.getByRole("button",{name:/Devolver para correção/i}));
     fireEvent.click(screen.getByRole("button",{name:/Confirmar decisão/i}));
     expect(onReview).not.toHaveBeenCalled();
-    expect(screen.getByText(/Informe o motivo da devolução/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Informe o motivo da devolução/i)).toBeTruthy());
     fireEvent.change(screen.getByLabelText(/Justificativa.*obrigatória/i),{target:{value:"Faltam detalhes da vistoria"}});
     fireEvent.click(screen.getByRole("button",{name:/Confirmar decisão/i}));
     await waitFor(()=>expect(onReview).toHaveBeenCalledWith({submissionId:21,expectedRevision:2,decision:"returned",reason:"Faltam detalhes da vistoria"}));
