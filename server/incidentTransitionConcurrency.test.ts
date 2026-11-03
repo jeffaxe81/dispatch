@@ -72,12 +72,12 @@ describe("AXED-F020 — CAS monotônico contra ABA",()=>{
     for(const chunk of chunks)expect(chunk).toContain("statusRevision: sql");
     expect(chunks[1]).toContain('.for("update")');
     expect(chunks[2]).toContain('.for("update")');
-    for(const path of ["routers.ts","tenantAwareAppRouter.ts"]){
-      const api=fs.readFileSync(path.resolve(import.meta.dirname,path),"utf8");
+    for(const fileName of ["routers.ts","tenantAwareAppRouter.ts"]){
+      const api=fs.readFileSync(path.resolve(import.meta.dirname,fileName),"utf8");
       expect(api).toContain("expectedStatusRevision: z.number().int().positive().optional()");
     }
-    for(const path of ["KanbanPage.tsx","IncidentDetailPage.tsx","AgentPage.tsx"]){
-      const ui=fs.readFileSync(path.resolve(import.meta.dirname,"../client/src/pages/"+path),"utf8");
+    for(const fileName of ["KanbanPage.tsx","IncidentDetailPage.tsx","AgentPage.tsx"]){
+      const ui=fs.readFileSync(path.resolve(import.meta.dirname,"../client/src/pages/"+fileName),"utf8");
       expect(ui).toContain("expectedStatusRevision: incident.statusRevision");
     }
   });
