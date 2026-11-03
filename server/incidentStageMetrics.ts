@@ -4,7 +4,7 @@ import type { getDb } from "./db";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 type IncidentRow = { incident: { id: number; status: string } };
-const STAGE_ENTRY_EVENTS = [
+export const STAGE_ENTRY_EVENTS = [
   "occurrence_created",
   "status_changed",
   "team_dispatched",

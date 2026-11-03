@@ -11,6 +11,7 @@ export const incidentListInputSchema = z.object({
   search: z.string().trim().max(120).optional(),
   status: z.enum(INCIDENT_STATUSES).optional(),
   priority: z.enum(INCIDENT_PRIORITIES).optional(),
+  sortOrder: z.enum(["priority", "oldest", "newest", "stage-oldest"]).optional(),
   teamId: z.number().int().positive().optional(),
   openedFrom: z.coerce.date().optional(),
   openedBefore: z.coerce.date().optional(),
