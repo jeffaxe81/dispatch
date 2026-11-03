@@ -79,7 +79,7 @@ describe("D-008 operational form workspace", () => {
 });
 describe("AXED-F029 — interface de supervisão", () => {
   it("exige justificativa ao devolver e informa o resultado auditado", async () => {
-    const onReview = vi.fn(async input => ({...input, revision:2, reviewerUserId:9, reviewedAt:new Date()}));
+    const onReview = vi.fn(async (input:any) => ({...input, revision:2, reviewerUserId:9, reviewedAt:new Date()}));
     render(<IncidentFormWorkspace {...base} state="corrected" submissionId={21} revision={2} canReview onReview={onReview} canCorrect={false} onStart={vi.fn()} onSubmit={vi.fn()} onCorrect={vi.fn()} />);
     fireEvent.click(screen.getByRole("button",{name:/Devolver para correção/i}));
     fireEvent.click(screen.getByRole("button",{name:/Confirmar decisão/i}));

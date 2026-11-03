@@ -8,7 +8,7 @@ describe("AXED-F029 — transação de revisão",()=>{
     let stage=0;
     const txSelect=vi.fn(()=>({
       from:()=>({where:()=>({
-        limit:(_n:number)=>{const data=stage===0?[{id:21,tenantId:7,status}]:stage===1?(reviewed?[{id:9}]:[]):[];stage++;return {for:vi.fn(async()=>{locks.push("submission");return data}),then:(r:any)=>Promise.resolve(data).then(r)}},
+        limit:(_n:number)=>{const data=stage===0?[{id:21,tenantId:7,status}]:stage===2?(reviewed?[{id:9}]:[]):[];stage++;return {for:vi.fn(async()=>{locks.push("submission");return data}),then:(r:any)=>Promise.resolve(data).then(r)}},
         orderBy:()=>({limit:async()=>{stage++;return [{revision:latestRevision}]}})
       })})
     }));
