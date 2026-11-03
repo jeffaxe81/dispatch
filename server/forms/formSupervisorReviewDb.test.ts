@@ -3,18 +3,12 @@ import {createFormRepositoryDbAdapter} from "./formRepositoryDbAdapter";
 
 describe("AXED-F029 — transação de revisão",()=>{
   function fakeDb(status:"submitted"|"in_progress"|"corrected"="submitted",reviewed=false,latestRevision=2){
-    const reads=[
-      [{id:21,tenantId:7,status}],
-      [{revision:latestRevision}],
-      reviewed?[{id:9}]:[],
-    ];
     const locks:any[]=[];
-    const select=vi.fn(()=>({from:()=>({where:()=>({limit:(n:number)=>{const rows=reads.shift()??[];return {for:vi.fn(async()=>{locks.push(n);return rows}),then:(resolve:any)=>Promise.resolve(rows).then(resolve),orderBy:()=>({limit:async()=>rows})}})})})}));
     // A dedicated Drizzle-like chained fake keeps the FOR UPDATE stateful.
     let stage=0;
     const txSelect=vi.fn(()=>({
       from:()=>({where:()=>({
-        limit:(_n:number)=>{const data=stage===0?[{id:21,tenantId:7,status}]:stage===2?(reviewed?[{id:9}]:[]):[];stage++;return {for:vi.fn(async()=>{locks.push("submission");return data}),then:(r:any)=>Promise.resolve(data).then(r)}},
+        limit:(_n:number)=>{const data=stage===0?[{id:21,tenantId:7,status}]:stage===1?(reviewed?[{id:9}]:[]):[];stage++;return {for:vi.fn(async()=>{locks.push("submission");return data}),then:(r:any)=>Promise.resolve(data).then(r)}},
         orderBy:()=>({limit:async()=>{stage++;return [{revision:latestRevision}]}})
       })})
     }));
