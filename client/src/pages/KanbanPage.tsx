@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useRefreshSettings } from "@/hooks/useRefreshSettings";
 import { priorityClasses, priorityLabels, statusLabels } from "@/lib/operational";
-import { formatIncidentAge, formatStageAge, prepareKanbanRows, stageSampleAverageMinutes, type KanbanSortOrder } from "@/lib/kanbanQueue";
+import { formatIncidentAge, formatStageAge, prepareKanbanRows, type KanbanSortOrder } from "@/lib/kanbanQueue";
 import { deleteUserTenantKanbanView, loadUserTenantKanbanViews, saveUserTenantKanbanView, type SavedKanbanView } from "@/lib/kanbanSavedViews";
 import { trpc } from "@/lib/trpc";
 import { GripVertical } from "lucide-react";
@@ -71,8 +71,9 @@ function KanbanColumn({
     query: filters.search,
     sort: filters.sortOrder,
   });
-  const stageSample = stageSampleAverageMinutes(cards, new Date());
-  const isBottleneck = stageSample.averageMinutes !== null && stageSample.averageMinutes > bottleneckThresholdMinutes;
+  const stageSummary = list.data?.stageSummary;
+  const isBottleneck = stageSummary?.averageMinutes !== null &&
+    stageSummary?.averageMinutes !== undefined && stageSummary.averageMinutes > bottleneckThresholdMinutes;
 
   useEffect(() => {
     if (list.data && page > totalPages) setPage(totalPages);
@@ -94,8 +95,11 @@ function KanbanColumn({
         <Badge variant="secondary" className="bg-white text-slate-600">{total} no total</Badge>
       </div>
       <QueryState loading={list.isLoading} error={list.error} label={statusLabels[status]} />
-      {isBottleneck && <p role="note" className="mx-2 mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
-        Gargalo na amostra: média {stageSample.averageMinutes} min; limite {bottleneckThresholdMinutes} min. {stageSample.observed}/{stageSample.total} cartões desta página possuem evento auditado.
+      {isBottleneck && stageSummary && <p role="note" className="mx-2 mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+        Gargalo da coluna: média {stageSummary.averageMinutes} min; limite {bottleneckThresholdMinutes} min. {stageSummary.observed}/{stageSummary.total} ocorrências de todas as páginas têm entrada na etapa auditada.
+      </p>}
+      {stageSummary && stageSummary.total > 0 && stageSummary.observed < stageSummary.total && <p role="status" className="mx-2 mt-2 rounded-md bg-slate-100 p-2 text-xs text-slate-600">
+        Cobertura da etapa: {stageSummary.observed}/{stageSummary.total} com horário auditado; registros sem histórico não entram na média.
       </p>}
       <div className="space-y-3 p-2">
         {cards.map(({ incident, teamCode }) => (
