@@ -44,6 +44,7 @@ import { requirePriorityChangeJustification } from "./priorityChangeJustificatio
 import { assertCurrentIncidentTransition } from "./incidentTransitionConcurrency";
 import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
+import { assertRequiredIncidentClosureForms } from "./forms/incidentClosureFormGate";
 import { incidentListOrder } from "./incidentListOrder";
 import { fetchIncidentStageSummary } from "./incidentStageSummary";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
@@ -554,6 +555,8 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
     const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
     assertCurrentIncidentTransition(before.status, input.nextStatus, input.expectedStatus);
+    // F030: gate happens inside the same incident-row-lock transaction, before changes/events/audit.
+    if (input.nextStatus === "concluida") await assertRequiredIncidentClosureForms(tx, before.id, before.category);
     const now = new Date();
     const patch: Partial<typeof incidents.$inferInsert> = { status: input.nextStatus, updatedAt: now };
     if (input.nextStatus === "aceita") patch.acceptedAt = now;
