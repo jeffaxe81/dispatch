@@ -133,23 +133,28 @@ function AgentContent() {
   const [revalidationError, setRevalidationError] = useState("");
   const lastOnline = useRef(online);
   const onlineNow = useRef(online);
+  const validationAttempt = useRef(0);
   onlineNow.current = online;
   async function revalidateAssignments() {
+    const attempt = ++validationAttempt.current;
     setMustRevalidateAssignments(true);
     setRevalidationError("");
     try {
       const refreshed = await assignments.refetch();
+      if (attempt !== validationAttempt.current) return;
       if (!onlineNow.current || !refreshed?.data || refreshed.error) {
         throw new Error("Lista de ocorrências não validada no servidor.");
       }
       setMustRevalidateAssignments(false);
     } catch {
+      if (attempt !== validationAttempt.current) return;
       setMustRevalidateAssignments(true);
       setRevalidationError("Não foi possível atualizar as atribuições. Tente novamente antes de operar.");
     }
   }
   useEffect(() => {
     if (!online) {
+      ++validationAttempt.current;
       lastOnline.current = false;
       setMustRevalidateAssignments(true);
       setRevalidationError("");

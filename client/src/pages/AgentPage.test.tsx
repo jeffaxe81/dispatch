@@ -156,3 +156,24 @@ describe("AXED-F046 — revalidação obrigatória após reconexão", () => {
     expect(screen.getByRole("button", {name:/Concluir/i}).hasAttribute("disabled")).toBe(true);
   });
 });
+
+describe("AXED-F046 — respostas atrasadas e oscilação da conexão", () => {
+  it("resposta antiga não autoriza operações depois de nova desconexão", async () => {
+    let first!: (value:any)=>void;
+    let second!: (value:any)=>void;
+    mocks.refetch.mockImplementationOnce(()=>new Promise(resolve=>{first=resolve;}))
+      .mockImplementationOnce(()=>new Promise(resolve=>{second=resolve;}));
+    const view=render(<AgentPage />);
+    mocks.isOnline=false; view.rerender(<AgentPage />);
+    mocks.isOnline=true; view.rerender(<AgentPage />);
+    await waitFor(()=>expect(mocks.refetch).toHaveBeenCalledTimes(1));
+    mocks.isOnline=false; view.rerender(<AgentPage />);
+    mocks.isOnline=true; view.rerender(<AgentPage />);
+    await waitFor(()=>expect(mocks.refetch).toHaveBeenCalledTimes(2));
+    first({data:{rows:defaultRows},error:null});
+    await waitFor(()=>expect(screen.getByText(/Conexão restabelecida/)).toBeTruthy());
+    expect(screen.getByRole("button",{name:/Concluir/i}).hasAttribute("disabled")).toBe(true);
+    second({data:{rows:defaultRows},error:null});
+    await waitFor(()=>expect(screen.queryByText(/Conexão restabelecida/)).toBeNull());
+  });
+});
