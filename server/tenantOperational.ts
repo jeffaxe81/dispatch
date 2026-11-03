@@ -7,6 +7,7 @@ import { ENV } from "./_core/env";
 import { getAccessSnapshot } from "./accessControl";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import { incidentListOrder } from "./incidentListOrder";
+import { fetchIncidentStageSummary } from "./incidentStageSummary";
 import { createIncident, createTeam, createVehicle, getDb, type IncidentListInput, type OperationalReportInput } from "./db";
 
 type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
@@ -96,7 +97,7 @@ export async function listIncidentsForTenant(tenantId: number, input: IncidentLi
   if (input.openedFrom) filters.push(gte(incidents.createdAt, input.openedFrom));
   if (input.openedBefore) filters.push(lt(incidents.createdAt, input.openedBefore));
   const where = and(...filters);
-  const [rows, totalRows] = await Promise.all([
+  const [rows, totalRows, stageSummary] = await Promise.all([
     db.select({ incident: incidents, teamCode: teams.code, teamName: teams.name, vehiclePrefix: vehicles.prefix })
       .from(incidents)
       .innerJoin(incidentTenantScopes, eq(incidentTenantScopes.incidentId, incidents.id))
@@ -107,8 +108,9 @@ export async function listIncidentsForTenant(tenantId: number, input: IncidentLi
       .limit(input.pageSize)
       .offset((input.page - 1) * input.pageSize),
     db.select({ total: count() }).from(incidents).innerJoin(incidentTenantScopes, eq(incidentTenantScopes.incidentId, incidents.id)).where(where),
+    input.status ? fetchIncidentStageSummary(db, where, tenantId) : Promise.resolve(null),
   ]);
-  return { rows: await withIncidentStageEntry(db, rows), total: Number(totalRows[0]?.total ?? 0) };
+  return { rows: await withIncidentStageEntry(db, rows), total: Number(totalRows[0]?.total ?? 0), stageSummary };
 }
 
 export async function getIncidentForTenant(tenantId: number, incidentId: number) {

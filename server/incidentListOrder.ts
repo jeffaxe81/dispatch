@@ -4,7 +4,7 @@ import {STAGE_ENTRY_EVENTS} from "./incidentStageMetrics";
 import type {IncidentListInput} from "./db";
 
 /** AXED-F015: SQL ordering precedes LIMIT/OFFSET; never infer absent stage times. */
-const auditedStageEntry = sql`(
+export const auditedStageEntry = sql`(
   SELECT MAX(e.created_at) FROM incident_events e
   WHERE e.incident_id = ${incidents.id}
     AND e.next_status = ${incidents.status}

@@ -45,6 +45,7 @@ import { assertCurrentIncidentTransition } from "./incidentTransitionConcurrency
 import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import { incidentListOrder } from "./incidentListOrder";
+import { fetchIncidentStageSummary } from "./incidentStageSummary";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import type { WorkShiftAction } from "../shared/workShifts";
 import { ENV } from "./_core/env";
@@ -159,7 +160,7 @@ export async function listIncidents(input: IncidentListInput) {
   if (input.openedFrom) filters.push(gte(incidents.createdAt, input.openedFrom));
   if (input.openedBefore) filters.push(lt(incidents.createdAt, input.openedBefore));
   const where = filters.length ? and(...filters) : undefined;
-  const [rows, totalRows] = await Promise.all([
+  const [rows, totalRows, stageSummary] = await Promise.all([
     db
       .select({ incident: incidents, teamCode: teams.code, teamName: teams.name, vehiclePrefix: vehicles.prefix })
       .from(incidents)
@@ -170,8 +171,9 @@ export async function listIncidents(input: IncidentListInput) {
       .limit(input.pageSize)
       .offset((input.page - 1) * input.pageSize),
     db.select({ total: count() }).from(incidents).where(where),
+    input.status ? fetchIncidentStageSummary(db, where) : Promise.resolve(null),
   ]);
-  return { rows: await withIncidentStageEntry(db, rows), total: Number(totalRows[0]?.total ?? 0) };
+  return { rows: await withIncidentStageEntry(db, rows), total: Number(totalRows[0]?.total ?? 0), stageSummary };
 }
 
 export async function getIncidentById(incidentId: number) {
