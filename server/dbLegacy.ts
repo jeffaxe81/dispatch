@@ -560,7 +560,7 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
     // F030: gate happens inside the same incident-row-lock transaction, before changes/events/audit.
     if (input.nextStatus === "concluida") await assertRequiredIncidentClosureForms(tx, before.id, before.category);
     const now = new Date();
-    const patch: Partial<typeof incidents.$inferInsert> = { status: input.nextStatus, statusRevision: sql`${incidents.statusRevision} + 1`, updatedAt: now };
+    const patch: Partial<typeof incidents.$inferInsert> = { status: input.nextStatus, updatedAt: now };
     if (input.nextStatus === "aceita") patch.acceptedAt = now;
     if (input.nextStatus === "em_atendimento") patch.startedAt = now;
     if (input.nextStatus === "concluida") {
@@ -569,7 +569,7 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
       patch.closeSummary = input.note;
     }
     if (input.nextStatus === "cancelada") patch.cancelledAt = now;
-    await tx.update(incidents).set(patch).where(eq(incidents.id, input.incidentId));
+    await tx.update(incidents).set({ ...patch, statusRevision: sql`${incidents.statusRevision} + 1` }).where(eq(incidents.id, input.incidentId));
     const after = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
     if (!after) throw new Error("Falha ao alterar status.");
     await tx.insert(incidentEvents).values({
