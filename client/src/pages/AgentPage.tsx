@@ -194,6 +194,13 @@ function AgentContent() {
     {offlineScope && <AgentOfflinePanel key={`${offlineScope.userId}-${offlineScope.organizationId}-${offlineScope.teamId}`} scope={offlineScope}
       assignments={rows.map(({ incident }) => ({ id: incident.id, code: incident.code, category: incident.category, status: incident.status }))}
       canSave={Boolean(remoteActionsAllowed && assignments.data && !assignments.error && !assignments.isLoading && !activeConflict)}
+      canReconcile={Boolean(remoteActionsAllowed && assignments.data && !assignments.error && !assignments.isLoading)}
+      onLoadFreshAssignments={async () => {
+        if (!onlineNow.current || mustRevalidateAssignments) throw new Error("Rede não validada para conferência.");
+        const latest = await assignments.refetch();
+        if (!onlineNow.current || latest.error || !latest.data) throw new Error("Consulta atualizada indisponível.");
+        return latest.data.rows.map(({ incident }) => ({id: incident.id, code: incident.code, category: incident.category, status: incident.status}));
+      }}
       activeIncidentId={!activeConflict ? active?.id : undefined} note={note} onRestoreNote={setNote} />}
 
     {activeConflict && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><p className="font-semibold">Conflito operacional de atendimento</p><p className="mt-1">{activeRows.length} ocorrências ativas foram encontradas para a equipe. As ações de campo, evidências e compartilhamento de localização ficam bloqueados até o despacho/supervisão sanear a atribuição.</p></div>}
