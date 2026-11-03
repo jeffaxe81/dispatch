@@ -41,7 +41,7 @@ import {
 } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 import { requirePriorityChangeJustification } from "./priorityChangeJustification";
-import { assertCurrentIncidentTransition } from "./incidentTransitionConcurrency";
+import { assertCurrentIncidentTransition, assertExpectedIncidentStatusRevision } from "./incidentTransitionConcurrency";
 import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import { assertRequiredIncidentClosureForms } from "./forms/incidentClosureFormGate";
@@ -141,6 +141,7 @@ function snapshotIncident(row: typeof incidents.$inferSelect) {
     assignedTeamId: row.assignedTeamId,
     assignedVehicleId: row.assignedVehicleId,
     updatedAt: row.updatedAt.toISOString(),
+    statusRevision: row.statusRevision,
   };
 }
 
@@ -549,12 +550,13 @@ export async function listOperationLogs(input: { page: number; pageSize: number;
   return { rows, total: Number(totalRows[0]?.total ?? 0) };
 }
 
-export async function transitionIncident(input: { incidentId: number; actorUserId: number; nextStatus: IncidentStatus; note: string; expectedStatus?: IncidentStatus }) {
+export async function transitionIncident(input: { incidentId: number; actorUserId: number; nextStatus: IncidentStatus; note: string; expectedStatus?: IncidentStatus; expectedStatusRevision?: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
     const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
     assertCurrentIncidentTransition(before.status, input.nextStatus, input.expectedStatus);
+    assertExpectedIncidentStatusRevision(before.statusRevision, input.expectedStatusRevision);
     // F030: gate happens inside the same incident-row-lock transaction, before changes/events/audit.
     if (input.nextStatus === "concluida") await assertRequiredIncidentClosureForms(tx, before.id, before.category);
     const now = new Date();
@@ -567,7 +569,7 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
       patch.closeSummary = input.note;
     }
     if (input.nextStatus === "cancelada") patch.cancelledAt = now;
-    await tx.update(incidents).set(patch).where(eq(incidents.id, input.incidentId));
+    await tx.update(incidents).set({ ...patch, statusRevision: sql`${incidents.statusRevision} + 1` }).where(eq(incidents.id, input.incidentId));
     const after = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
     if (!after) throw new Error("Falha ao alterar status.");
     await tx.insert(incidentEvents).values({
@@ -594,10 +596,11 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
 export async function assignTeamToIncident(input: { incidentId: number; teamId: number; vehicleId?: number; actorUserId: number; estimatedArrivalMinutes?: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
+    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     const team = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
     if (!team || !team.active || team.status === "indisponivel") throw new Error("Equipe indisponível para despacho.");
+    if (before.status !== "triagem" && before.status !== "aguardando_despacho") throw new Error("Ocorrência alterada antes do despacho. Atualize os dados.");
     const now = new Date();
     const [assignment] = await tx.insert(incidentAssignments).values({
       incidentId: input.incidentId,
@@ -608,7 +611,7 @@ export async function assignTeamToIncident(input: { incidentId: number; teamId: 
       status: "pendente",
       dispatchedAt: now,
     }).$returningId();
-    await tx.update(incidents).set({ assignedTeamId: input.teamId, assignedVehicleId: input.vehicleId ?? null, status: "despachada", dispatchedAt: now }).where(eq(incidents.id, input.incidentId));
+    await tx.update(incidents).set({ assignedTeamId: input.teamId, assignedVehicleId: input.vehicleId ?? null, status: "despachada", statusRevision: sql`${incidents.statusRevision} + 1`, dispatchedAt: now }).where(eq(incidents.id, input.incidentId));
     await tx.update(teams).set({ status: "em_deslocamento" }).where(eq(teams.id, input.teamId));
     const after = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
     if (!after) throw new Error("Falha ao registrar despacho.");
@@ -638,14 +641,15 @@ export async function assignTeamToIncident(input: { incidentId: number; teamId: 
 export async function respondToAssignment(input: { incidentId: number; teamId: number; actorUserId: number; accepted: boolean; note?: string }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    const assignment = (await tx.select().from(incidentAssignments).where(and(eq(incidentAssignments.incidentId, input.incidentId), eq(incidentAssignments.teamId, input.teamId))).orderBy(desc(incidentAssignments.createdAt)).limit(1))[0];
-    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
-    if (!assignment || assignment.status !== "pendente") throw new Error("Não há despacho pendente para esta equipe.");
+    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
+    const assignment = (await tx.select().from(incidentAssignments).where(and(eq(incidentAssignments.incidentId, input.incidentId), eq(incidentAssignments.teamId, input.teamId))).orderBy(desc(incidentAssignments.createdAt)).limit(1).for("update"))[0];
+    if (!assignment || assignment.status !== "pendente") throw new Error("Não há despacho pendente para esta equipe.");
+    if (before.status !== "despachada" || before.assignedTeamId !== input.teamId) throw new Error("O despacho foi alterado. Atualize os dados da equipe.");
     const now = new Date();
     const nextStatus: IncidentStatus = input.accepted ? "aceita" : "aguardando_despacho";
     await tx.update(incidentAssignments).set({ status: input.accepted ? "aceita" : "recusada", acceptedAt: input.accepted ? now : null, declinedAt: input.accepted ? null : now, responseNote: input.note ?? null }).where(eq(incidentAssignments.id, assignment.id));
-    await tx.update(incidents).set({ status: nextStatus, acceptedAt: input.accepted ? now : null, assignedTeamId: input.accepted ? input.teamId : null, assignedVehicleId: input.accepted ? before.assignedVehicleId : null }).where(eq(incidents.id, input.incidentId));
+    await tx.update(incidents).set({ status: nextStatus, statusRevision: sql`${incidents.statusRevision} + 1`, acceptedAt: input.accepted ? now : null, assignedTeamId: input.accepted ? input.teamId : null, assignedVehicleId: input.accepted ? before.assignedVehicleId : null }).where(eq(incidents.id, input.incidentId));
     await tx.update(teams).set({ status: input.accepted ? "em_deslocamento" : "disponivel" }).where(eq(teams.id, input.teamId));
     const after = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
     if (!after) throw new Error("Falha ao responder despacho.");

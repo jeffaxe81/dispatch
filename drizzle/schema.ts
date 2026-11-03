@@ -107,6 +107,7 @@ export const incidents = mysqlTable(
     id: int("id").autoincrement().primaryKey(),
     code: varchar("code", { length: 32 }).notNull(),
     status: incidentStatusEnum.notNull().default("triagem"),
+    statusRevision: int("status_revision").notNull().default(1),
     priority: incidentPriorityEnum.notNull().default("media"),
     category: varchar("category", { length: 160 }).notNull(),
     origin: incidentOriginEnum.notNull().default("central"),
