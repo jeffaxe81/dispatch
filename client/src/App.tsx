@@ -1,40 +1,48 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import AdminPage from "@/pages/AdminPage";
-import AccessScopesPage from "@/pages/AccessScopesPage";
-import { AgentWithFormsPage, IncidentDetailWithFormsPage } from "@/pages/OperationalFormsRoutes";
-import IncidentsPage from "@/pages/IncidentsPage";
-import KanbanPage from "@/pages/KanbanPage";
-import NotFound from "@/pages/NotFound";
-import TeamsPage from "@/pages/TeamsPage";
-import UsersAccessPage from "@/pages/UsersAccessPage";
-import LocalCredentialsPage from "@/pages/LocalCredentialsPage";
-import VehiclesPage from "@/pages/VehiclesPage";
-import RolesPermissionsPage from "@/pages/RolesPermissionsPage";
-import GeneralSettingsPage from "@/pages/GeneralSettingsPage";
-import OperationsLogPage from "@/pages/OperationsLogPage";
-import IntegrationsPage from "@/pages/IntegrationsPage";
-import EmbeddedApplicationsPage from "@/pages/EmbeddedApplicationsPage";
-import WorkflowsPage from "@/pages/WorkflowsPage";
-import WorkflowBuilderPage from "@/pages/WorkflowBuilderPage";
-import ExecutionsPage from "@/pages/ExecutionsPage";
-import { ConnectionsPage, CredentialsPage, IntegrationLogsPage, WebhooksPage } from "@/pages/IntegrationResourcePages";
-import ExternalIncidentReviewsPage from "@/pages/ExternalIncidentReviewsPage";
-import ApiDocsPage from "@/pages/ApiDocsPage";
-import DashboardsReportsPage from "@/pages/DashboardsReportsPage";
-import WorkShiftOperations from "@/pages/WorkShiftOperations";
-import ManualsHelpPage from "@/pages/ManualsHelpPage";
-import FormsPage from "@/pages/FormsPage";
-import FormDesignerPage from "@/pages/FormDesignerPage";
-import LoginPage from "@/pages/LoginPage";
-import WorkspaceExternalScreenPage from "@/pages/WorkspaceExternalScreenPage";
+
 import { useAuth } from "@/_core/hooks/useAuth";
 import { isFieldAgent } from "@/lib/operationalAccess";
 import { trpc } from "@/lib/trpc";
 import { Redirect, Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
+
+// Code splitting: mobile downloads a route only when it opens it.
+const AdminPage = lazy(() => import("@/pages/AdminPage"));
+const AccessScopesPage = lazy(() => import("@/pages/AccessScopesPage"));
+const IncidentsPage = lazy(() => import("@/pages/IncidentsPage"));
+const KanbanPage = lazy(() => import("@/pages/KanbanPage"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
+const TeamsPage = lazy(() => import("@/pages/TeamsPage"));
+const UsersAccessPage = lazy(() => import("@/pages/UsersAccessPage"));
+const LocalCredentialsPage = lazy(() => import("@/pages/LocalCredentialsPage"));
+const VehiclesPage = lazy(() => import("@/pages/VehiclesPage"));
+const RolesPermissionsPage = lazy(() => import("@/pages/RolesPermissionsPage"));
+const GeneralSettingsPage = lazy(() => import("@/pages/GeneralSettingsPage"));
+const OperationsLogPage = lazy(() => import("@/pages/OperationsLogPage"));
+const IntegrationsPage = lazy(() => import("@/pages/IntegrationsPage"));
+const EmbeddedApplicationsPage = lazy(() => import("@/pages/EmbeddedApplicationsPage"));
+const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage"));
+const WorkflowBuilderPage = lazy(() => import("@/pages/WorkflowBuilderPage"));
+const ExecutionsPage = lazy(() => import("@/pages/ExecutionsPage"));
+const ExternalIncidentReviewsPage = lazy(() => import("@/pages/ExternalIncidentReviewsPage"));
+const ApiDocsPage = lazy(() => import("@/pages/ApiDocsPage"));
+const DashboardsReportsPage = lazy(() => import("@/pages/DashboardsReportsPage"));
+const WorkShiftOperations = lazy(() => import("@/pages/WorkShiftOperations"));
+const ManualsHelpPage = lazy(() => import("@/pages/ManualsHelpPage"));
+const FormsPage = lazy(() => import("@/pages/FormsPage"));
+const FormDesignerPage = lazy(() => import("@/pages/FormDesignerPage"));
+const LoginPage = lazy(() => import("@/pages/LoginPage"));
+const WorkspaceExternalScreenPage = lazy(() => import("@/pages/WorkspaceExternalScreenPage"));
+const Home = lazy(() => import("./pages/Home"));
+const AgentWithFormsPage = lazy(() => import("@/pages/OperationalFormsRoutes").then(module => ({ default: module.AgentWithFormsPage })));
+const IncidentDetailWithFormsPage = lazy(() => import("@/pages/OperationalFormsRoutes").then(module => ({ default: module.IncidentDetailWithFormsPage })));
+const ConnectionsPage = lazy(() => import("@/pages/IntegrationResourcePages").then(module => ({ default: module.ConnectionsPage })));
+const CredentialsPage = lazy(() => import("@/pages/IntegrationResourcePages").then(module => ({ default: module.CredentialsPage })));
+const IntegrationLogsPage = lazy(() => import("@/pages/IntegrationResourcePages").then(module => ({ default: module.IntegrationLogsPage })));
+const WebhooksPage = lazy(() => import("@/pages/IntegrationResourcePages").then(module => ({ default: module.WebhooksPage })));
 
 function FieldRestrictedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -91,7 +99,9 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <Suspense fallback={<div role="status" className="mx-auto mt-10 w-[calc(100%-2rem)] max-w-md rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600">Carregando módulo do AXE Despacho...</div>}>
+            <Router />
+          </Suspense>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

@@ -15,6 +15,7 @@ A entrega inicial adapta a interface responsiva. O empacotamento nativo, notific
 - Kanban com rolagem horizontal por colunas e snap em telas pequenas.
 - Ajuste de cabeçalho em cartões de equipes e CSS global para campos, diálogos, mapas e tabelas.
 - Manifesto web separado e ícone próprio do Despacho.
+- Carregamento sob demanda de módulos React por rota (`lazy`/`Suspense`), reduzindo o JavaScript inicial em smartphones.
 - Testes unitários para filtragem e seleção das rotas do menu mobile.
 
 ## Comunicação e segurança
