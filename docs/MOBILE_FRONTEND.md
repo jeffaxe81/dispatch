@@ -19,6 +19,8 @@ A entrega inicial adapta a interface responsiva. O empacotamento nativo, notific
 - Manifesto web separado e ícone próprio do Despacho.
 - Carregamento sob demanda de módulos React por rota (`lazy`/`Suspense`), reduzindo o JavaScript inicial em smartphones.
 - Testes unitários para filtragem e seleção das rotas do menu mobile.
+- Persistência **opt-in** do resumo mínimo de ocorrências no dispositivo (15 minutos, escopo isolado, exclusão explícita); rascunhos de notas continuam apenas na aba.
+- Testes de persistência: reabertura simulada, expiração, isolamento e limpeza no logout.
 
 ## Comunicação e segurança
 
@@ -32,6 +34,18 @@ As consultas e mutações continuam **assíncronas via HTTPS e tRPC**. A API ace
 - Validar rede intermitente, conflitos de revisão, uso em diferentes escopos e sem permissões de módulo.
 - Executar CI: pnpm check, pnpm test, pnpm build e testes de navegador/e2e.
 - Não considerar a adaptação homologada ou liberada para produção sem as verificações acima.
+
+## Android nativo para equipes em campo
+
+**Opção recomendada:** Capacitor + React com um módulo de localização nativo Android (plugin auditado ou serviço Kotlin), sem reescrever todo o frontend. A PWA continua disponível para consultas com o app aberto. Android poderá receber um APK assinado para distribuição corporativa privada, respeitando o processo de verificação de desenvolvedor aplicável e as políticas de dispositivos administrados.
+
+O plugin básico `@capacitor/geolocation` não fornece rastreamento de localização em segundo plano de forma direta. Para uma jornada iniciada pelo próprio agente, o app nativo deve configurar um **foreground service do tipo location** com notificação visível, permissões compatíveis com Android 14+ e comando de encerrar compartilhamento. A suspensão por economia de bateria, permissões revogadas e encerramento forçado devem indicar perda de rastreio à central, nunca simular posição atual.
+
+Na fase nativa, a persistência mais completa poderá utilizar SQLite criptografado e Android Keystore, com expiração por política da operação, isolamento do usuário/organização, remoção no logout e sincronização via API HTTPS. O `WorkManager` ajuda a reenviar trabalhos de sincronização com rede disponível, mas não é substituto para um serviço de localização contínua e não garante tempo real. O backend deverá receber idempotency keys e rejeitar eventos fora de ordem antes de habilitarmos o armazenamento local de posições para replay.
+
+O modo **PWA** não deve armazenar localização, endereços, dados pessoais, credenciais ou anexos sem aprovação da política de segurança. A funcionalidade atual de persistência local limita-se a um resumo redigido, que nunca autoriza aceitar ou mudar uma ocorrência offline. A sessão autenticada deve ser confirmada pelo servidor antes de qualquer operação.
+
+**Pendências para gerar APK de homologação:** integração de API/autenticação na origem nativa, configuração Capacitor/Android, certificado de assinatura, permissão de GPS, serviço nativo, testes físicos de bateria/segundo plano e revisão LGPD/privacidade.
 
 ## Futuro Git separado
 
