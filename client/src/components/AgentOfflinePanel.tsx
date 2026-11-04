@@ -38,6 +38,10 @@ export function AgentOfflinePanel({ scope, assignments, canSave, canReconcile, o
   useEffect(() => { if (!canReconcile) setReconciliation(null); }, [canReconcile]);
   const summaryStorage = () => persistOnDevice ? window.localStorage : window.sessionStorage;
   const changeStorage = (persist: boolean) => {
+    // Opting out revokes any previous on-device copy immediately.
+    if (!persist) {
+      try { window.localStorage.removeItem(agentOfflineKey(scope, "list")); } catch { /* best effort; delete button remains available */ }
+    }
     setPersistOnDevice(persist);
     setSnapshot(null);
     setReconciliation(null);
