@@ -185,3 +185,41 @@
     }
   }
 }
+
+
+/* Mobile-first operational shell: preserve desktop tables but prevent viewport overflow. */
+html, body, #root { width: 100%; min-width: 0; }
+@media (max-width: 767px) {
+  body { overflow-x: clip; }
+  [data-slot="sidebar-inset"] { min-width: 0; max-width: 100%; overflow-x: clip; }
+  .dispatch-mobile-topbar {
+    padding-top: env(safe-area-inset-top);
+    min-height: calc(3.5rem + env(safe-area-inset-top));
+  }
+  .dispatch-mobile-bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .dispatch-responsive-main {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+  .dispatch-responsive-main > * { min-width: 0; max-width: 100%; }
+  .dispatch-responsive-main :where([data-slot="table-container"], .overflow-x-auto) {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dispatch-responsive-main :where(input, textarea, select) {
+    font-size: 16px; /* prevent iOS Safari focus zoom */
+    max-width: 100%;
+  }
+  .dispatch-responsive-main :where(.leaflet-container, img, video, canvas) {
+    max-width: 100%;
+  }
+  [data-slot="dialog-content"] {
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 1.5rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}

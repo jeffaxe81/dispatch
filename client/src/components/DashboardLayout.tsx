@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { MobileBottomNav } from "./MobileBottomNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Sidebar,
@@ -104,7 +105,7 @@ type DashboardLayoutContentProps = { children: React.ReactNode; setSidebarWidth:
 function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
-  const { state, toggleSidebar } = useSidebar();
+  const { state, toggleSidebar, openMobile, setOpenMobile } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const [logoutError, setLogoutError] = useState("");
@@ -190,7 +191,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
                 const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton isActive={isActive} onClick={() => setLocation(item.path)} tooltip={item.label} className="h-10 transition-all font-normal">
+                    <SidebarMenuButton isActive={isActive} onClick={() => { setLocation(item.path); if (isMobile) setOpenMobile(false); }} tooltip={item.label} className="h-10 transition-all font-normal">
                       <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
@@ -223,10 +224,10 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
             {logoutError && <p role="alert" className="text-xs leading-4 text-rose-700 group-data-[collapsible=icon]:hidden">{logoutError}</p>}
           </SidebarFooter>
         </Sidebar>
-        <div className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`} onMouseDown={() => { if (!isCollapsed) setIsResizing(true); }} style={{ zIndex: 50 }} />
+        <div className={`absolute top-0 right-0 hidden md:block w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`} onMouseDown={() => { if (!isCollapsed) setIsResizing(true); }} style={{ zIndex: 50 }} />
       </div>
 
-      <SidebarInset>
+      <SidebarInset className="min-w-0 max-w-full">
         {!isMobile && (
           <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200/80 bg-background/95 px-5 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
             <div className="min-w-0">
@@ -239,9 +240,9 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
           </header>
         )}
         {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
+          <div className="dispatch-mobile-topbar sticky top-0 z-30 flex min-h-14 items-center justify-between border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
             <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
+              <SidebarTrigger className="h-11 w-11 rounded-lg bg-background" aria-label="Abrir navegação completa" />
               <div className="flex items-center gap-3"><div className="flex flex-col gap-1"><span className="tracking-tight text-foreground">{activeMenuItem?.label ?? "Menu"}</span></div></div>
             </div>
             <Button type="button" variant="outline" size="icon" onClick={() => setLocation("/manuais-ajuda")} className="h-9 w-9 border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100 hover:text-sky-950" aria-label="Abrir Manuais e Ajuda" title="Manuais e Ajuda">
@@ -251,7 +252,8 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
         )}
         {networkState === "offline" && <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">Sem conexão. As alterações serão consultadas novamente quando a rede for restabelecida.</div>}
         {networkState === "restored" && <div role="status" className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm text-emerald-900">Conexão restabelecida. O painel voltou a sincronizar automaticamente.</div>}
-        <main className="flex-1 p-4">{children}</main>
+        <main id="dispatch-content" className="dispatch-responsive-main min-w-0 w-full flex-1 p-3 sm:p-4">{children}</main>
+        {isMobile && <MobileBottomNav items={menuItems} currentPath={location} onNavigate={path => setLocation(path)} onMore={toggleSidebar} expanded={openMobile} />}
       </SidebarInset>
     </>
   );

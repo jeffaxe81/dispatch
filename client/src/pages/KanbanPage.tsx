@@ -88,7 +88,7 @@ function KanbanColumn({
         if (dragging) onMove(dragging, status, "kanban");
         onDragEnd();
       }}
-      className="min-h-[500px] rounded-2xl border border-slate-200 bg-slate-50/80"
+      className="min-h-[500px] snap-start rounded-2xl border border-slate-200 bg-slate-50/80"
     >
       <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-3">
         <span className="text-xs font-semibold text-slate-700">{statusLabels[status]}</span>
@@ -332,8 +332,8 @@ function KanbanContent() {
       {dateRangeInvalid && <p role="alert" className="text-sm text-rose-700">O fim do período não pode ser anterior ao início.</p>}
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
       <p className="text-xs text-slate-500">Cada contagem representa a etapa inteira conforme os filtros. A ordenação e a média de gargalo consideram apenas cartões carregados em cada página de 20. Tempos de etapa exigem eventos auditados; indisponibilidade não é substituída pela data de abertura.</p>
-      <div className="overflow-x-auto pb-4">
-        <div className="grid min-w-[1500px] grid-cols-7 gap-3">
+      <div className="overflow-x-auto overscroll-x-contain pb-4 [scrollbar-width:thin]" aria-label="Etapas do Kanban; deslize horizontalmente para ver as colunas" tabIndex={0}>
+        <div className="grid w-max snap-x snap-mandatory grid-flow-col auto-cols-[minmax(270px,85vw)] gap-3 md:w-auto md:min-w-[1500px] md:grid-flow-row md:grid-cols-7 md:auto-cols-auto">
           {boardColumns.map(status => (
             <KanbanColumn
               key={status + "|" + filtersKey}

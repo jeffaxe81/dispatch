@@ -1,0 +1,14 @@
+{
+  "name": "AXE Despacho",
+  "short_name": "AXE Despacho",
+  "description": "Central operacional e gestão de despacho",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#082f49",
+  "icons": [
+    { "src": "/axe-mobile-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
