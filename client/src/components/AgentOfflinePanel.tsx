@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   loadAgentNoteDraft, loadAuthorizedAssignmentSnapshot,
   saveAgentNoteDraft, saveLastAuthorizedAssignments,
-  type AgentOfflineAssignment, type AgentOfflineScope,
+  agentOfflineKey, type AgentOfflineAssignment, type AgentOfflineScope,
 } from "@/lib/agentOffline";
 import { Button } from "@/components/ui/button";
 import { compareAgentOfflineAssignments, type AgentAssignmentReconciliation } from "@/lib/agentOfflineReconcile";
@@ -19,11 +19,14 @@ type Props = {
   onRestoreNote: (text: string) => void;
 };
 /**
- * F041/F042/F045: explicit, expiring sessionStorage; no automatic mutations.
+ * F041/F042/F045: expiring sessionStorage with optional redacted localStorage snapshot;
+ * no automatic mutations or persistent note drafts.
  * A snapshot is NOT authority to operate on an incident when offline.
  */
 export function AgentOfflinePanel({ scope, assignments, canSave, canReconcile, onLoadFreshAssignments, activeIncidentId, note, onRestoreNote }: Props) {
   const [snapshot, setSnapshot] = useState<{ rows: AgentOfflineAssignment[]; expiresAt: number } | null>(null);
+  // Default to tab-only storage; persisting the redacted summary requires an explicit opt-in.
+  const [persistOnDevice, setPersistOnDevice] = useState(false);
   useEffect(() => {
     if (!snapshot) return;
     const handle = window.setTimeout(() => setSnapshot(null), Math.max(0, snapshot.expiresAt - Date.now()));
@@ -33,19 +36,35 @@ export function AgentOfflinePanel({ scope, assignments, canSave, canReconcile, o
   const [reconciliation, setReconciliation] = useState<AgentAssignmentReconciliation | null>(null);
   const [checking, setChecking] = useState(false);
   useEffect(() => { if (!canReconcile) setReconciliation(null); }, [canReconcile]);
-  const local = () => window.sessionStorage;
+  const summaryStorage = () => persistOnDevice ? window.localStorage : window.sessionStorage;
+  const changeStorage = (persist: boolean) => {
+    setPersistOnDevice(persist);
+    setSnapshot(null);
+    setReconciliation(null);
+    setMessage("");
+  };
+  const deleteDeviceCopy = () => {
+    try {
+      window.localStorage.removeItem(agentOfflineKey(scope, "list"));
+      setSnapshot(null);
+      setReconciliation(null);
+      setMessage("Cópia persistida removida deste dispositivo.");
+    } catch {
+      setMessage("Não foi possível remover a cópia deste dispositivo.");
+    }
+  };
   const saveList = () => {
     try {
-      saveLastAuthorizedAssignments(local(), scope, assignments);
+      saveLastAuthorizedAssignments(summaryStorage(), scope, assignments);
       setSnapshot(null);
-      setMessage("Resumo guardado neste navegador por no máximo 15 minutos. Sem endereço ou descrição.");
+      setMessage(persistOnDevice ? "Resumo mínimo guardado no dispositivo por até 15 minutos. Não substitui autenticação." : "Resumo guardado nesta aba por até 15 minutos. Sem endereço ou descrição.");
     } catch {
       setMessage("Não foi possível guardar o resumo local. Confira a sessão e o armazenamento.");
     }
   };
   const openList = () => {
     try {
-      const saved = loadAuthorizedAssignmentSnapshot(local(), scope);
+      const saved = loadAuthorizedAssignmentSnapshot(summaryStorage(), scope);
       setSnapshot(saved);
       setMessage(saved?.rows.length ? "Cópia temporária para consulta, não autoriza operações offline." : "Sem cópia válida ou prazo de 15 minutos expirado.");
     } catch {
@@ -59,7 +78,7 @@ export function AgentOfflinePanel({ scope, assignments, canSave, canReconcile, o
     setReconciliation(null);
     setMessage("");
     try {
-      const previous = loadAuthorizedAssignmentSnapshot(local(), scope);
+      const previous = loadAuthorizedAssignmentSnapshot(summaryStorage(), scope);
       if (!previous) {
         setMessage("Não há resumo offline válido para comparar. O resumo pode ter expirado.");
         return;
@@ -78,7 +97,7 @@ export function AgentOfflinePanel({ scope, assignments, canSave, canReconcile, o
   const saveDraft = () => {
     if (!activeIncidentId) return;
     try {
-      saveAgentNoteDraft(local(), scope, activeIncidentId, note);
+      saveAgentNoteDraft(window.sessionStorage, scope, activeIncidentId, note);
       setMessage("Rascunho salvo somente nesta sessão. Não foi enviado.");
     } catch {
       setMessage("O rascunho exige 3 a 1000 caracteres e armazenamento disponível.");
@@ -87,7 +106,7 @@ export function AgentOfflinePanel({ scope, assignments, canSave, canReconcile, o
   const restoreDraft = () => {
     if (!activeIncidentId) return;
     try {
-      const value = loadAgentNoteDraft(local(), scope, activeIncidentId);
+      const value = loadAgentNoteDraft(window.sessionStorage, scope, activeIncidentId);
       if (value === null) {
         setMessage("Rascunho indisponível ou expirado.");
       } else {
@@ -102,12 +121,18 @@ export function AgentOfflinePanel({ scope, assignments, canSave, canReconcile, o
     <CardContent className="space-y-3 p-4">
       <div>
         <h2 className="text-sm font-semibold text-slate-900">Consulta temporária de campo</h2>
-        <p className="mt-1 text-xs text-slate-600">Cópia mínima com expiração de 15 minutos, isolada por usuário, empresa e equipe. Não substitui autenticação nem permite envio automático.</p>
+        <p className="mt-1 text-xs text-slate-600">Resumo mínimo expira após 15 minutos e é isolado por usuário, organização e equipe. Não contém endereço, coordenadas ou anexos.</p>
+        <label className="mt-3 flex items-center gap-2 text-xs font-medium text-slate-800">
+          <input type="checkbox" className="h-4 w-4" checked={persistOnDevice} onChange={event => changeStorage(event.target.checked)} />
+          Manter resumo no dispositivo após fechar a aba
+        </label>
+        <p className="mt-1 text-xs text-slate-500">Ao reabrir, marque a opção novamente e consulte o resumo manualmente após autenticação. Rascunhos de notas continuam só nesta aba.</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" variant="outline" onClick={saveList} disabled={!canSave}>Guardar resumo autorizado</Button>
         <Button type="button" size="sm" variant="outline" onClick={openList}>Consultar resumo temporário</Button>
         <Button type="button" size="sm" variant="outline" onClick={() => void compareWithServer()} disabled={!canReconcile || checking}>{checking ? "Conferindo..." : "Comparar resumo com servidor"}</Button>
+        {persistOnDevice && <Button type="button" size="sm" variant="outline" onClick={deleteDeviceCopy}>Apagar cópia deste dispositivo</Button>}
         {activeIncidentId ? <>
           <Button type="button" size="sm" variant="outline" onClick={saveDraft} disabled={note.trim().length < 3 || note.length > 1000}>Guardar rascunho</Button>
           <Button type="button" size="sm" variant="outline" onClick={restoreDraft}>Restaurar rascunho</Button>
