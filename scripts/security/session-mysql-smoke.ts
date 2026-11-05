@@ -104,7 +104,7 @@ async function main(): Promise<void> {
     teamId = teamInsert.insertId;
     const incidentCode = "CI" + randomUUID().replaceAll("-", "").slice(0, 20);
     const [incidentInsert] = await independent.execute<ResultSetHeader>(
-      "INSERT INTO incidents (code, status, priority, category, origin, description, address, latitude, longitude, created_by_user_id) VALUES (?, 'triagem', 'media', ?, 'central', ?, ?, ?, ?, ?)",
+      "INSERT INTO incidents (code, incident_status, incident_priority, category, incident_origin, description, address, latitude, longitude, created_by_user_id) VALUES (?, 'triagem', 'media', ?, 'central', ?, ?, ?, ?, ?)",
       [incidentCode, "Homologation", "Isolated session write boundary scenario", "CI isolated address", "-27.0", "-48.0", userId],
     );
     incidentId = incidentInsert.insertId;
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
     await independent.commit();
     assert.equal(await pendingOutcome, "rejected");
     const [stillAccepted] = await independent.execute<RowDataPacket[]>(
-      "SELECT status FROM incidents WHERE id = ?", [incidentId],
+      "SELECT incident_status AS status FROM incidents WHERE id = ?", [incidentId],
     );
     assert.equal(stillAccepted[0]?.status, "aceita");
 
