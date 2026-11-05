@@ -61,7 +61,7 @@ export function resolveEffectivePermissions(input: { active: boolean; operationa
 export function evaluateTeamScope(assignments: AccessAssignment[], team: { organizationId: number | null; organizationalUnitId: number | null; id: number }, activeOrganizationId?: number | null) {
   if (activeOrganizationId !== undefined && activeOrganizationId !== null && team.organizationId !== activeOrganizationId) return false;
   return assignments.some(assignment => {
-    if (assignment.defaultScope === "global") return true;
+    if (assignment.defaultScope === "global") return isCanonicalGlobalScope(assignment);
     if (assignment.teamId === team.id) return true;
     if (assignment.defaultScope === "organizacao") return assignment.organizationId !== null && assignment.organizationId === team.organizationId;
     if (["unidade", "departamento", "grupo"].includes(assignment.defaultScope)) {
@@ -72,7 +72,7 @@ export function evaluateTeamScope(assignments: AccessAssignment[], team: { organ
 }
 
 export function requiresExplicitTeamSelection(assignments: AccessAssignment[]) {
-  return assignments.length > 0 && !assignments.some(assignment => assignment.defaultScope === "global");
+  return assignments.length > 0 && !assignments.some(isCanonicalGlobalScope);
 }
 
 export async function getAccessSnapshot(userId: number) {
