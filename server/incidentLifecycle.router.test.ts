@@ -4,6 +4,7 @@ import type { TrpcContext } from "./_core/context";
 const mocks = vi.hoisted(() => ({
   assertPermission: vi.fn(),
   assertTeamScope: vi.fn(),
+  getAccessSnapshot: vi.fn(),
   createIncident: vi.fn(),
   updateIncident: vi.fn(),
   getIncidentById: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("./accessControl", async importOriginal => ({
   ...(await importOriginal<typeof import("./accessControl")>()),
   assertPermission: mocks.assertPermission,
   assertTeamScope: mocks.assertTeamScope,
+  getAccessSnapshot: mocks.getAccessSnapshot,
 }));
 
 vi.mock("./db", async importOriginal => ({
@@ -93,6 +95,7 @@ describe("ciclo tRPC de ocorrência e auditoria", () => {
     vi.clearAllMocks();
     mocks.assertPermission.mockResolvedValue(undefined);
     mocks.assertTeamScope.mockResolvedValue(undefined);
+    mocks.getAccessSnapshot.mockResolvedValue({ assignments: [], permissions: new Set(["audit.view"]) });
     mocks.createIncident.mockResolvedValue(incident("triagem").incident);
     mocks.updateIncident.mockResolvedValue(incident("triagem").incident);
     mocks.assignTeamToIncident.mockResolvedValue(incident("despachada").incident);
@@ -108,7 +111,8 @@ describe("ciclo tRPC de ocorrência e auditoria", () => {
       .mockResolvedValueOnce(incident("aguardando_despacho"))
       .mockResolvedValueOnce(incident("despachada"))
       .mockResolvedValueOnce(incident("aceita"))
-      .mockResolvedValueOnce(incident("em_atendimento"));
+      .mockResolvedValueOnce(incident("em_atendimento"))
+      .mockResolvedValueOnce(incident("concluida"));
 
     const administrator = appRouter.createCaller(context("administrador", null));
     const agent = appRouter.createCaller(context("agente", 3));

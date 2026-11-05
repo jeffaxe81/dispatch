@@ -92,4 +92,14 @@ describe("decisão de permissões RBAC", () => {
     expect(hasAdministratorAssignmentForOrganization(supervisor as any, 10)).toBe(false);
     expect(hasAdministratorAssignmentForOrganization(tenantAdmin as any, 0)).toBe(false);
   });
+
+  it("não trata assignment global malformado como acesso global", () => {
+    const malformedGlobal = [{ roleCode: "administrador", defaultScope: "global", organizationId: 10, organizationalUnitId: null, teamId: null }] as const;
+    const team = { id: 7, organizationId: 10, organizationalUnitId: 20 };
+
+    expect(evaluateTeamScope(malformedGlobal as any, team)).toBe(false);
+    expect(requiresExplicitTeamSelection(malformedGlobal as any)).toBe(true);
+    expect(hasAdministratorAssignmentForOrganization(malformedGlobal as any, 10)).toBe(false);
+  });
+
 });
