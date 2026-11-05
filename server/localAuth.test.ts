@@ -11,6 +11,7 @@ import { createLocalSessionToken, hashLocalPassword, nextLoginFailure, normalize
 import { getMenuItems } from "../client/src/components/DashboardLayout";
 
 describe("autenticação local", () => {
+  const verifiedHash = "scrypt$verified$hash";
   it("normaliza o identificador e deriva uma senha que não pode ser validada por texto incorreto", async () => {
     const hash = await hashLocalPassword("senha-local-segura");
     expect(normalizeUsername("  Central.Admin ")).toBe("central.admin");
@@ -33,7 +34,7 @@ describe("autenticação local", () => {
   });
 
   it("assina uma sessão com jti aleatório e a registra antes de entregar o JWT", async () => {
-    const token = await createLocalSessionToken(42);
+    const token = await createLocalSessionToken(42, verifiedHash);
     expect(token.split(".")).toHaveLength(3);
     const identity = await verifyLocalSessionToken(token);
     expect(identity).toEqual(expect.objectContaining({ kind: "local", userId: 42 }));
@@ -43,8 +44,8 @@ describe("autenticação local", () => {
       userId: 42,
       jti: identity?.jti,
       expiresAt: identity?.expiresAt,
-    });
-    const second = await createLocalSessionToken(42);
+    }, verifiedHash);
+    const second = await createLocalSessionToken(42, verifiedHash);
     expect(second).not.toBe(token);
     expect((await verifyLocalSessionToken(second))?.jti).not.toBe(identity?.jti);
     await expect(verifyLocalSessionToken(token + "alterado")).resolves.toBeNull();
@@ -52,12 +53,17 @@ describe("autenticação local", () => {
 
   it("nega emissão do token quando não consegue persistir a sessão", async () => {
     vi.mocked(registerLocalAuthSession).mockRejectedValueOnce(new Error("Banco indisponível"));
-    await expect(createLocalSessionToken(42)).rejects.toThrow("Banco indisponível");
+    await expect(createLocalSessionToken(42, verifiedHash)).rejects.toThrow("Banco indisponível");
+  });
+
+  it("não cria token sem snapshot de credencial confirmada", async () => {
+    await expect(createLocalSessionToken(42, "")).rejects.toThrow("Credenciais de sessão inválidas");
+    expect(registerLocalAuthSession).not.toHaveBeenCalled();
   });
 
   it("nega identificadores de usuário incorretos antes de assinar", async () => {
-    await expect(createLocalSessionToken(0)).rejects.toThrow("Usuário inválido");
-    await expect(createLocalSessionToken(Number.MAX_SAFE_INTEGER + 1)).rejects.toThrow("Usuário inválido");
+    await expect(createLocalSessionToken(0, verifiedHash)).rejects.toThrow("Usuário inválido");
+    await expect(createLocalSessionToken(Number.MAX_SAFE_INTEGER + 1, verifiedHash)).rejects.toThrow("Usuário inválido");
   });
 
   it("mantém a navegação adequada para administrador, despachador e agente", () => {
