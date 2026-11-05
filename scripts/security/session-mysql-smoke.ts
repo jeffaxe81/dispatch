@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { Request } from "express";
-import mysql from "mysql2/promise";
+import mysql, { type Connection, type RowDataPacket, type ResultSetHeader } from "mysql2/promise";
 import { COOKIE_NAME } from "../../shared/const";
 import {
   authenticateLocalRequest,
@@ -43,15 +43,15 @@ async function main(): Promise<void> {
   // Independent connection simulates a second node observing the shared registry.
   const independent = await mysql.createConnection(url);
   let userId: number | null = null;
-  let lockConnection: mysql.Connection | undefined;
+  let lockConnection: Connection | undefined;
   let sessionTableTemporarilyRenamed = false;
   try {
-    const [dbNameRows] = await independent.query<mysql.RowDataPacket[]>("SELECT DATABASE() AS db_name");
+    const [dbNameRows] = await independent.query<RowDataPacket[]>("SELECT DATABASE() AS db_name");
     assert.equal(dbNameRows[0]?.db_name, "dispatch_auth_ci");
     const username = "auth_smoke_" + randomUUID().slice(0, 12);
     const password = "ci-password-" + randomUUID();
     const initialHash = await hashLocalPassword(password);
-    const [insert] = await independent.execute<mysql.ResultSetHeader>(
+    const [insert] = await independent.execute<ResultSetHeader>(
       "INSERT INTO users (openId, username, password_hash, loginMethod) VALUES (?, ?, ?, ?)",
       ["local:" + username, username, initialHash, "local_password"],
     );
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     const request = { headers: { cookie: COOKIE_NAME + "=" + token } } as Request;
     assert.equal((await authenticateLocalRequest(request))?.id, userId);
 
-    const [records] = await independent.execute<mysql.RowDataPacket[]>(
+    const [records] = await independent.execute<RowDataPacket[]>(
       "SELECT session_hash, user_id, revoked_at FROM local_auth_sessions WHERE user_id = ?",
       [userId],
     );
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
     assert.equal(await isLocalAuthSessionActive(identity), false);
     assert.equal(await authenticateLocalRequest(request), null);
     await revokeLocalSessionFromRequest(request); // Idempotent.
-    const [revoked] = await independent.execute<mysql.RowDataPacket[]>(
+    const [revoked] = await independent.execute<RowDataPacket[]>(
       "SELECT revoked_at FROM local_auth_sessions WHERE session_hash = ?",
       [hashLocalSessionId(identity.jti)],
     );
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
 
     // Fail closed if the session registry disappears; never accept a JWT by
     // cryptographic signature alone when the shared store is unavailable.
-    const [latest] = await independent.execute<mysql.RowDataPacket[]>(
+    const [latest] = await independent.execute<RowDataPacket[]>(
       "SELECT password_hash FROM users WHERE id = ?", [userId],
     );
     const newest = await createLocalSessionToken(userId, String(latest[0]?.password_hash));
