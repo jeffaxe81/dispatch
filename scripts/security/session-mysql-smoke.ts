@@ -153,7 +153,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(error => {
-  console.error("Isolated session registry MySQL validation failed:", error instanceof Error ? error.message : "unknown");
-  process.exitCode = 1;
-});
+// Drizzle's production-style pool intentionally keeps idle connections open;
+// this one-shot CI smoke exits only AFTER all assertions and cleanup completed.
+void main().then(
+  () => { process.stdout.write("Session MySQL smoke finished.\\n", () => process.exit(0)); },
+  error => {
+    const message = error instanceof Error ? error.stack ?? error.message : "unknown";
+    process.stderr.write("Isolated session registry MySQL validation failed: " + message + "\\n", () => process.exit(1));
+  },
+);
