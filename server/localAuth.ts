@@ -5,6 +5,12 @@ import { eq } from "drizzle-orm";
 import type { Request } from "express";
 import { COOKIE_NAME } from "@shared/const";
 import { users, type User } from "../drizzle/schema";
+import {
+  isLocalAuthSessionActive,
+  registerLocalAuthSession,
+  revokeLocalAuthSession,
+  type LocalSessionIdentity,
+} from "./localAuthSessions";
 import { getDb } from "./db";
 import { ENV } from "./_core/env";
 
@@ -13,7 +19,7 @@ const LOCAL_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 
-type LocalSession = { userId: number; kind: "local" };
+type LocalSession = { userId: number; kind: "local" } & LocalSessionIdentity;
 
 function sessionKey() {
   return new TextEncoder().encode(ENV.cookieSecret);
@@ -50,22 +56,38 @@ export function nextLoginFailure(currentAttempts: number, now = new Date()) {
 }
 
 export async function createLocalSessionToken(userId: number) {
+  if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error("Usuário inválido.");
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ userId, kind: "local" satisfies LocalSession["kind"] })
+  const expiry = now + Math.floor(LOCAL_SESSION_TTL_MS / 1000);
+  const jti = randomBytes(32).toString("hex");
+  const identity: LocalSessionIdentity = { userId, jti, expiresAt: new Date(expiry * 1000) };
+  const token = await new SignJWT({ userId, kind: "local" satisfies LocalSession["kind"] })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setJti(jti)
     .setIssuedAt(now)
-    .setExpirationTime(now + Math.floor(LOCAL_SESSION_TTL_MS / 1000))
+    .setExpirationTime(expiry)
     .setIssuer("axe-dispatch-local")
     .setAudience("axe-dispatch")
     .sign(sessionKey());
+  // Durable allowlist first. A failed write cannot create a usable cookie.
+  await registerLocalAuthSession(identity);
+  return token;
 }
 
 export async function verifyLocalSessionToken(token: string | undefined | null): Promise<LocalSession | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, sessionKey(), { algorithms: ["HS256"], issuer: "axe-dispatch-local", audience: "axe-dispatch" });
-    if (payload.kind !== "local" || typeof payload.userId !== "number" || !Number.isInteger(payload.userId)) return null;
-    return { kind: "local", userId: payload.userId };
+    if (payload.kind !== "local" || typeof payload.userId !== "number" ||
+        !Number.isSafeInteger(payload.userId) || payload.userId <= 0 ||
+        typeof payload.jti !== "string" || !/^[a-f0-9]{64}$/.test(payload.jti) ||
+        typeof payload.exp !== "number" || !Number.isSafeInteger(payload.exp)) return null;
+    return {
+      kind: "local",
+      userId: payload.userId,
+      jti: payload.jti,
+      expiresAt: new Date(payload.exp * 1000),
+    };
   } catch {
     return null;
   }
@@ -76,9 +98,18 @@ function getCookie(req: Request, name: string) {
   return raw.split(";").map(part => part.trim()).find(part => part.startsWith(`${name}=`))?.slice(name.length + 1);
 }
 
+/** No success is returned for a signed session if revocation persistence fails. */
+export async function revokeLocalSessionFromRequest(req: Request): Promise<void> {
+  const session = await verifyLocalSessionToken(getCookie(req, COOKIE_NAME));
+  if (!session) return; // Already absent, invalid or expired: safe/idempotent.
+  await revokeLocalAuthSession(session);
+}
+
 export async function authenticateLocalRequest(req: Request): Promise<User | null> {
   const session = await verifyLocalSessionToken(getCookie(req, COOKIE_NAME));
-  if (!session) return null;
+  if (!session) return null; // Older tokens without jti require a fresh login.
+  // Check durable shared revocation BEFORE loading the operational user.
+  if (!(await isLocalAuthSessionActive(session))) return null;
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   const user = (await db.select().from(users).where(eq(users.id, session.userId)).limit(1))[0];
