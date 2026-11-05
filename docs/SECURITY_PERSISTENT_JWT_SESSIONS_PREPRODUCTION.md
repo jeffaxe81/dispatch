@@ -34,3 +34,11 @@
 A implementação **não** cria autenticação Android/iOS nativa, nem envio de GPS operacional. Não há alterações de produção, grants ou migrações aplicadas. A revogação é por sessão no logout e por usuário em alterações sensíveis; revogação administrativa manual e visualização de dispositivos ativos são melhorias posteriores. Corridas entre autenticação previamente validada e revogação exigem testes e podem demandar controle adicional no limite da mutação.
 
 **Produção bloqueada até autorização explícita.**
+
+## Reforço de concorrência — 05/11/2026
+
+A sessão agora recebe um **snapshot do hash de senha que foi efetivamente verificado** no login. Ao registrar o `jti`, o backend abre uma transação MySQL e bloqueia a linha `users` com `SELECT ... FOR UPDATE`. Somente insere o registro se o usuário continuar ativo, não estiver temporariamente bloqueado e o hash de senha atual for idêntico ao validado. Se uma alteração administrativa ganhar a corrida, a emissão falha; se a emissão ganhar, a atualização posterior aguarda o lock e revoga a sessão na mesma transação. Alterações de perfil e vínculos RBAC também adquiriram esse lock.
+
+Novos testes de regressão exercitam ordem de lock e escrita, troca de senha concorrente, conta desativada/excluída, falha de persistência e ausência da prova de credencial. Estes testes usam um banco simulado: **ainda é obrigatório reproduzir com transações reais MySQL 8.4 e pelo menos dois nós antes de integrar**.
+
+**Conflito de migração:** PR #241 também define migração `0024` com estratégia diferente (*denylist*). PR #242 (*allowlist*) não pode ser mesclado junto com #241 sem uma decisão e reconciliação explícitas. Um workflow GitHub verde não resolve esse conflito.
