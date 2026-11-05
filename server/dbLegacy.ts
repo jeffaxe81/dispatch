@@ -1804,6 +1804,11 @@ export async function setUserRoleAssignmentActive(input: { assignmentId: number;
   await db.transaction(async tx => {
     const before = (await tx.select().from(userRoleAssignments).where(eq(userRoleAssignments.id, input.assignmentId)).limit(1))[0];
     if (!before) throw new Error("Vínculo de perfil não encontrado.");
+    // Prevent issuance from crossing a role reassignment without observing
+    // its revocation; use the same users-row lock as JWT registration.
+    const lockedUser = (await tx.select({ id: users.id }).from(users)
+      .where(eq(users.id, before.userId)).limit(1).for("update"))[0];
+    if (!lockedUser) throw new Error("Usuário do vínculo não encontrado.");
     const replaced = input.active ? await tx.select({ id: userRoleAssignments.id }).from(userRoleAssignments).where(and(eq(userRoleAssignments.userId, before.userId), eq(userRoleAssignments.active, true), ne(userRoleAssignments.id, input.assignmentId))) : [];
     if (replaced.length) await tx.update(userRoleAssignments).set({ active: false, activeUserId: null }).where(and(eq(userRoleAssignments.userId, before.userId), eq(userRoleAssignments.active, true), ne(userRoleAssignments.id, input.assignmentId)));
     await tx.update(userRoleAssignments).set({ active: input.active, activeUserId: input.active ? before.userId : null }).where(eq(userRoleAssignments.id, input.assignmentId));
@@ -1818,7 +1823,8 @@ export async function setUserRoleAssignmentActive(input: { assignmentId: number;
 export async function updateUserProfileAccess(input: { userId: number; active?: boolean; displayName?: string | null; employeeId?: string | null; institutionalId?: string | null; phone?: string | null; jobTitle?: string | null; mfaEnabled?: boolean; accessExpiresAt?: Date | null; actorUserId: number }) {
   const db = await requireDb();
   await db.transaction(async tx => {
-    const beforeUser = (await tx.select().from(users).where(eq(users.id, input.userId)).limit(1))[0];
+    // Serialize access-policy changes against session issuance for this user.
+    const beforeUser = (await tx.select().from(users).where(eq(users.id, input.userId)).limit(1).for("update"))[0];
     if (!beforeUser) throw new Error("Usuário não encontrado.");
     const beforeProfile = (await tx.select().from(userProfiles).where(eq(userProfiles.userId, input.userId)).limit(1))[0];
     if (input.active !== undefined) await tx.update(users).set({ active: input.active }).where(eq(users.id, input.userId));
