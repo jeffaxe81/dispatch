@@ -42,3 +42,11 @@ A sessão agora recebe um **snapshot do hash de senha que foi efetivamente verif
 Novos testes de regressão exercitam ordem de lock e escrita, troca de senha concorrente, conta desativada/excluída, falha de persistência e ausência da prova de credencial. Estes testes usam um banco simulado: **ainda é obrigatório reproduzir com transações reais MySQL 8.4 e pelo menos dois nós antes de integrar**.
 
 **Conflito de migração:** PR #241 também define migração `0024` com estratégia diferente (*denylist*). PR #242 (*allowlist*) não pode ser mesclado junto com #241 sem uma decisão e reconciliação explícitas. Um workflow GitHub verde não resolve esse conflito.
+
+## Revogação em alterações administrativas de RBAC — 05/11/2026
+
+- `assignUserRole` passa a adquirir `FOR UPDATE` na linha do usuário e a revogar os JWTs anteriores na **mesma transação** que substitui o vínculo de papel.
+- `updateOperationalUser` usa leitura bloqueante da linha do usuário antes de mudar equipe/atribuição.
+- `updateAccessRole`, quando altera `permissionIds`, `defaultScope` ou `active`, revoga somente os usuários com **atribuição ativa** do papel afetado. O bloqueio das linhas `users` é ordenado e processado em lotes de até 200 para reduzir travamentos prolongados. Edições de nome/descrição não encerram sessões.
+- O smoke com MySQL 8.4 passa a exercitar substituição de papel, alteração somente de apresentação, alteração de escopo e preservação da sessão de um usuário sem vínculo com o papel alterado.
+- **Limite:** ainda não se provou atomicidade de revogação com uma mutação operacional que já tenha passado pela autenticação; o servidor deve revalidar a autorização no ponto de uso e a homologação de concorrência permanece necessária.
