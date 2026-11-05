@@ -45,6 +45,7 @@ import { assertCurrentIncidentTransition, assertExpectedIncidentStatusRevision }
 import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import { assertRequiredIncidentClosureForms } from "./forms/incidentClosureFormGate";
+import { publicUserColumns } from "./publicUser";
 import { incidentListOrder } from "./incidentListOrder";
 import { fetchIncidentStageSummary } from "./incidentStageSummary";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
@@ -1370,7 +1371,7 @@ export async function getIncidentAudit(incidentId: number) {
 
 export async function listUsersForAdministration() {
   const db = await requireDb();
-  return db.select({ user: users, teamCode: teams.code, teamName: teams.name }).from(users).leftJoin(teams, eq(users.teamId, teams.id));
+  return db.select({ user: publicUserColumns, teamCode: teams.code, teamName: teams.name }).from(users).leftJoin(teams, eq(users.teamId, teams.id));
 }
 
 export async function updateOperationalUser(input: { userId: number; operationalRole: OperationalRole; teamId?: number | null; active?: boolean; actorUserId: number }) {
@@ -1684,7 +1685,7 @@ export async function listUsersWithAccess(input: { page: number; pageSize: numbe
   if (input.active !== undefined) filters.push(eq(users.active, input.active));
   const where = filters.length ? and(...filters) : undefined;
   const [rows, totalRows] = await Promise.all([
-    db.select({ user: users, profile: userProfiles, teamCode: teams.code, teamName: teams.name }).from(users).leftJoin(userProfiles, eq(userProfiles.userId, users.id)).leftJoin(teams, eq(users.teamId, teams.id)).where(where).orderBy(desc(users.lastSignedIn)).limit(input.pageSize).offset((input.page - 1) * input.pageSize),
+    db.select({ user: publicUserColumns, profile: userProfiles, teamCode: teams.code, teamName: teams.name }).from(users).leftJoin(userProfiles, eq(userProfiles.userId, users.id)).leftJoin(teams, eq(users.teamId, teams.id)).where(where).orderBy(desc(users.lastSignedIn)).limit(input.pageSize).offset((input.page - 1) * input.pageSize),
     db.select({ total: count() }).from(users).where(where),
   ]);
   const ids = rows.map(row => row.user.id);

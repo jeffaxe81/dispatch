@@ -21,6 +21,7 @@ import { getSimulatedIntegrationsOverview } from "./integrations";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { requireActiveTenant } from "./tenantOperational";
 import { listOwnDeniedPermissions } from "./deniedPermissionAudit";
+import { toPublicUser } from "./publicUser";
 import {
   assignTeamToIncident,
   addIncidentEvidence,
@@ -146,7 +147,7 @@ function requireIncident(result: Awaited<ReturnType<typeof getIncidentById>>) {
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => toPublicUser(opts.ctx.user)),
     login: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: z.string().min(12).max(256) })).mutation(async ({ ctx, input }) => {
       const user = await loginWithLocalCredentials(input);
       const token = await createLocalSessionToken(user.id);
