@@ -24,8 +24,11 @@ export async function createContext(
   if (user) {
     try {
       user = await reconcileOperationalRoleWithAssignments(user);
-    } catch (error) {
-      console.warn("[Auth] Não foi possível reconciliar o perfil operacional", error);
+    } catch {
+      // A stale role must never survive an RBAC/tenant reconciliation failure.
+      // Fail closed, and do not print identity/session details to server logs.
+      console.warn("[Auth] Falha na validação de permissões; acesso negado.");
+      user = null;
     }
   }
 
