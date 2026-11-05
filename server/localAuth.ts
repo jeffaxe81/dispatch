@@ -100,6 +100,14 @@ function getCookie(req: Request, name: string) {
   return raw.split(";").map(part => part.trim()).find(part => part.startsWith(`${name}=`))?.slice(name.length + 1);
 }
 
+/** Decode an already authenticated HTTP request for a guarded write transaction. */
+export async function requireOperationalSessionIdentity(req: Request, actorUserId: number): Promise<LocalSessionIdentity> {
+  const identity = await verifyLocalSessionToken(getCookie(req, COOKIE_NAME));
+  if (!identity || identity.userId !== actorUserId)
+    throw new Error("Sessão de operação inválida. Entre novamente.");
+  return identity;
+}
+
 /** No success is returned for a signed session if revocation persistence fails. */
 export async function revokeLocalSessionFromRequest(req: Request): Promise<void> {
   const session = await verifyLocalSessionToken(getCookie(req, COOKIE_NAME));
