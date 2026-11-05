@@ -12,7 +12,7 @@
 | 4 | AXED-F016 | Motivo obrigatório de priorização | R05 | Integrado — #212 | Justificativa de mudança de prioridade exigida pela API e registrada em auditoria. |
 | 5 | AXED-F017 | Histórico de movimentações | R05 | Integrado — #210 | Cronologia mostra autor, horário e estado anterior → novo nos eventos aplicáveis. |
 | 6 | AXED-F019 | Visões salvas do Kanban | R05 | Integrado — #211 | Visões locais isoladas por usuário e organização ativa neste dispositivo. |
-| 7 | AXED-F020 | Aviso de alteração concorrente | R05 | Integrado com ressalva — #213, #233 | Revisão monotônica sob lock de linha protege contra ABA; Kanban, detalhe e agente enviam a revisão. Ressalvas: a API ainda aceita chamadas sem revisão (compatibilidade) e `updateIncident` não usa revisão nem lock de linha. |
+| 7 | AXED-F020 | Aviso de alteração concorrente | R05 | Integrado com ressalva — #213, #233 | Revisão monotônica sob lock de linha protege contra ABA; Kanban, detalhe e agente enviam a revisão. Ressalvas: a API ainda aceita chamadas sem revisão (compatibilidade) e `updateIncident` não usa revisão nem lock de linha. Há sistema externo que chama esta API (informado em 05/11/2026), então a obrigatoriedade depende de migrá-lo. |
 | 8 | AXED-F021 | Modelo de formulário por categoria | R06 | Integrado — #214 | Herda modelo publicado pela categoria derivada da ocorrência e tenant autorizados. |
 | 9 | AXED-F022 | Campos obrigatórios por fase | R06 | Integrado — #218 | Campos D-008 condicionados à fase obtida da ocorrência autorizada; F030 separado. |
 | 10 | AXED-F028 | Pré-preenchimento autorizado | R06 | Integrado — #216 | Ação explícita preenche apenas código, categoria e prioridade, sem PII ou sobrescrita. |
