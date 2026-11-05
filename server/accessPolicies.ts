@@ -16,12 +16,19 @@ function hasScopeValue(value: number | null | undefined) {
   return value !== null && value !== undefined;
 }
 
+export function isCanonicalGlobalScope(input: RoleScopeAssignmentInput) {
+  return input.defaultScope === "global"
+    && !hasScopeValue(input.organizationId)
+    && !hasScopeValue(input.organizationalUnitId)
+    && !hasScopeValue(input.teamId);
+}
+
 export function isRoleScopeAssignmentValid(input: RoleScopeAssignmentInput) {
   const hasOrganization = hasScopeValue(input.organizationId);
   const hasUnit = hasScopeValue(input.organizationalUnitId);
   const hasTeam = hasScopeValue(input.teamId);
 
-  if (input.defaultScope === "global") return !hasOrganization && !hasUnit && !hasTeam;
+  if (input.defaultScope === "global") return isCanonicalGlobalScope(input);
   if (input.defaultScope === "organizacao") return hasOrganization && !hasUnit && !hasTeam;
   if (["unidade", "departamento", "grupo"].includes(input.defaultScope)) return hasOrganization && hasUnit && !hasTeam;
   return hasTeam && !hasOrganization && !hasUnit;
