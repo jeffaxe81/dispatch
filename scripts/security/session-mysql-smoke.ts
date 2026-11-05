@@ -20,7 +20,7 @@ import {
   isLocalAuthSessionActive,
   revokeAllLocalAuthSessions,
 } from "../../server/localAuthSessions";
-import { setUserLocalCredentials } from "../../server/db";
+import { assignUserRole, createAccessRole, setUserLocalCredentials, updateAccessRole } from "../../server/db";
 
 function guardedTestDatabaseUrl(): string {
   const url = process.env.DATABASE_URL ?? "";
@@ -105,6 +105,47 @@ async function main(): Promise<void> {
     const reauthenticated = await loginWithLocalCredentials({ username, password: newPassword });
     assert.equal(reauthenticated.id, userId);
 
+    // Assigning a new profile must invalidate ALL prior sessions atomically.
+    const role = await createAccessRole({
+      code: "session_ci_" + randomUUID().slice(0, 12),
+      name: "Ephemeral auth test role",
+      defaultScope: "global",
+      permissionIds: [],
+      actorUserId: userId,
+    });
+    const beforeAssign = await createLocalSessionToken(userId, newHash);
+    const assigned = await assignUserRole({
+      userId,
+      roleId: role.id,
+      actorUserId: userId,
+    });
+    assert.ok(assigned.id > 0);
+    assert.equal(await authenticateLocalRequest({
+      headers: { cookie: COOKIE_NAME + "=" + beforeAssign },
+    } as Request), null, "old session must be revoked after profile replacement");
+
+    // A role's shared policy affects each current assignee.
+    // Description-only edits must NOT log the user out.
+    const beforeDisplayChange = await createLocalSessionToken(userId, newHash);
+    await updateAccessRole({
+      roleId: role.id,
+      name: "Renamed ephemeral auth test role",
+      actorUserId: userId,
+    });
+    assert.equal((await authenticateLocalRequest({
+      headers: { cookie: COOKIE_NAME + "=" + beforeDisplayChange },
+    } as Request))?.id, userId, "presentation-only role change must preserve the session");
+
+    // Changing scope/active/permission matrix MUST revoke current sessions.
+    await updateAccessRole({
+      roleId: role.id,
+      defaultScope: "organizacao",
+      actorUserId: userId,
+    });
+    assert.equal(await authenticateLocalRequest({
+      headers: { cookie: COOKIE_NAME + "=" + beforeDisplayChange },
+    } as Request), null, "security-sensitive role update must revoke assigned sessions");
+
     // Deterministic race: while an administrator locks the user row and
     // rotates credentials, another node tries to register an OLD snapshot.
     lockConnection = await mysql.createConnection(url);
@@ -139,7 +180,7 @@ async function main(): Promise<void> {
 
     await revokeAllLocalAuthSessions(userId);
     assert.equal(await authenticateLocalRequest(newestReq), null);
-    console.log("PASS: MySQL 8.4 session migration, replay, logout, cross-connection, reset, race, fail-closed.");
+    console.log("PASS: MySQL 8.4 session registry, replay, logout, cross-connection, reset, RBAC assignment and shared-role change, race, fail-closed.");
   } finally {
     if (lockConnection) {
       await lockConnection.rollback().catch(() => {});
