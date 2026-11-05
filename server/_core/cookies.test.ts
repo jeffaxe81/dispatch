@@ -7,7 +7,12 @@ describe("cookies de sessão", () => {
     expect(getSessionCookieOptions({ secure: false, protocol: "http" } as Request)).toMatchObject({ httpOnly: true, sameSite: "lax", secure: false, path: "/" });
   });
 
-  it("usa SameSite None com Secure em HTTPS", () => {
-    expect(getSessionCookieOptions({ secure: true, protocol: "https" } as Request)).toMatchObject({ httpOnly: true, sameSite: "none", secure: true, path: "/" });
+  it("usa SameSite Lax com Secure em HTTPS e não envia cookie em contextos cross-site", () => {
+    expect(getSessionCookieOptions({ secure: true, protocol: "https" } as Request)).toMatchObject({ httpOnly: true, sameSite: "lax", secure: true, path: "/" });
+  });
+
+  it("não promove o cookie a SameSite None só por confiar no proxy TLS", () => {
+    expect(getSessionCookieOptions({ secure: false, protocol: "https" } as Request)).toMatchObject({ sameSite: "lax", secure: true });
+    expect(getSessionCookieOptions({ secure: true, protocol: "http" } as Request)).toMatchObject({ sameSite: "lax", secure: true });
   });
 });
