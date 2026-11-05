@@ -25,6 +25,7 @@ import { rankTeamCandidates } from "./gisService";
 import { listTenantOperationLogs } from "./tenantAuditReadModel";
 import { OsrmRouteProvider } from "./routingProvider";
 import { appRouter } from "./routers";
+import { requireOperationalSessionIdentity } from "./localAuth";
 import {
   assertTeamTenant,
   assertVehicleTenant,
@@ -189,7 +190,7 @@ const tenantOverrides = router({
         if (incident.assignedTeamId) await assertTeamScope(ctx.user, incident.assignedTeamId, permission, tenantId);
         if (!INCIDENT_TRANSITIONS[incident.status].includes(input.nextStatus)) throw new TRPCError({ code: "BAD_REQUEST", message: "Transição de status inválida." });
         assertCanTransitionIncident(ctx.user, incident, input.nextStatus);
-        return transitionIncident({ ...input, actorUserId: ctx.user.id });
+        return transitionIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     assign: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), teamId: z.number().int().positive(), vehicleId: z.number().int().positive().optional(), estimatedArrivalMinutes: z.number().int().min(1).max(720).optional() }))
@@ -201,7 +202,7 @@ const tenantOverrides = router({
         await assertTeamScope(ctx.user, input.teamId, "dispatch.create", tenantId);
         if (input.vehicleId) await assertVehicleTenant(tenantId, input.vehicleId);
         if (!(incident.status === "triagem" || incident.status === "aguardando_despacho")) throw new TRPCError({ code: "BAD_REQUEST", message: "A ocorrência não está disponível para despacho." });
-        return assignTeamToIncident({ ...input, actorUserId: ctx.user.id });
+        return assignTeamToIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     respondToAssignment: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), accepted: z.boolean(), note: z.string().trim().max(1000).optional() }))
@@ -212,7 +213,7 @@ const tenantOverrides = router({
         await assertTeamScope(ctx.user, ctx.user.teamId, "occurrences.transition", tenantId);
         assertOwnTeam(ctx.user, ctx.user.teamId);
         assertCanReadIncident(ctx.user, requireIncident(await getIncidentForTenant(tenantId, input.incidentId)));
-        return respondToAssignment({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id });
+        return respondToAssignment({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     evidence: router({
       list: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
