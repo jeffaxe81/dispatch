@@ -38,7 +38,7 @@ export function hasAdministratorAssignmentForOrganization(assignments: AccessAss
   if (!Number.isInteger(organizationId) || organizationId <= 0) return false;
   return assignments.some(assignment => {
     if (assignment.roleCode !== "administrador") return false;
-    if (assignment.defaultScope === "global") return true;
+    if (assignment.defaultScope === "global") return isCanonicalGlobalScope(assignment);
     return assignment.organizationId === organizationId;
   });
 }
