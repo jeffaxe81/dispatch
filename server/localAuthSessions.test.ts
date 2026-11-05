@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  credentialSnapshotMatches,
   hashLocalSessionId,
   sessionRegistryAllows,
 } from "./localAuthSessions";
@@ -21,6 +22,17 @@ describe("persistent local JWT session validation", () => {
       expect(() => hashLocalSessionId(bad)).toThrow(/inválido/);
     },
   );
+
+  it("requires a locked user row with the SAME verified password hash", () => {
+    const snapshot = { active:true, passwordHash:"hash-at-login", lockedUntil:null };
+    expect(credentialSnapshotMatches(snapshot, "hash-at-login", now)).toBe(true);
+    expect(credentialSnapshotMatches(snapshot, "different-hash", now)).toBe(false);
+    expect(credentialSnapshotMatches(undefined, "hash-at-login", now)).toBe(false);
+    expect(credentialSnapshotMatches({ ...snapshot, active:false }, "hash-at-login", now)).toBe(false);
+    expect(credentialSnapshotMatches({ ...snapshot, passwordHash:null }, "hash-at-login", now)).toBe(false);
+    expect(credentialSnapshotMatches({ ...snapshot, lockedUntil:new Date("2026-11-05T12:00:01Z") }, "hash-at-login", now)).toBe(false);
+    expect(credentialSnapshotMatches({ ...snapshot, lockedUntil:new Date("2026-11-05T11:59:59Z") }, "hash-at-login", now)).toBe(true);
+  });
 
   it("allows an active session only when identity, expiry and revocation match", () => {
     const row = {
