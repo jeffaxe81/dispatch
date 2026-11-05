@@ -40,6 +40,7 @@ import {
   integrationWebhooks,
 } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
+import { localAuthSessions } from "../drizzle/localAuthSessionsSchema";
 import { requirePriorityChangeJustification } from "./priorityChangeJustification";
 import { assertCurrentIncidentTransition, assertExpectedIncidentStatusRevision } from "./incidentTransitionConcurrency";
 import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
@@ -1384,6 +1385,16 @@ export async function updateOperationalUser(input: { userId: number; operational
     if (input.teamId !== undefined) patch.teamId = input.teamId;
     if (input.active !== undefined) patch.active = input.active;
     await tx.update(users).set(patch).where(eq(users.id, input.userId));
+    if (
+      input.operationalRole !== before.operationalRole ||
+      (input.teamId !== undefined && input.teamId !== before.teamId) ||
+      input.active === false
+    ) {
+      // Prevent old privileged sessions from continuing after role/team changes.
+      await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+        and(eq(localAuthSessions.userId, input.userId), isNull(localAuthSessions.revokedAt)),
+      );
+    }
     if (input.operationalRole === "agente") {
       const agentRole = (await tx.select().from(accessRoles).where(and(eq(accessRoles.code, "agente_campo"), eq(accessRoles.active, true))).limit(1))[0];
       if (!agentRole) throw new Error("O perfil dinâmico Agente de Campo não está disponível ou está inativo.");
@@ -1732,6 +1743,10 @@ export async function setUserLocalCredentials(input: { userId: number; username:
     const duplicate = (await tx.select({ id: users.id }).from(users).where(eq(users.username, input.username)).limit(1))[0];
     if (duplicate && duplicate.id !== user.id) throw new Error("Este nome de usuário já está em uso.");
     await tx.update(users).set({ username: input.username, passwordHash: input.passwordHash, loginMethod: "local_password", failedLoginAttempts: 0, lockedUntil: null }).where(eq(users.id, user.id));
+    // A credential reset must invalidate active JWTs in the SAME transaction.
+    await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+      and(eq(localAuthSessions.userId, user.id), isNull(localAuthSessions.revokedAt)),
+    );
     await tx.insert(auditLogs).values({ resourceType: "user", resourceId: user.id, action: "local_credentials_set", actorUserId: input.actorUserId, beforeData: { username: user.username }, afterData: { username: input.username } });
     return { id: user.id, username: input.username };
   });
@@ -1792,6 +1807,10 @@ export async function setUserRoleAssignmentActive(input: { assignmentId: number;
     const replaced = input.active ? await tx.select({ id: userRoleAssignments.id }).from(userRoleAssignments).where(and(eq(userRoleAssignments.userId, before.userId), eq(userRoleAssignments.active, true), ne(userRoleAssignments.id, input.assignmentId))) : [];
     if (replaced.length) await tx.update(userRoleAssignments).set({ active: false, activeUserId: null }).where(and(eq(userRoleAssignments.userId, before.userId), eq(userRoleAssignments.active, true), ne(userRoleAssignments.id, input.assignmentId)));
     await tx.update(userRoleAssignments).set({ active: input.active, activeUserId: input.active ? before.userId : null }).where(eq(userRoleAssignments.id, input.assignmentId));
+    // Role assignments are an authorization boundary: revoke old sessions.
+    await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+      and(eq(localAuthSessions.userId, before.userId), isNull(localAuthSessions.revokedAt)),
+    );
     await tx.insert(auditLogs).values({ resourceType: "user_role_assignment", resourceId: input.assignmentId, action: input.active ? "activate_profile_exclusive" : "deactivate", actorUserId: input.actorUserId, beforeData: { active: before.active, replacedAssignmentIds: replaced.map(assignment => assignment.id) }, afterData: { active: input.active, singleActiveProfile: true } });
   });
 }
@@ -1803,6 +1822,13 @@ export async function updateUserProfileAccess(input: { userId: number; active?: 
     if (!beforeUser) throw new Error("Usuário não encontrado.");
     const beforeProfile = (await tx.select().from(userProfiles).where(eq(userProfiles.userId, input.userId)).limit(1))[0];
     if (input.active !== undefined) await tx.update(users).set({ active: input.active }).where(eq(users.id, input.userId));
+    if (input.active === false ||
+        (input.mfaEnabled !== undefined && input.mfaEnabled !== beforeProfile?.mfaEnabled) ||
+        input.accessExpiresAt !== undefined) {
+      await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+        and(eq(localAuthSessions.userId, input.userId), isNull(localAuthSessions.revokedAt)),
+      );
+    }
     const profilePatch = {
       userId: input.userId,
       displayName: input.displayName !== undefined ? input.displayName : beforeProfile?.displayName ?? null,
