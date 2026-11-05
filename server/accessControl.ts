@@ -5,6 +5,7 @@ import type { OperationalRole } from "../shared/operations";
 import { getDb } from "./db";
 import { recordDeniedPermission } from "./deniedPermissionAudit";
 import { ENV } from "./_core/env";
+import { isCanonicalGlobalScope } from "./accessPolicies";
 
 export type PermissionCode = string;
 type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
