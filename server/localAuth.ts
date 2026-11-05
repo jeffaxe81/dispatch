@@ -55,8 +55,10 @@ export function nextLoginFailure(currentAttempts: number, now = new Date()) {
   };
 }
 
-export async function createLocalSessionToken(userId: number) {
+export async function createLocalSessionToken(userId: number, expectedPasswordHash: string) {
   if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error("Usuário inválido.");
+  if (typeof expectedPasswordHash !== "string" || expectedPasswordHash.length === 0)
+    throw new Error("Credenciais de sessão inválidas.");
   const now = Math.floor(Date.now() / 1000);
   const expiry = now + Math.floor(LOCAL_SESSION_TTL_MS / 1000);
   const jti = randomBytes(32).toString("hex");
@@ -70,7 +72,7 @@ export async function createLocalSessionToken(userId: number) {
     .setAudience("axe-dispatch")
     .sign(sessionKey());
   // Durable allowlist first. A failed write cannot create a usable cookie.
-  await registerLocalAuthSession(identity);
+  await registerLocalAuthSession(identity, expectedPasswordHash);
   return token;
 }
 
