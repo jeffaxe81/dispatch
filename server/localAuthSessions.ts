@@ -31,6 +31,33 @@ export function sessionRegistryAllows(
   );
 }
 
+type LockedMutationActor = { id: number; active: boolean };
+type LockedSessionRecord = { userId: number; expiresAt: Date; revokedAt: Date | null };
+
+/**
+ * Serialize critical operational writes with logout, password reset and RBAC
+ * revocation. The caller MUST use a single MySQL transaction for the locks,
+ * subsequent writes, and commit. Lock user BEFORE session for consistent order.
+ */
+export async function assertOperationalSessionAtWriteBoundary(input: {
+  identity: LocalSessionIdentity;
+  actorUserId: number;
+  lockUser: () => Promise<LockedMutationActor | undefined>;
+  lockSession: () => Promise<LockedSessionRecord | undefined>;
+  now?: Date;
+}): Promise<void> {
+  const { identity, actorUserId } = input;
+  if (!Number.isSafeInteger(actorUserId) || actorUserId <= 0 || identity.userId !== actorUserId)
+    throw new Error("Sessão de operação inválida. Entre novamente.");
+  hashLocalSessionId(identity.jti);
+  const user = await input.lockUser();
+  if (!user?.active || user.id !== actorUserId)
+    throw new Error("Acesso operacional revogado. Entre novamente.");
+  const record = await input.lockSession();
+  if (!sessionRegistryAllows(identity, record, input.now))
+    throw new Error("Sessão expirada ou revogada. Entre novamente.");
+}
+
 export function hashLocalSessionId(jti: string): string {
   if (!/^[a-f0-9]{64}$/.test(jti)) throw new Error("Identificador da sessão inválido.");
   return createHash("sha256").update(jti, "utf8").digest("hex");
