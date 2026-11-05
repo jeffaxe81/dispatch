@@ -550,7 +550,7 @@ export async function listOperationLogs(input: { page: number; pageSize: number;
   return { rows, total: Number(totalRows[0]?.total ?? 0) };
 }
 
-export async function transitionIncident(input: { incidentId: number; actorUserId: number; nextStatus: IncidentStatus; note: string; expectedStatus?: IncidentStatus; expectedStatusRevision?: number }) {
+export async function transitionIncident(input: { incidentId: number; actorUserId: number; nextStatus: IncidentStatus; note: string; expectedStatus?: IncidentStatus; expectedStatusRevision: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
     const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];

@@ -37,7 +37,7 @@ describe("AXED-F020 — primeira barreira contra transição concorrente", () =>
     expect(update).toBeGreaterThan(validate);
     expect(audit).toBeGreaterThan(update);
   });
-  it("Kanban e detalhe enviam status esperado e ambas as rotas aceitam contrato retrocompatível", () => {
+  it("Kanban e detalhe enviam status esperado e ambas as rotas exigem a revisão", () => {
     const kanban = fs.readFileSync(path.resolve(import.meta.dirname, "../client/src/pages/KanbanPage.tsx"), "utf8");
     const detail = fs.readFileSync(path.resolve(import.meta.dirname, "../client/src/pages/IncidentDetailPage.tsx"), "utf8");
     expect(kanban).toContain("expectedStatus: incident.status");
@@ -45,6 +45,7 @@ describe("AXED-F020 — primeira barreira contra transição concorrente", () =>
     for (const name of ["routers.ts", "tenantAwareAppRouter.ts"]) {
       const router = fs.readFileSync(path.resolve(import.meta.dirname, name), "utf8");
       expect(router).toContain("expectedStatus: statusEnum.optional()");
+      expect(router).toContain("expectedStatusRevision: z.number().int().positive(),");
     }
   });
 });
@@ -55,10 +56,10 @@ describe("AXED-F020 — CAS monotônico contra ABA",()=>{
     expect(()=>assertExpectedIncidentStatusRevision(7,5)).toThrow(/Recarregue a fila/);
     expect(()=>assertExpectedIncidentStatusRevision(7,7)).not.toThrow();
   });
-  it("rejeita revision inválida; mantém contrato status-only de consumidor legado",()=>{
-    expect(()=>assertExpectedIncidentStatusRevision(0)).toThrow(/Revisão/);
+  it("rejeita revisão atual ou esperada inválida",()=>{
+    expect(()=>assertExpectedIncidentStatusRevision(0,1)).toThrow(/Revisão/);
     expect(()=>assertExpectedIncidentStatusRevision(7,0)).toThrow(/Recarregue a fila/);
-    expect(()=>assertExpectedIncidentStatusRevision(7)).not.toThrow();
+    expect(()=>assertExpectedIncidentStatusRevision(7,Number.NaN)).toThrow(/Recarregue a fila/);
   });
   it("incrementa em todas as três rotas de status e valida CAS antes do encerramento",()=>{
     const src=fs.readFileSync(path.resolve(import.meta.dirname,"dbLegacy.ts"),"utf8");
@@ -74,7 +75,8 @@ describe("AXED-F020 — CAS monotônico contra ABA",()=>{
     expect(chunks[2]).toContain('.for("update")');
     for(const fileName of ["routers.ts","tenantAwareAppRouter.ts"]){
       const api=fs.readFileSync(path.resolve(import.meta.dirname,fileName),"utf8");
-      expect(api).toContain("expectedStatusRevision: z.number().int().positive().optional()");
+      expect(api).toContain("expectedStatusRevision: z.number().int().positive(),");
+      expect(api).not.toContain("expectedStatusRevision: z.number().int().positive().optional()");
     }
     for(const fileName of ["KanbanPage.tsx","IncidentDetailPage.tsx","AgentPage.tsx"]){
       const ui=fs.readFileSync(path.resolve(import.meta.dirname,"../client/src/pages/"+fileName),"utf8");

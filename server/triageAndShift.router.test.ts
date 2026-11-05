@@ -88,13 +88,15 @@ describe("triagem e jornada operacional após a migração", () => {
   it("encaminha a triagem para despacho e bloqueia conclusão direta", async () => {
     const caller = appRouter.createCaller(context("despachador", null));
 
-    await caller.incidents.transition({ incidentId: 21, nextStatus: "aguardando_despacho", note: "Triagem validada pela central." });
+    await caller.incidents.transition({ incidentId: 21, expectedStatusRevision: 1, nextStatus: "aguardando_despacho", note: "Triagem validada pela central." });
 
     expect(mocks.assertPermission).toHaveBeenCalledWith(expect.objectContaining({ operationalRole: "despachador" }), "occurrences.transition");
     expect(mocks.transitionIncident).toHaveBeenCalledWith(expect.objectContaining({ incidentId: 21, nextStatus: "aguardando_despacho", actorUserId: 2 }));
 
     mocks.transitionIncident.mockClear();
-    await expect(caller.incidents.transition({ incidentId: 21, nextStatus: "concluida", note: "Atalho indevido para encerramento." })).rejects.toBeInstanceOf(TRPCError);
+    await expect(caller.incidents.transition({ incidentId: 21, nextStatus: "aguardando_despacho", note: "Chamada sem revisão esperada." } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(mocks.transitionIncident).not.toHaveBeenCalled();
+    await expect(caller.incidents.transition({ incidentId: 21, expectedStatusRevision: 1, nextStatus: "concluida", note: "Atalho indevido para encerramento." })).rejects.toBeInstanceOf(TRPCError);
     expect(mocks.transitionIncident).not.toHaveBeenCalled();
   });
 

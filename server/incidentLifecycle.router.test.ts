@@ -126,8 +126,8 @@ describe("ciclo tRPC de ocorrência e auditoria", () => {
     await administrator.incidents.update({ incidentId: 12, description: "Via totalmente bloqueada após nova avaliação." });
     await administrator.incidents.assign({ incidentId: 12, teamId: 3, estimatedArrivalMinutes: 12 });
     await agent.incidents.respondToAssignment({ incidentId: 12, accepted: true, note: "Equipe em deslocamento." });
-    await agent.incidents.transition({ incidentId: 12, nextStatus: "em_atendimento", note: "Equipe no local." });
-    await administrator.incidents.transition({ incidentId: 12, nextStatus: "concluida", note: "Via liberada com segurança." });
+    await agent.incidents.transition({ incidentId: 12, expectedStatusRevision: 1, nextStatus: "em_atendimento", note: "Equipe no local." });
+    await administrator.incidents.transition({ incidentId: 12, expectedStatusRevision: 1, nextStatus: "concluida", note: "Via liberada com segurança." });
     await administrator.incidents.audit({ incidentId: 12 });
     await administrator.audit.operations({ page: 1, pageSize: 25, resourceType: "incident" });
 

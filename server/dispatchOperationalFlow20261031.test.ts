@@ -191,11 +191,11 @@ describe("Homologacao isolada do ciclo operacional de Despacho", () => {
     });
     expect(accepted.status).toBe("aceita");
     const inProgress = await agent.incidents.transition({
-      incidentId, nextStatus: "em_atendimento", note: "Chegada simulada ao local",
+      incidentId, expectedStatusRevision: 1, nextStatus: "em_atendimento", note: "Chegada simulada ao local",
     });
     expect(inProgress.status).toBe("em_atendimento");
     const completed = await agent.incidents.transition({
-      incidentId, nextStatus: "concluida", note: "Atendimento simulado concluido",
+      incidentId, expectedStatusRevision: 1, nextStatus: "concluida", note: "Atendimento simulado concluido",
     });
     expect(completed.status).toBe("concluida");
     const audit = await admin.incidents.audit({ incidentId });
@@ -250,7 +250,7 @@ describe("Homologacao isolada do ciclo operacional de Despacho", () => {
     const admin = appRouter.createCaller(actor("administrador", null, 1));
     const target = i % 3 === 0 ? "em_atendimento" : i % 3 === 1 ? "despachada" : "aceita";
     await expect(admin.incidents.transition({
-      incidentId, nextStatus: target, note: "Tentativa indevida de reabertura",
+      incidentId, expectedStatusRevision: 1, nextStatus: target, note: "Tentativa indevida de reabertura",
     })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(mocks.transitionIncident).not.toHaveBeenCalled();
     expect(current.status).toBe(i % 2 ? "cancelada" : "concluida");
