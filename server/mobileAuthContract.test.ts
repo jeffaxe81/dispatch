@@ -149,19 +149,19 @@ describe("native per-request tenant/team/device scope validation (not yet wired)
   it.each([
     ["userId",99],["organizationId",99],["teamId",99],
     ["deviceId","DIFFERENT_DEVICE_123456"]
-  ] as const)("rejects cross-session request %s",([key,value])=>{
+  ] as const)("rejects cross-session request %s",(key,value)=>{
     expect(()=>validateNativeSessionScope(binding,{...principal,[key]:value},now)).toThrow();
   });
   it.each([
     ["userActive",false],["role","administrador"],
     ["serverAuthorizesOrganization",false],["serverAuthorizesTeam",false],
-  ] as const)("requires live DB-backed permission: %s",([key,value])=>{
+  ] as const)("requires live DB-backed permission: %s",(key,value)=>{
     expect(()=>validateNativeSessionScope(binding,{...principal,[key]:value},now)).toThrow();
   });
   it.each([
     ["userId",0],["organizationId",-1],["teamId",1.5],["deviceId","x"],
     ["expiresAtMs",issuedAtMs],["issuedAtMs",-1]
-  ] as const)("denies invalid token claim %s",([key,value])=>{
+  ] as const)("denies invalid token claim %s",(key,value)=>{
     expect(()=>validateNativeSessionScope({...binding,[key]:value},principal,now)).toThrow();
   });
   it("rejects expired, not yet valid and unrealistically long tokens",()=>{
