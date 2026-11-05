@@ -43,6 +43,7 @@ async function main(): Promise<void> {
   // Independent connection simulates a second node observing the shared registry.
   const independent = await mysql.createConnection(url);
   let userId: number | null = null;
+  let unrelatedUserId: number | null = null;
   let lockConnection: Connection | undefined;
   let sessionTableTemporarilyRenamed = false;
   try {
@@ -136,6 +137,18 @@ async function main(): Promise<void> {
       headers: { cookie: COOKIE_NAME + "=" + beforeDisplayChange },
     } as Request))?.id, userId, "presentation-only role change must preserve the session");
 
+    // A shared role change must never revoke an unrelated user's session.
+    const unrelatedUsername = "auth_other_" + randomUUID().slice(0, 12);
+    const [unrelatedInsert] = await independent.execute<ResultSetHeader>(
+      "INSERT INTO users (openId, username, password_hash, loginMethod) VALUES (?, ?, ?, ?)",
+      ["local:" + unrelatedUsername, unrelatedUsername, newHash, "local_password"],
+    );
+    unrelatedUserId = unrelatedInsert.insertId;
+    const unrelatedToken = await createLocalSessionToken(unrelatedUserId, newHash);
+    assert.equal((await authenticateLocalRequest({
+      headers: { cookie: COOKIE_NAME + "=" + unrelatedToken },
+    } as Request))?.id, unrelatedUserId);
+
     // Changing scope/active/permission matrix MUST revoke current sessions.
     await updateAccessRole({
       roleId: role.id,
@@ -145,6 +158,9 @@ async function main(): Promise<void> {
     assert.equal(await authenticateLocalRequest({
       headers: { cookie: COOKIE_NAME + "=" + beforeDisplayChange },
     } as Request), null, "security-sensitive role update must revoke assigned sessions");
+    assert.equal((await authenticateLocalRequest({
+      headers: { cookie: COOKIE_NAME + "=" + unrelatedToken },
+    } as Request))?.id, unrelatedUserId, "other users must not be revoked by unrelated role updates");
 
     // Deterministic race: while an administrator locks the user row and
     // rotates credentials, another node tries to register an OLD snapshot.
@@ -188,6 +204,8 @@ async function main(): Promise<void> {
     }
     if (sessionTableTemporarilyRenamed)
       await independent.query("RENAME TABLE local_auth_sessions_smoke_unavailable TO local_auth_sessions").catch(() => {});
+    if (unrelatedUserId !== null)
+      await independent.execute("DELETE FROM users WHERE id = ?", [unrelatedUserId]).catch(() => {});
     if (userId !== null)
       await independent.execute("DELETE FROM users WHERE id = ?", [userId]).catch(() => {});
     await independent.end();
