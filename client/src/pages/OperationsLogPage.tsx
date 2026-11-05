@@ -46,6 +46,7 @@ export function getOperationLabel(action: string) {
     update: "Edição",
     access_profile_updated: "Perfil de acesso atualizado",
     status_transition: "Alteração de situação",
+    closure_blocked_by_form: "Encerramento bloqueado por formulário",
     team_assigned: "Equipe designada",
     assignment_accepted: "Despacho aceito",
     assignment_declined: "Despacho recusado",

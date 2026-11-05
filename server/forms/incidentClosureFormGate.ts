@@ -1,9 +1,26 @@
 import {and, desc, eq, inArray, or} from "drizzle-orm";
 import {formSchemaDefinitionSchema, validateFormAnswers, type FormSchemaDefinition} from "../../shared/forms";
 import {formBindings, formSubmissionReviews, formSubmissionRevisions, formSubmissions, formTemplates, formVersions} from "../../drizzle/formsSchema";
+import {auditLogs} from "../../drizzle/schema";
 import {incidentTenantScopes} from "../../drizzle/tenantScopeSchema";
 
 type Submitted = {status:string; answers:unknown};
+type FormRef = {formId:number; formVersionId:number};
+
+export type IncidentClosureBlockReason =
+  | "tenant_unresolved"
+  | "invalid_definition"
+  | "form_not_submitted"
+  | "form_returned"
+  | "answers_incomplete";
+
+/** AXED-F030: carries only a reason code and form identifiers, never submitted answers. */
+export class IncidentClosureBlockedError extends Error {
+  constructor(readonly reason:IncidentClosureBlockReason, message:string, readonly form?:FormRef) {
+    super(message);
+    this.name="IncidentClosureBlockedError";
+  }
+}
 
 /**
  * AXED-F030: explicit "requiredOnStatuses: ['concluida']" opts a bound form
@@ -15,14 +32,14 @@ export function requiresClosureForm(definition:unknown): boolean {
   if(!parsed.success)throw new Error("Definição vinculada do formulário inválida. Revisão obrigatória antes do encerramento.");
   return parsed.data.fields.some(field=>"requiredOnStatuses" in field && field.requiredOnStatuses?.includes("concluida"));
 }
-export function assertClosureFormReadiness(definition:FormSchemaDefinition,submission:Submitted|null,reviewDecision?:string|null) {
+export function assertClosureFormReadiness(definition:FormSchemaDefinition,submission:Submitted|null,reviewDecision?:string|null,form?:FormRef) {
   if(!requiresClosureForm(definition))return;
   if(!submission || (submission.status!=="submitted" && submission.status!=="corrected")) {
-    throw new Error("Encerramento bloqueado: formulário obrigatório não enviado ou ainda em preenchimento.");
+    throw new IncidentClosureBlockedError("form_not_submitted","Encerramento bloqueado: formulário obrigatório não enviado ou ainda em preenchimento.",form);
   }
-  if(reviewDecision==="returned")throw new Error("Encerramento bloqueado: formulário devolvido pelo supervisor exige correção.");
+  if(reviewDecision==="returned")throw new IncidentClosureBlockedError("form_returned","Encerramento bloqueado: formulário devolvido pelo supervisor exige correção.",form);
   const check=validateFormAnswers(definition,submission.answers,{incidentStatus:"concluida"});
-  if(!check.success)throw new Error("Encerramento bloqueado: respostas obrigatórias para a fase concluída estão incompletas ou inválidas.");
+  if(!check.success)throw new IncidentClosureBlockedError("answers_incomplete","Encerramento bloqueado: respostas obrigatórias para a fase concluída estão incompletas ou inválidas.",form);
 }
 
 /**
@@ -35,7 +52,7 @@ export async function assertRequiredIncidentClosureForms(tx:any, incidentId:numb
     .where(eq(incidentTenantScopes.incidentId,incidentId)).limit(1);
   const tenantId=Number(scopes[0]?.tenantId);
   if(!Number.isSafeInteger(tenantId)||tenantId<=0)
-    throw new Error("Encerramento bloqueado: ocorrência sem organização autorizada para validar formulários.");
+    throw new IncidentClosureBlockedError("tenant_unresolved","Encerramento bloqueado: ocorrência sem organização autorizada para validar formulários.");
   const bindings=await tx.select({
     formId:formBindings.formId,
     formVersionId:formBindings.formVersionId,
@@ -52,7 +69,7 @@ export async function assertRequiredIncidentClosureForms(tx:any, incidentId:numb
   for(const binding of bindings) {
     if(binding.templateStatus!=="active")continue;
     const parsed=formSchemaDefinitionSchema.safeParse(binding.definition);
-    if(!parsed.success)throw new Error("Encerramento bloqueado: definição vinculada inválida.");
+    if(!parsed.success)throw new IncidentClosureBlockedError("invalid_definition","Encerramento bloqueado: definição vinculada inválida.",{formId:binding.formId,formVersionId:binding.formVersionId});
     if(!requiresClosureForm(parsed.data))continue;
     required.set(binding.formId+":"+binding.formVersionId,{
       formId:binding.formId,formVersionId:binding.formVersionId,definition:parsed.data,
@@ -68,11 +85,12 @@ export async function assertRequiredIncidentClosureForms(tx:any, incidentId:numb
     inArray(formSubmissions.formVersionId,all.map(x=>x.formVersionId)),
   )).for("update");
   for(const item of all) {
+    const form={formId:item.formId,formVersionId:item.formVersionId};
     const current=submissions.filter((s:any)=>s.formId===item.formId&&s.formVersionId===item.formVersionId)
       .sort((a:any,b:any)=>b.id-a.id)[0]??null;
-    if(!current) {assertClosureFormReadiness(item.definition,null);continue;}
+    if(!current) {assertClosureFormReadiness(item.definition,null,null,form);continue;}
     if(current.status!=="submitted"&&current.status!=="corrected") {
-      assertClosureFormReadiness(item.definition,current);
+      assertClosureFormReadiness(item.definition,current,null,form);
       continue;
     }
     const revisions=await tx.select({revision:formSubmissionRevisions.revision}).from(formSubmissionRevisions)
@@ -81,6 +99,32 @@ export async function assertRequiredIncidentClosureForms(tx:any, incidentId:numb
     const revision=Number(revisions[0]?.revision??1);
     const review=await tx.select({decision:formSubmissionReviews.decision}).from(formSubmissionReviews)
       .where(and(eq(formSubmissionReviews.tenantId,tenantId),eq(formSubmissionReviews.submissionId,current.id),eq(formSubmissionReviews.revision,revision))).limit(1);
-    assertClosureFormReadiness(item.definition,current,review[0]?.decision);
+    assertClosureFormReadiness(item.definition,current,review[0]?.decision,form);
+  }
+}
+
+/**
+ * Runs AFTER the blocked transaction rolled back, otherwise the evidence would roll back with it.
+ * Stores no answers. A failure here never unblocks the closure nor replaces the original error.
+ */
+export async function recordIncidentClosureBlocked(
+  db:{insert:(table:typeof auditLogs)=>{values:(row:typeof auditLogs.$inferInsert)=>PromiseLike<unknown>}},
+  input:{incidentId:number;actorUserId:number;error:IncidentClosureBlockedError},
+):Promise<void> {
+  try {
+    await db.insert(auditLogs).values({
+      resourceType:"incident",
+      resourceId:input.incidentId,
+      action:"closure_blocked_by_form",
+      actorUserId:input.actorUserId,
+      beforeData:null,
+      afterData:{
+        reason:input.error.reason,
+        formId:input.error.form?.formId??null,
+        formVersionId:input.error.form?.formVersionId??null,
+      },
+    });
+  } catch {
+    // The closure stays blocked even when the audit store is unavailable.
   }
 }

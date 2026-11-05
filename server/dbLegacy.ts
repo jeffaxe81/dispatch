@@ -44,7 +44,7 @@ import { requirePriorityChangeJustification } from "./priorityChangeJustificatio
 import { assertCurrentIncidentTransition, assertExpectedIncidentStatusRevision } from "./incidentTransitionConcurrency";
 import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
-import { assertRequiredIncidentClosureForms } from "./forms/incidentClosureFormGate";
+import { assertRequiredIncidentClosureForms, IncidentClosureBlockedError, recordIncidentClosureBlocked } from "./forms/incidentClosureFormGate";
 import { incidentListOrder } from "./incidentListOrder";
 import { fetchIncidentStageSummary } from "./incidentStageSummary";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
@@ -590,6 +590,10 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
       afterData: snapshotIncident(after),
     });
     return after;
+  }).catch(async (error: unknown) => {
+    // F030: the transaction already rolled back, so the blocked attempt is recorded separately.
+    if (error instanceof IncidentClosureBlockedError) await recordIncidentClosureBlocked(db, { incidentId: input.incidentId, actorUserId: input.actorUserId, error });
+    throw error;
   });
 }
 

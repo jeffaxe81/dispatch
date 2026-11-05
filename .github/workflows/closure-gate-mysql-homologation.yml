@@ -1,0 +1,61 @@
+name: Closure gate MySQL homologation
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: closure-gate-mysql-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  closure-gate-mysql:
+    name: Gate de encerramento MySQL 8.4
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: dispatch_closure_gate_homologation
+          MYSQL_USER: closure_gate_test
+          MYSQL_PASSWORD: disposable-closure-gate-test-only
+          MYSQL_ROOT_PASSWORD: disposable-closure-gate-root-test-only
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      CI: "true"
+      NODE_ENV: test
+      AXE_RUNTIME_ENV: homologation
+      AXE_CLOSURE_GATE_MYSQL_TESTS: "true"
+      AXE_CLOSURE_GATE_MYSQL_TEST_DATABASE_URL: mysql://closure_gate_test:disposable-closure-gate-test-only@127.0.0.1:3306/dispatch_closure_gate_homologation
+    steps:
+      - name: Obter código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Habilitar Corepack
+        run: corepack enable
+      - name: Instalar dependências congeladas
+        run: corepack pnpm install --frozen-lockfile
+      - name: Verificar TypeScript
+        run: corepack pnpm check
+      - name: Homologar gate de encerramento e isolamento em MySQL descartável
+        run: corepack pnpm exec vitest run --config vitest.closure-gate-mysql.config.ts
+      - name: Preservar evidências
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: axed-f030-closure-gate-mysql
+          path: artifacts/closure-gate-mysql
+          if-no-files-found: warn
+          retention-days: 14
