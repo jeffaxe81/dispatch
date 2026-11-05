@@ -56,6 +56,15 @@ describe("decisão de permissões RBAC", () => {
     expect(evaluateTeamScope([{ roleCode: "agente_campo", defaultScope: "equipe", organizationId: null, organizationalUnitId: null, teamId: 8 }], team)).toBe(false);
   });
 
+  it("falha fechado para assignments globais malformados", () => {
+    const team = { id: 7, organizationId: 10, organizationalUnitId: 20 };
+    const malformedGlobal = [{ roleCode: "administrador", defaultScope: "global", organizationId: 10, organizationalUnitId: null, teamId: null }] as const;
+
+    expect((evaluateTeamScope as any)(malformedGlobal, team, 10)).toBe(false);
+    expect(requiresExplicitTeamSelection(malformedGlobal as any)).toBe(true);
+    expect(hasAdministratorAssignmentForOrganization(malformedGlobal as any, 10)).toBe(false);
+  });
+
   it("não permite que escopo global atravesse a empresa ativa", () => {
     const globalAssignment = [{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }] as const;
     const sameTenantTeam = { id: 7, organizationId: 10, organizationalUnitId: 20 };

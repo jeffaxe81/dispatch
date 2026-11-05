@@ -22,7 +22,7 @@ import {
   updateVehicleStatus,
 } from "./db";
 import { rankTeamCandidates } from "./gisService";
-import { listTenantOperationLogs } from "./tenantAuditReadModel";
+import { assertTenantIncidentAuditAccess, listTenantOperationLogs } from "./tenantAuditReadModel";
 import { OsrmRouteProvider } from "./routingProvider";
 import { appRouter } from "./routers";
 import {
@@ -245,7 +245,13 @@ const tenantOverrides = router({
     audit: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "audit.view");
       const tenantId = await tenantFor(ctx);
-      requireIncident(await getIncidentForTenant(tenantId, input.incidentId));
+      const incident = requireIncident(await getIncidentForTenant(tenantId, input.incidentId));
+      await assertTenantIncidentAuditAccess({
+        actorUserId: ctx.user.id,
+        organizationId: tenantId,
+        assignedTeamId: incident.assignedTeamId,
+      });
+      assertCanReadIncident(ctx.user, incident);
       return getIncidentAudit(input.incidentId);
     }),
     export: operationalProcedure
