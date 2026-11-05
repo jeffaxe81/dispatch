@@ -27,7 +27,10 @@ export function getSessionCookieOptions(
   return {
     httpOnly: true,
     path: "/",
-    sameSite: isSecureRequest(req) ? "none" : "lax",
+    // Same-origin AXE Despacho sessions do not require cross-site cookies.
+    // SameSite=None on every HTTPS request unnecessarily widened CSRF exposure.
+    // Embedded third-party integrations must be reviewed before this can merge.
+    sameSite: "lax",
     secure: isSecureRequest(req),
   };
 }
