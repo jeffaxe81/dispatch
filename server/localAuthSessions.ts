@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import { localAuthSessions } from "../drizzle/localAuthSessionsSchema";
+import { users } from "../drizzle/schema";
 import { getDb } from "./db";
 
 export type LocalSessionIdentity = {
@@ -41,14 +42,53 @@ async function requireSessionDb() {
   return db;
 }
 
-export async function registerLocalAuthSession(identity: LocalSessionIdentity): Promise<void> {
+type CredentialSnapshot = { active: boolean; passwordHash: string | null; lockedUntil: Date | null };
+
+/**
+ * A login verified against an OLD password must not issue a session after an
+ * administrator has changed that password. The users row is locked until the
+ * new session is committed; credential changes update that same row first.
+ */
+export function credentialSnapshotMatches(
+  snapshot: CredentialSnapshot | undefined,
+  expectedPasswordHash: string,
+  now = new Date(),
+): boolean {
+  return Boolean(
+    snapshot?.active &&
+    snapshot.passwordHash &&
+    snapshot.passwordHash === expectedPasswordHash &&
+    (!snapshot.lockedUntil || snapshot.lockedUntil <= now),
+  );
+}
+
+export async function registerLocalAuthSession(
+  identity: LocalSessionIdentity,
+  expectedPasswordHash: string,
+): Promise<void> {
   const hash = hashLocalSessionId(identity.jti);
+  if (!expectedPasswordHash || typeof expectedPasswordHash !== "string")
+    throw new Error("Credenciais de sessão inválidas.");
   const db = await requireSessionDb();
-  // If persistence fails, the signed token is NEVER returned to the browser.
-  await db.insert(localAuthSessions).values({
-    sessionHash: hash,
-    userId: identity.userId,
-    expiresAt: identity.expiresAt,
+  // Atomic with administrative password updates that modify the same users
+  // row. No session is issued for credentials superseded during login.
+  await db.transaction(async tx => {
+    const current = (await tx.select({
+      active: users.active,
+      passwordHash: users.passwordHash,
+      lockedUntil: users.lockedUntil,
+    })
+      .from(users)
+      .where(eq(users.id, identity.userId))
+      .limit(1)
+      .for("update"))[0];
+    if (!credentialSnapshotMatches(current, expectedPasswordHash))
+      throw new Error("Credenciais alteradas durante a autenticação. Entre novamente.");
+    await tx.insert(localAuthSessions).values({
+      sessionHash: hash,
+      userId: identity.userId,
+      expiresAt: identity.expiresAt,
+    });
   });
 }
 
