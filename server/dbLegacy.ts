@@ -1770,6 +1770,24 @@ export async function updateAccessRole(input: { roleId: number; name?: string; d
     const before = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!before) throw new Error("Perfil não encontrado.");
     if (!canUpdateRoleDefinition({ isSystem: before.isSystem, permissionIdsProvided: input.permissionIds !== undefined, active: input.active })) throw new Error("Perfis padrão não permitem alteração de matriz ou ativação.");
+    if (input.permissionIds !== undefined || input.defaultScope !== undefined || input.active !== undefined) {
+      // Changing the shared definition can change effective permissions for
+      // every current assignee. Serialize with session issuance, then revoke
+      // the affected identities in the SAME transaction as the role update.
+      const assignmentRows = await tx.select({ userId: userRoleAssignments.userId })
+        .from(userRoleAssignments)
+        .where(and(eq(userRoleAssignments.roleId, input.roleId), eq(userRoleAssignments.active, true)));
+      const affectedUserIds = Array.from(new Set(assignmentRows.map(row => row.userId))).sort((a, b) => a - b);
+      // Bound IN clauses while locking user rows in a stable order.
+      for (let i = 0; i < affectedUserIds.length; i += 200) {
+        const userIds = affectedUserIds.slice(i, i + 200);
+        await tx.select({ id: users.id }).from(users)
+          .where(inArray(users.id, userIds)).orderBy(users.id).for("update");
+        await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+          and(inArray(localAuthSessions.userId, userIds), isNull(localAuthSessions.revokedAt)),
+        );
+      }
+    }
     const patch: Partial<typeof accessRoles.$inferInsert> = {};
     if (input.name !== undefined) patch.name = input.name;
     if (input.description !== undefined) patch.description = input.description;
