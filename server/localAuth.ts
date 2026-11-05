@@ -66,7 +66,12 @@ export async function verifyLocalSessionToken(token: string | undefined | null):
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, sessionKey(), { algorithms: ["HS256"], issuer: "axe-dispatch-local", audience: "axe-dispatch" });
-    if (payload.kind !== "local" || typeof payload.userId !== "number" || !Number.isInteger(payload.userId)) return null;
+    if (payload.kind !== "local" || typeof payload.userId !== "number" ||
+        !Number.isSafeInteger(payload.userId) || payload.userId < 1 ||
+        typeof payload.exp !== "number" || !Number.isSafeInteger(payload.exp) ||
+        payload.exp * 1000 <= Date.now() ||
+        (payload.jti !== undefined &&
+          (typeof payload.jti !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(payload.jti)))) return null;
     return { kind: "local", userId: payload.userId };
   } catch {
     return null;
