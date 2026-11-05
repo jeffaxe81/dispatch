@@ -15,7 +15,7 @@ import {
 } from "./authorization";
 import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, resolveAuthorizedTeamFilter } from "./accessControl";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername } from "./localAuth";
+import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername, revokeLocalSessionFromRequest } from "./localAuth";
 import { systemRouter } from "./_core/systemRouter";
 import { getSimulatedIntegrationsOverview } from "./integrations";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -153,7 +153,9 @@ export const appRouter = router({
       ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 8 * 60 * 60 * 1000 });
       return { id: user.id, name: user.name, username: user.username, role: user.role, operationalRole: user.operationalRole };
     }),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      // Do not claim successful logout until durable server-side revocation.
+      await revokeLocalSessionFromRequest(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
       return { success: true } as const;
     }),
