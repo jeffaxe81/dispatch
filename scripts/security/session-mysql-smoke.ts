@@ -20,7 +20,7 @@ import {
   isLocalAuthSessionActive,
   revokeAllLocalAuthSessions,
 } from "../../server/localAuthSessions";
-import { assignUserRole, createAccessRole, setUserLocalCredentials, updateAccessRole } from "../../server/db";
+import { assignTeamToIncident, assignUserRole, createAccessRole, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole } from "../../server/db";
 
 function guardedTestDatabaseUrl(): string {
   const url = process.env.DATABASE_URL ?? "";
@@ -44,6 +44,8 @@ async function main(): Promise<void> {
   const independent = await mysql.createConnection(url);
   let userId: number | null = null;
   let unrelatedUserId: number | null = null;
+  let incidentId: number | null = null;
+  let teamId: number | null = null;
   let lockConnection: Connection | undefined;
   let sessionTableTemporarilyRenamed = false;
   try {
@@ -91,6 +93,65 @@ async function main(): Promise<void> {
     // A password change revokes all sessions in the SAME transaction.
     const token2 = await createLocalSessionToken(userId, initialHash);
     const token3 = await createLocalSessionToken(userId, initialHash);
+
+    // Critical operational mutation smoke: the transaction must still own a
+    // live, non-revoked session at the exact write boundary.
+    const teamCode = "CI" + randomUUID().replaceAll("-", "").slice(0, 20);
+    const [teamInsert] = await independent.execute<ResultSetHeader>(
+      "INSERT INTO teams (code, name, agency) VALUES (?, ?, ?)",
+      [teamCode, "Isolated dispatch auth team", "CI"],
+    );
+    teamId = teamInsert.insertId;
+    const incidentCode = "CI" + randomUUID().replaceAll("-", "").slice(0, 20);
+    const [incidentInsert] = await independent.execute<ResultSetHeader>(
+      "INSERT INTO incidents (code, status, priority, category, origin, description, address, latitude, longitude, created_by_user_id) VALUES (?, 'triagem', 'media', ?, 'central', ?, ?, ?, ?, ?)",
+      [incidentCode, "Homologation", "Isolated session write boundary scenario", "CI isolated address", "-27.0", "-48.0", userId],
+    );
+    incidentId = incidentInsert.insertId;
+    const liveOperationalSession = await verifyLocalSessionToken(token2);
+    assert.ok(liveOperationalSession);
+    const queued = await transitionIncident({
+      incidentId, actorUserId: userId, nextStatus: "aguardando_despacho",
+      note: "Isolated session validation before transition",
+      session: liveOperationalSession,
+    });
+    assert.equal(queued.status, "aguardando_despacho");
+    const dispatched = await assignTeamToIncident({
+      incidentId, teamId, actorUserId: userId, session: liveOperationalSession,
+    });
+    assert.equal(dispatched.status, "despachada");
+    const accepted = await respondToAssignment({
+      incidentId, teamId, actorUserId: userId, accepted: true,
+      note: "Operational session guard confirmed", session: liveOperationalSession,
+    });
+    assert.equal(accepted.status, "aceita");
+
+    // A concurrent logout wins the session-row lock: the operation must wait
+    // and abort after revocation, leaving status unchanged.
+    const conflictingSession = await verifyLocalSessionToken(token3);
+    assert.ok(conflictingSession);
+    await independent.beginTransaction();
+    await independent.execute(
+      "UPDATE local_auth_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE session_hash = ?",
+      [hashLocalSessionId(conflictingSession.jti)],
+    );
+    const pendingTransition = transitionIncident({
+      incidentId, actorUserId: userId, nextStatus: "em_atendimento",
+      note: "This transition must fail after the concurrent logout",
+      session: conflictingSession,
+    });
+    // Attach a rejection handler immediately while another transaction owns the lock.
+    const pendingOutcome = pendingTransition.then(
+      () => "accepted" as const, () => "rejected" as const,
+    );
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await independent.commit();
+    assert.equal(await pendingOutcome, "rejected");
+    const [stillAccepted] = await independent.execute<RowDataPacket[]>(
+      "SELECT status FROM incidents WHERE id = ?", [incidentId],
+    );
+    assert.equal(stillAccepted[0]?.status, "aceita");
+
     const newPassword = "ci-replacement-" + randomUUID();
     const newHash = await hashLocalPassword(newPassword);
     await setUserLocalCredentials({
@@ -196,7 +257,7 @@ async function main(): Promise<void> {
 
     await revokeAllLocalAuthSessions(userId);
     assert.equal(await authenticateLocalRequest(newestReq), null);
-    console.log("PASS: MySQL 8.4 session registry, replay, logout, cross-connection, reset, RBAC assignment and shared-role change, race, fail-closed.");
+    console.log("PASS: MySQL 8.4 sessions, dispatch transitions/assignment/acceptance, concurrent revocation, replay, RBAC changes, reset, fail-closed.");
   } finally {
     if (lockConnection) {
       await lockConnection.rollback().catch(() => {});
@@ -204,6 +265,10 @@ async function main(): Promise<void> {
     }
     if (sessionTableTemporarilyRenamed)
       await independent.query("RENAME TABLE local_auth_sessions_smoke_unavailable TO local_auth_sessions").catch(() => {});
+    if (incidentId !== null)
+      await independent.execute("DELETE FROM incidents WHERE id = ?", [incidentId]).catch(() => {});
+    if (teamId !== null)
+      await independent.execute("DELETE FROM teams WHERE id = ?", [teamId]).catch(() => {});
     if (unrelatedUserId !== null)
       await independent.execute("DELETE FROM users WHERE id = ?", [unrelatedUserId]).catch(() => {});
     if (userId !== null)
