@@ -23,6 +23,17 @@ vi.mock("./db", async importOriginal => ({
   updateTeamShift: mocks.updateTeamShift,
 }));
 
+// Router-only tests supply a synthetic verified identity. Real JWT signature,
+ // persistence, row locks and revocation are covered by the MySQL 8.4 smoke.
+vi.mock("./localAuth", async importOriginal => ({
+  ...(await importOriginal<typeof import("./localAuth")>()),
+  requireOperationalSessionIdentity: vi.fn(async (_req: unknown, actorUserId: number) => ({
+    userId: actorUserId,
+    jti: "d".repeat(64),
+    expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+  })),
+}));
+
 import { appRouter } from "./routers";
 
 function context(role: "despachador" | "agente", teamId: number | null): TrpcContext {
