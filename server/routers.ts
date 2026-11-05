@@ -149,7 +149,7 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     login: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: z.string().min(12).max(256) })).mutation(async ({ ctx, input }) => {
       const user = await loginWithLocalCredentials(input);
-      const token = await createLocalSessionToken(user.id);
+      const token = await createLocalSessionToken(user.id, user.passwordHash!);
       ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 8 * 60 * 60 * 1000 });
       return { id: user.id, name: user.name, username: user.username, role: user.role, operationalRole: user.operationalRole };
     }),
