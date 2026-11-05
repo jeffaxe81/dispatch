@@ -1,4 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { registerLocalAuthSession } from "./localAuthSessions";
+
+// Tests keep the database write isolated while exercising real JWT signing.
+vi.mock("./localAuthSessions", () => ({
+  registerLocalAuthSession: vi.fn(async () => {}),
+  isLocalAuthSessionActive: vi.fn(async () => true),
+  revokeLocalAuthSession: vi.fn(async () => {}),
+}));
 import { createLocalSessionToken, hashLocalPassword, nextLoginFailure, normalizeUsername, verifyLocalPassword, verifyLocalSessionToken } from "./localAuth";
 import { getMenuItems } from "../client/src/components/DashboardLayout";
 
@@ -19,10 +27,37 @@ describe("autenticação local", () => {
     expect(locked.lockedUntil?.toISOString()).toBe("2026-08-25T12:15:00.000Z");
   });
 
-  it("assina e verifica uma sessão local sem transportar credenciais", async () => {
+  beforeEach(() => {
+    vi.mocked(registerLocalAuthSession).mockReset();
+    vi.mocked(registerLocalAuthSession).mockResolvedValue(undefined);
+  });
+
+  it("assina uma sessão com jti aleatório e a registra antes de entregar o JWT", async () => {
     const token = await createLocalSessionToken(42);
     expect(token.split(".")).toHaveLength(3);
-    await expect(verifyLocalSessionToken(token)).resolves.toEqual({ kind: "local", userId: 42 });
+    const identity = await verifyLocalSessionToken(token);
+    expect(identity).toEqual(expect.objectContaining({ kind: "local", userId: 42 }));
+    expect(identity?.jti).toMatch(/^[a-f0-9]{64}$/);
+    expect(identity?.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(registerLocalAuthSession).toHaveBeenCalledWith({
+      userId: 42,
+      jti: identity?.jti,
+      expiresAt: identity?.expiresAt,
+    });
+    const second = await createLocalSessionToken(42);
+    expect(second).not.toBe(token);
+    expect((await verifyLocalSessionToken(second))?.jti).not.toBe(identity?.jti);
+    await expect(verifyLocalSessionToken(token + "alterado")).resolves.toBeNull();
+  });
+
+  it("nega emissão do token quando não consegue persistir a sessão", async () => {
+    vi.mocked(registerLocalAuthSession).mockRejectedValueOnce(new Error("Banco indisponível"));
+    await expect(createLocalSessionToken(42)).rejects.toThrow("Banco indisponível");
+  });
+
+  it("nega identificadores de usuário incorretos antes de assinar", async () => {
+    await expect(createLocalSessionToken(0)).rejects.toThrow("Usuário inválido");
+    await expect(createLocalSessionToken(Number.MAX_SAFE_INTEGER + 1)).rejects.toThrow("Usuário inválido");
   });
 
   it("mantém a navegação adequada para administrador, despachador e agente", () => {
