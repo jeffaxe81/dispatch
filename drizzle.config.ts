@@ -9,6 +9,7 @@ export default defineConfig({
   schema: [
     "./drizzle/schema.ts",
     "./drizzle/tenantScopeSchema.ts",
+    "./drizzle/localSessionRevocationSchema.ts",
     "./drizzle/workShiftSchema.ts",
     "./drizzle/workspaceLayoutSchema.ts",
     "./server/rbac/rbacAssignmentSourceSchema.ts",
