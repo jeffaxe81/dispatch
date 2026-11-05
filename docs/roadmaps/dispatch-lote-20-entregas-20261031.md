@@ -7,7 +7,7 @@
 | Ordem | ID oficial | Entrega | Frente | Situação auditável | Critério e limitação |
 |---:|---|---|---|---|---|
 | 1 | AXED-F011 | Tempo real por etapa | R05 | Integrado — #208 | Evento de entrada por etapa consultado para cartões autorizados, sem fallback em abertura. |
-| 2 | AXED-F012 | Sinalização de gargalos | R05 | Integrado com ressalva — #208, #230 | Média global por coluna com cobertura exibida. Ressalva: o limite é ajustável na tela (padrão 120 min), mas não é persistido. |
+| 2 | AXED-F012 | Sinalização de gargalos | R05 | Integrado com ressalva aceita — #208, #230 | Média global por coluna com cobertura exibida. Ressalva: o limite é ajustável na tela (padrão 120 min), mas não é persistido; aceito em 05/11/2026. |
 | 3 | AXED-F015 | Ordenação por tempo de etapa | R05 | Integrado — #208, #228 | Ordenação global aplicada antes da paginação. |
 | 4 | AXED-F016 | Motivo obrigatório de priorização | R05 | Integrado — #212 | Justificativa de mudança de prioridade exigida pela API e registrada em auditoria. |
 | 5 | AXED-F017 | Histórico de movimentações | R05 | Integrado — #210 | Cronologia mostra autor, horário e estado anterior → novo nos eventos aplicáveis. |
@@ -22,7 +22,7 @@
 | 14 | AXED-F041 | Última lista autorizada offline | R11 | Integrado — #223 | Resumo minimizado em `sessionStorage`, com expiração de 15 min e isolamento por identidade. |
 | 15 | AXED-F042 | Rascunho local de anotações | R11 | Integrado — #223 | Rascunho salvo localmente, sem envio; a restauração exige ação operacional separada. |
 | 16 | AXED-F045 | Expiração da sessão offline | R11 | Integrado — #223 | Dado expirado ou fora do escopo é rejeitado na leitura. |
-| 17 | AXED-F046 | Sincronização sob confirmação | R11 | Integrado com ressalva — #227, #229, #234 | Bloqueio de envios offline, revalidação após reconexão e comparação manual. Ressalva: não há fila de operações pendentes; ações são refeitas manualmente, sem replay. |
+| 17 | AXED-F046 | Sincronização sob confirmação | R11 | Integrado com ressalva aceita — #227, #229, #234 | Bloqueio de envios offline, revalidação após reconexão e comparação manual. Ressalva: não há fila de operações pendentes; ações são refeitas manualmente, sem replay; aceito em 05/11/2026. |
 | 18 | AXED-F050 | Limpeza de dados locais ao sair | R11 | Integrado — #217 | Expurgo de cache antigo de usuário, chave de empresa, visões Kanban e dados offline no logout. |
 | 19 | AXED-F058 | Alerta de posição desatualizada | R10 | Integrado — #209 | Sinaliza localização antiga, ausente ou sem horário confiável em mapas. |
 | 20 | AXED-F097 | Trilha de acessos negados | R08 | Integrado — #221 | Registra código de permissão normalizado, sem dados da requisição; falha no registro não concede acesso. |
@@ -33,7 +33,8 @@ Reconciliado com o commit `593b43b` da `main`.
 
 - **20/20 IDs com código integrado à `main`**.
 - **16/20 integrados no escopo declarado**: F011, F015, F016, F017, F019, F021, F022, F028, F029, F037, F041, F042, F045, F050, F058 e F097.
-- **4/20 integrados com ressalva a decidir**: F012, F020, F030 e F046, conforme a matriz.
+- **2/20 integrados com ressalva aceita**: F012 e F046, por decisão do responsável em 05/11/2026.
+- **2/20 integrados com ressalva a decidir**: F020 e F030, conforme a matriz.
 - **0/20 homologadas em produção por esta matriz**. CI e ensaios MySQL descartáveis não substituem aceite operacional nem liberam DISPATCH-REAL-01/02/03. A CI pós-merge na main é independente da CI das PRs.
 
 ### Regressão local — 05/11/2026 (Windows, Node 24, `593b43b`)
@@ -76,15 +77,15 @@ Esta regressão não substitui a CI: a situação da CI pós-merge na `main` nã
 | F037 | [PR #222](https://github.com/jeffaxe81/dispatch/pull/222), `47f80cf` | Integrada |
 | F041, F042, F045 | [PR #223](https://github.com/jeffaxe81/dispatch/pull/223), `dc31dd7` | Integrada |
 | F030 | [PR #225](https://github.com/jeffaxe81/dispatch/pull/225), `db43da8`; [PR #232](https://github.com/jeffaxe81/dispatch/pull/232), `54121b0` | Integrada com ressalva |
-| F046 | [PR #227](https://github.com/jeffaxe81/dispatch/pull/227), `c0f1d72`; [PR #229](https://github.com/jeffaxe81/dispatch/pull/229), `7ec3a38`; [PR #234](https://github.com/jeffaxe81/dispatch/pull/234), `593b43b` | Integrada com ressalva |
+| F046 | [PR #227](https://github.com/jeffaxe81/dispatch/pull/227), `c0f1d72`; [PR #229](https://github.com/jeffaxe81/dispatch/pull/229), `7ec3a38`; [PR #234](https://github.com/jeffaxe81/dispatch/pull/234), `593b43b` | Integrada com ressalva aceita |
 | F015 | [PR #228](https://github.com/jeffaxe81/dispatch/pull/228), `5cc3509` | Integrada |
-| F012 | [PR #230](https://github.com/jeffaxe81/dispatch/pull/230), `7f52e64` | Integrada com ressalva |
+| F012 | [PR #230](https://github.com/jeffaxe81/dispatch/pull/230), `7f52e64` | Integrada com ressalva aceita |
 | F029 | [PR #231](https://github.com/jeffaxe81/dispatch/pull/231), `aea6584` | Integrada |
 | F020 | [PR #233](https://github.com/jeffaxe81/dispatch/pull/233), `380a5d5` | Integrada com ressalva |
 
 ### Condição expressa para fechar a release
 
-Fechar o lote somente após decidir as **4 ressalvas** (F012, F020, F030 e F046), seguida de CI integral, evidência de segurança por tenant e aceite operacional. A autorização de fechamento condicional está na [issue #195](https://github.com/jeffaxe81/dispatch/issues/195). **Fechamento administrativo não autoriza implantação em produção.**
+Fechar o lote somente após decidir as **2 ressalvas restantes** (F020 e F030), seguida de CI integral, evidência de segurança por tenant e aceite operacional. A autorização de fechamento condicional está na [issue #195](https://github.com/jeffaxe81/dispatch/issues/195). **Fechamento administrativo não autoriza implantação em produção.**
 
 ### Evidências do primeiro incremento
 
