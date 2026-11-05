@@ -119,9 +119,8 @@ const tenantOverrides = router({
     list: operationalProcedure
       .input(incidentListInputSchema)
       .query(async ({ ctx, input }) => {
-        await assertPermission(ctx.user, "occurrences.view");
         const tenantId = await tenantFor(ctx);
-        const teamId = ctx.user.operationalRole === "agente" ? ctx.user.teamId ?? -1 : input.teamId;
+        const teamId = await resolveAuthorizedTeamFilter(ctx.user, input.teamId, "occurrences.view");
         if (teamId && teamId > 0) await assertTeamTenant(tenantId, teamId);
         if (teamId && teamId > 0) await assertTeamScope(ctx.user, teamId, "occurrences.view", tenantId);
         return listIncidentsForTenant(tenantId, { ...input, teamId });
