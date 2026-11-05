@@ -1377,7 +1377,7 @@ export async function listUsersForAdministration() {
 export async function updateOperationalUser(input: { userId: number; operationalRole: OperationalRole; teamId?: number | null; active?: boolean; actorUserId: number }) {
   const db = await requireDb();
   await db.transaction(async tx => {
-    const before = (await tx.select().from(users).where(eq(users.id, input.userId)).limit(1))[0];
+    const before = (await tx.select().from(users).where(eq(users.id, input.userId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Usuário não encontrado.");
     const resolvedTeamId = input.teamId !== undefined ? input.teamId : before.teamId;
     if (requiresTeamForOperationalRole(input.operationalRole) && !resolvedTeamId) throw new Error("Agente de Campo precisa estar vinculado a uma equipe antes de salvar o perfil.");
@@ -1788,12 +1788,22 @@ export async function updateAccessRole(input: { roleId: number; name?: string; d
 export async function assignUserRole(input: { userId: number; roleId: number; organizationId?: number | null; organizationalUnitId?: number | null; teamId?: number | null; expiresAt?: Date | null; actorUserId: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    // Session registration uses this same user-row lock. A role change must
+    // serialize against new logins, and it must reject unknown users.
+    const lockedUser = (await tx.select({ id: users.id }).from(users)
+      .where(eq(users.id, input.userId)).limit(1).for("update"))[0];
+    if (!lockedUser) throw new Error("Usuário não encontrado.");
     const role = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!role || !role.active) throw new Error("Perfil não encontrado ou inativo.");
     if (!isRoleScopeAssignmentValid({ defaultScope: role.defaultScope, organizationId: input.organizationId, organizationalUnitId: input.organizationalUnitId, teamId: input.teamId })) throw new Error("O escopo informado não atende ao nível exigido pelo perfil.");
     const previous = await tx.select({ id: userRoleAssignments.id, roleId: userRoleAssignments.roleId }).from(userRoleAssignments).where(and(eq(userRoleAssignments.userId, input.userId), eq(userRoleAssignments.active, true)));
     if (previous.length) await tx.update(userRoleAssignments).set({ active: false, activeUserId: null }).where(and(eq(userRoleAssignments.userId, input.userId), eq(userRoleAssignments.active, true)));
     const [created] = await tx.insert(userRoleAssignments).values({ userId: input.userId, roleId: input.roleId, organizationId: input.organizationId ?? null, organizationalUnitId: input.organizationalUnitId ?? null, teamId: input.teamId ?? null, activeUserId: input.userId, expiresAt: input.expiresAt ?? null, assignedByUserId: input.actorUserId }).$returningId();
+    // The replacement and session revocation are one atomic transaction:
+    // no previously issued token can retain an obsolete role assignment.
+    await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+      and(eq(localAuthSessions.userId, input.userId), isNull(localAuthSessions.revokedAt)),
+    );
     await tx.insert(auditLogs).values({ resourceType: "user_role_assignment", resourceId: created.id, action: "profile_replaced", actorUserId: input.actorUserId, beforeData: { replacedAssignmentIds: previous.map(assignment => assignment.id), replacedRoleIds: previous.map(assignment => assignment.roleId) }, afterData: { userId: input.userId, roleId: input.roleId, organizationId: input.organizationId ?? null, organizationalUnitId: input.organizationalUnitId ?? null, teamId: input.teamId ?? null, expiresAt: input.expiresAt?.toISOString() ?? null, singleActiveProfile: true } });
     return created;
   });
