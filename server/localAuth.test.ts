@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Request } from "express";
+import { COOKIE_NAME } from "@shared/const";
 import { registerLocalAuthSession, revokeLocalAuthSession } from "./localAuthSessions";
 
 // Tests keep the database write isolated while exercising real JWT signing.
@@ -61,18 +62,15 @@ describe("autenticação local", () => {
 
   it("revoga a sessão validada pelo JWT antes de confirmar o logout", async () => {
     const token = await createLocalSessionToken(42, verifiedHash);
-    const req = { headers: { cookie: `dispatch_login=${token}` } } as unknown as Request;
-    // Use the configured cookie name instead of relying on a browser context.
-    const { COOKIE_NAME } = await import("@shared/const");
-    req.headers.cookie = `${COOKIE_NAME}=${token}`;
+    const req = { headers: { cookie: `${COOKIE_NAME}=${token}` } } as unknown as Request;
     const identity = await verifyLocalSessionToken(token);
     await expect(revokeLocalSessionFromRequest(req)).resolves.toBeUndefined();
-    expect(revokeLocalAuthSession).toHaveBeenCalledExactlyOnceWith(identity);
+    expect(revokeLocalAuthSession).toHaveBeenCalledTimes(1);
+    expect(revokeLocalAuthSession).toHaveBeenCalledWith(identity);
   });
 
   it("falha fechado quando o banco não confirma a revogação da sessão", async () => {
     const token = await createLocalSessionToken(42, verifiedHash);
-    const { COOKIE_NAME } = await import("@shared/const");
     const req = { headers: { cookie: `${COOKIE_NAME}=${token}` } } as unknown as Request;
     vi.mocked(revokeLocalAuthSession).mockRejectedValueOnce(new Error("DB indisponível"));
     await expect(revokeLocalSessionFromRequest(req)).rejects.toThrow("DB indisponível");
