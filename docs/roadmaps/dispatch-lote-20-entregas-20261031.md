@@ -7,34 +7,56 @@
 | Ordem | ID oficial | Entrega | Frente | Situação auditável | Critério e limitação |
 |---:|---|---|---|---|---|
 | 1 | AXED-F011 | Tempo real por etapa | R05 | Integrado — #208 | Evento de entrada por etapa consultado para cartões autorizados, sem fallback em abertura. |
-| 2 | AXED-F012 | Sinalização de gargalos | R05 | Integrado parcialmente — #208 | Alerta configurável usa média da página; agregação global da etapa ainda pendente. |
-| 3 | AXED-F015 | Ordenação por tempo de etapa | R05 | Integrado parcialmente — #208 | Ordenação por permanência só na página; SQL global pendente. |
+| 2 | AXED-F012 | Sinalização de gargalos | R05 | Integrado com ressalva — #208, #230 | Média global por coluna com cobertura exibida. Ressalva: o limite é ajustável na tela (padrão 120 min), mas não é persistido. |
+| 3 | AXED-F015 | Ordenação por tempo de etapa | R05 | Integrado — #208, #228 | Ordenação global aplicada antes da paginação. |
 | 4 | AXED-F016 | Motivo obrigatório de priorização | R05 | Integrado — #212 | Justificativa de mudança de prioridade exigida pela API e registrada em auditoria. |
 | 5 | AXED-F017 | Histórico de movimentações | R05 | Integrado — #210 | Cronologia mostra autor, horário e estado anterior → novo nos eventos aplicáveis. |
 | 6 | AXED-F019 | Visões salvas do Kanban | R05 | Integrado — #211 | Visões locais isoladas por usuário e organização ativa neste dispositivo. |
-| 7 | AXED-F020 | Aviso de alteração concorrente | R05 | Integrado parcialmente — #213 | Bloqueio transacional e confronto de situação esperada; revisão monotônica/ABA pendente. |
+| 7 | AXED-F020 | Aviso de alteração concorrente | R05 | Integrado com ressalva — #213, #233 | Revisão monotônica sob lock de linha protege contra ABA; Kanban, detalhe e agente enviam a revisão. Ressalvas: a API ainda aceita chamadas sem revisão (compatibilidade) e `updateIncident` não usa revisão nem lock de linha. |
 | 8 | AXED-F021 | Modelo de formulário por categoria | R06 | Integrado — #214 | Herda modelo publicado pela categoria derivada da ocorrência e tenant autorizados. |
 | 9 | AXED-F022 | Campos obrigatórios por fase | R06 | Integrado — #218 | Campos D-008 condicionados à fase obtida da ocorrência autorizada; F030 separado. |
 | 10 | AXED-F028 | Pré-preenchimento autorizado | R06 | Integrado — #216 | Ação explícita preenche apenas código, categoria e prioridade, sem PII ou sobrescrita. |
-| 11 | AXED-F029 | Revisão por supervisor | R06 | Lacuna a implementar | Parecer e devolução registrados no formulário. |
-| 12 | AXED-F030 | Bloqueio por formulário incompleto | R06 | A aprofundar | Gate por fase, explícito e auditável. |
-| 13 | AXED-F037 | Passagem de plantão registrada | R07 | Lacuna a implementar | Handoff com responsável e timestamp, sem alterar escala automaticamente. |
-| 14 | AXED-F041 | Última lista autorizada offline | R11 | Lacuna a implementar | Cache local seguro com janela limitada e restrição de tenant. |
-| 15 | AXED-F042 | Rascunho local de anotações | R11 | Lacuna a implementar | Texto offline sem mudar ocorrência remotamente. |
-| 16 | AXED-F045 | Expiração da sessão offline | R11 | Lacuna a implementar | Limite de acesso/expurgo quando sessão vencer. |
-| 17 | AXED-F046 | Sincronização sob confirmação | R11 | Lacuna a implementar | Nenhum replay automático sem confirmação. |
+| 11 | AXED-F029 | Revisão por supervisor | R06 | Integrado — #231 | Aceite ou devolução com motivo, histórico transacional por revisão e interface. |
+| 12 | AXED-F030 | Bloqueio por formulário incompleto | R06 | Integrado com ressalva — #225, #232 | Gate transacional na conclusão, com escopo de tenant. Ressalvas: cobre apenas a fase `concluida`, a tentativa bloqueada não gera registro de auditoria e não há teste do gate contra MySQL real. |
+| 13 | AXED-F037 | Passagem de plantão registrada | R07 | Integrado — #222 | Handoff com solicitação, confirmação e auditoria; há workflow de homologação em MySQL descartável, cujo resultado não foi consultado nesta reconciliação. |
+| 14 | AXED-F041 | Última lista autorizada offline | R11 | Integrado — #223 | Resumo minimizado em `sessionStorage`, com expiração de 15 min e isolamento por identidade. |
+| 15 | AXED-F042 | Rascunho local de anotações | R11 | Integrado — #223 | Rascunho salvo localmente, sem envio; a restauração exige ação operacional separada. |
+| 16 | AXED-F045 | Expiração da sessão offline | R11 | Integrado — #223 | Dado expirado ou fora do escopo é rejeitado na leitura. |
+| 17 | AXED-F046 | Sincronização sob confirmação | R11 | Integrado com ressalva — #227, #229, #234 | Bloqueio de envios offline, revalidação após reconexão e comparação manual. Ressalva: não há fila de operações pendentes; ações são refeitas manualmente, sem replay. |
 | 18 | AXED-F050 | Limpeza de dados locais ao sair | R11 | Integrado — #217 | Expurgo de cache antigo de usuário, chave de empresa, visões Kanban e dados offline no logout. |
 | 19 | AXED-F058 | Alerta de posição desatualizada | R10 | Integrado — #209 | Sinaliza localização antiga, ausente ou sem horário confiável em mapas. |
-| 20 | AXED-F097 | Trilha de acessos negados | R08 | Lacuna a implementar | Negativas críticas registradas sem conteúdo sigiloso ou PII. |
+| 20 | AXED-F097 | Trilha de acessos negados | R08 | Integrado — #221 | Registra código de permissão normalizado, sem dados da requisição; falha no registro não concede acesso. |
 
-## Resumo de execução verificado — 31/10/2026
+## Resumo de execução verificado — 05/11/2026
 
-- **20/20 IDs mapeados**; os 20 foram selecionados do roadmap de 100 já autorizado.
-- **12/20 IDs com código integrado à `main` (60%)** após PRs #208–#214 e #216–#218, todas aprovadas com 7/7 checks.
-- **9/20 implementações integradas no escopo declarado**: F011, F016, F017, F019, F021, F022, F028, F050 e F058.
-- **3/20 integradas parcialmente**: F012 (média amostral por página), F015 (ordem por página) e F020 (conflito por status, sem revisão monotônica/ABA).
-- **8/20 ainda sem entrega integrada**: F029, F030, F037, F041, F042, F045, F046 e F097.
+Reconciliado com o commit `593b43b` da `main`.
+
+- **20/20 IDs com código integrado à `main`**.
+- **16/20 integrados no escopo declarado**: F011, F015, F016, F017, F019, F021, F022, F028, F029, F037, F041, F042, F045, F050, F058 e F097.
+- **4/20 integrados com ressalva a decidir**: F012, F020, F030 e F046, conforme a matriz.
 - **0/20 homologadas em produção por esta matriz**. CI e ensaios MySQL descartáveis não substituem aceite operacional nem liberam DISPATCH-REAL-01/02/03. A CI pós-merge na main é independente da CI das PRs.
+
+### Regressão local — 05/11/2026 (Windows, Node 24, `593b43b`)
+
+| Etapa | Resultado |
+|---|---|
+| `pnpm security:check` | Aprovado |
+| `pnpm check` | Aprovado |
+| `pnpm test` | 3003/3012 aprovados; 9 falhas classificadas abaixo |
+| `pnpm readiness:dispatch` | `NO_GO`: 0/3 gates evidenciados (DISPATCH-REAL-01/02/03) |
+| `node --test scripts/inventory-external-preflight.test.mjs` | 5/5 aprovados |
+| `pnpm build` | Aprovado |
+| Empacotamento Docker | Não executado: Docker indisponível na máquina |
+
+| Falhas em `pnpm test` | Causa | Comprovação |
+|---|---|---|
+| `embeddedAppCsp` (1) | Teste espera LF; checkout local em CRLF | Aprovado em cópia LF do `HEAD` |
+| `workShiftOperationalPublishing` (2), `GeneralSettingsPage` (1), `WorkflowBuilderPage.full` (1) | Lentidão sob a suíte completa | Aprovados isolados em cópia LF do `HEAD` |
+| `workflowEventTriggerPersistence` (1), `workflowFormHardening` (1) | Importação lenta excede o limite de 5 s | Aprovados com limite maior (3,9 s e 3,4 s) |
+| `recovery/cli` (1) | `EPERM` ao criar symlink no Windows | Causa indicada pelo erro; **não reexecutado em Linux** |
+| `recovery/manifest` (1) | `/proc/self/fd` inexistente no Windows | Causa indicada pelo erro; **não reexecutado em Linux** |
+
+Esta regressão não substitui a CI: a situação da CI pós-merge na `main` não foi consultada nesta reconciliação.
 
 ### Registro de PRs e mudanças
 
@@ -50,10 +72,19 @@
 | F028 | [PR #216](https://github.com/jeffaxe81/dispatch/pull/216), `40c22d1` | Integrada |
 | F050 | [PR #217](https://github.com/jeffaxe81/dispatch/pull/217), `0389bc2` | Integrada |
 | F022 | [PR #218](https://github.com/jeffaxe81/dispatch/pull/218), `353939a` | Integrada |
+| F097 | [PR #221](https://github.com/jeffaxe81/dispatch/pull/221), `8323e56` | Integrada |
+| F037 | [PR #222](https://github.com/jeffaxe81/dispatch/pull/222), `47f80cf` | Integrada |
+| F041, F042, F045 | [PR #223](https://github.com/jeffaxe81/dispatch/pull/223), `dc31dd7` | Integrada |
+| F030 | [PR #225](https://github.com/jeffaxe81/dispatch/pull/225), `db43da8`; [PR #232](https://github.com/jeffaxe81/dispatch/pull/232), `54121b0` | Integrada com ressalva |
+| F046 | [PR #227](https://github.com/jeffaxe81/dispatch/pull/227), `c0f1d72`; [PR #229](https://github.com/jeffaxe81/dispatch/pull/229), `7ec3a38`; [PR #234](https://github.com/jeffaxe81/dispatch/pull/234), `593b43b` | Integrada com ressalva |
+| F015 | [PR #228](https://github.com/jeffaxe81/dispatch/pull/228), `5cc3509` | Integrada |
+| F012 | [PR #230](https://github.com/jeffaxe81/dispatch/pull/230), `7f52e64` | Integrada com ressalva |
+| F029 | [PR #231](https://github.com/jeffaxe81/dispatch/pull/231), `aea6584` | Integrada |
+| F020 | [PR #233](https://github.com/jeffaxe81/dispatch/pull/233), `380a5d5` | Integrada com ressalva |
 
 ### Condição expressa para fechar a release
 
-Fechar o lote somente quando os **8 IDs ainda pendentes** estiverem implementados e com critérios de aceite atendidos, e as **3 implementações parciais** estiverem finalizadas, seguida de regressão integrada, evidência de segurança por tenant e aceite operacional. A autorização de fechamento condicional está na [issue #195](https://github.com/jeffaxe81/dispatch/issues/195). **Fechamento administrativo não autoriza implantação em produção.**
+Fechar o lote somente após decidir as **4 ressalvas** (F012, F020, F030 e F046), seguida de CI integral, evidência de segurança por tenant e aceite operacional. A autorização de fechamento condicional está na [issue #195](https://github.com/jeffaxe81/dispatch/issues/195). **Fechamento administrativo não autoriza implantação em produção.**
 
 ### Evidências do primeiro incremento
 
