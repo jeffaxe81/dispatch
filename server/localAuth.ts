@@ -1,12 +1,13 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, decodeJwt, jwtVerify } from "jose";
 import { eq } from "drizzle-orm";
 import type { Request } from "express";
 import { COOKIE_NAME } from "@shared/const";
 import { users, type User } from "../drizzle/schema";
 import { getDb } from "./db";
 import { ENV } from "./_core/env";
+import { isLocalSessionRevoked, revokeLocalSessionToken } from "./localSessionRevocation";
 
 const scrypt = promisify(scryptCallback);
 const LOCAL_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -54,6 +55,7 @@ export async function createLocalSessionToken(userId: number) {
   return new SignJWT({ userId, kind: "local" satisfies LocalSession["kind"] })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuedAt(now)
+    .setJti(randomBytes(24).toString("base64url"))
     .setExpirationTime(now + Math.floor(LOCAL_SESSION_TTL_MS / 1000))
     .setIssuer("axe-dispatch-local")
     .setAudience("axe-dispatch")
@@ -77,12 +79,31 @@ function getCookie(req: Request, name: string) {
 }
 
 export async function authenticateLocalRequest(req: Request): Promise<User | null> {
-  const session = await verifyLocalSessionToken(getCookie(req, COOKIE_NAME));
-  if (!session) return null;
+  const token = getCookie(req, COOKIE_NAME);
+  const session = await verifyLocalSessionToken(token);
+  if (!session || !token) return null;
+  // A database error prevents authentication; never treat it as a valid session.
+  if (await isLocalSessionRevoked(token)) return null;
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   const user = (await db.select().from(users).where(eq(users.id, session.userId)).limit(1))[0];
   return user?.active ? user : null;
+}
+
+/**
+ * Verify first, then durably revoke. Missing/invalid/expired cookies have no
+ * active session to revoke; a valid token requires confirmed MySQL write.
+ * An already revoked token can be submitted again safely (idempotent).
+ */
+export async function revokeLocalSessionFromRequest(req: Request): Promise<void> {
+  const token = getCookie(req, COOKIE_NAME);
+  const session = await verifyLocalSessionToken(token);
+  if (!token || !session) return;
+  const claims = decodeJwt(token);
+  if (typeof claims.exp !== "number" || !Number.isSafeInteger(claims.exp)) {
+    throw new Error("Expiração de sessão inválida.");
+  }
+  await revokeLocalSessionToken(token, session.userId, new Date(claims.exp * 1000));
 }
 
 export async function loginWithLocalCredentials(input: { username: string; password: string }) {
