@@ -246,9 +246,13 @@ async function main():Promise<void> {
   }
 }
 
-void main().catch(error=>{
-  // Never include grant codes, session handles or raw device IDs in logs.
-  process.stderr.write("Mobile auth CI MySQL smoke failed: "+
-    (error instanceof Error?error.name:"UnknownError")+"\\n");
-  process.exitCode=1;
-});
+// This standalone CLI uses the production-style Drizzle connection pool,
+// whose idle MySQL sockets remain open after tests. Only exit after cleanup.
+void main().then(
+  ()=>{process.stdout.write("Mobile auth MySQL smoke completed.\\n",()=>process.exit(0));},
+  error=>{
+    // Never include grant codes, session handles or raw device IDs in logs.
+    process.stderr.write("Mobile auth CI MySQL smoke failed: "+
+      (error instanceof Error?error.name:"UnknownError")+"\\n",()=>process.exit(1));
+  },
+);
