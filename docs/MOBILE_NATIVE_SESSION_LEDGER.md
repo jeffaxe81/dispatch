@@ -23,7 +23,7 @@
 ## Limites importantes
 
 - A biblioteca **não é um servidor OAuth/OIDC** e não altera `server/routers.ts`, `server/_core/context.ts`, `server/localAuth.ts`, JWT web ou cookies. O APK segue com `NATIVE_AUTH_PENDING`.
-- A revogação por dispositivo aqui invalida **sessões existentes**, mas **não impede por si só que um novo código emitido depois gere outra sessão**. Um cadastro de dispositivo com estado de bloqueio persistente, verificado atomicamente em toda emissão e troca, é requisito antes do fluxo operacional.
+- O cadastro persistente e a revogação transacional de dispositivos já estão implementados em código e descritos em [cadastro e bloqueio de dispositivos](MOBILE_DEVICE_REGISTRY.md). Os adaptadores MySQL agora barram emissão/troca de códigos e criação/leitura de sessões para dispositivos revogados, mas **nenhuma migração foi aplicada ou validada em MySQL real**, e ainda não há fluxo de provisionamento, App Link ou Keystore aprovado para operação.
 - A leitura usa o primário do MySQL e bloqueio pessimista por transação, evitando usar cache stale; a chamada retornada não cria uma transação longa em torno da ação seguinte. Ao ligar o middleware, operações sensíveis devem confirmar revogação/autorização na mesma fronteira de segurança em que são executadas.
 - Uma sessão não é um refresh token. A camada atual não faz rotação de refresh tokens, detecção de replay de refresh, atestado do dispositivo, vinculação criptográfica do hardware ou controle de perda do telefone.
 - A tabela `mobile_sessions` foi adicionada ao arquivo `drizzle.config.ts`, mas **nenhum DDL foi gerado, executado ou homologado em MySQL real** nesta PR. Não executar `db:push` em produção sem aprovação específica.
