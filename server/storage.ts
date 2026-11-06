@@ -38,12 +38,16 @@ export async function storagePut(
  * collision-resistant incident evidence keys are accepted. Does not allow
  * arbitrary storage overwrites.
  */
+export function isReservedIncidentEvidenceKey(key: string): boolean {
+  return /^incident-evidence\/\d+\/\d+\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[A-Za-z0-9_-]{1,100}\.(jpg|png|webp|pdf)$/.test(key);
+}
+
 export async function storagePutReservedIncidentEvidence(
   key: string,
   data: Buffer | Uint8Array,
   contentType: string,
 ): Promise<{ key: string; url: string }> {
-  if (!/^incident-evidence\/\d+\/\d+\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[A-Za-z0-9_-]{1,100}\.(jpg|png|webp|pdf)$/.test(key))
+  if (!isReservedIncidentEvidenceKey(key))
     throw new Error("Invalid reserved incident evidence storage key.");
   return putAtKnownKey(key, data, contentType);
 }
