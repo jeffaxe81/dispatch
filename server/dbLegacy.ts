@@ -378,6 +378,38 @@ export async function permanentlyDeleteIncident(input: { incidentId: number; act
       tx.select().from(incidentEvents).where(eq(incidentEvents.incidentId, input.incidentId)),
     ]);
     const affectedTeamIds = Array.from(new Set(assignments.map(assignment => assignment.teamId)));
+    // Permanent DB deletion cascades the evidence references but does NOT
+    // delete external storage objects. Preserve/recreate a cleanup record
+    // for every object, including pre-ledger legacy uploads.
+    const evidenceObjects = await tx.select({
+      id: incidentEvidence.id,
+      storageKey: incidentEvidence.storageKey,
+      uploadedByUserId: incidentEvidence.uploadedByUserId,
+    }).from(incidentEvidence).where(eq(incidentEvidence.incidentId, incident.id));
+    const reservedKeys = await tx.select({
+      storageKey: incidentEvidenceUploadAttempts.storageKey,
+    }).from(incidentEvidenceUploadAttempts)
+      .where(eq(incidentEvidenceUploadAttempts.incidentId, incident.id));
+    const knownKeys = new Set(reservedKeys.map(row => row.storageKey));
+    const legacyObjects = evidenceObjects.filter(row => !knownKeys.has(row.storageKey));
+    for (let offset = 0; offset < legacyObjects.length; offset += 100) {
+      await tx.insert(incidentEvidenceUploadAttempts).values(
+        legacyObjects.slice(offset, offset + 100).map(row => ({
+          attemptId: randomUUID(),
+          storageKey: row.storageKey,
+          incidentId: incident.id,
+          actorUserId: row.uploadedByUserId,
+          teamId: incident.assignedTeamId ?? 0,
+          evidenceId: row.id,
+          state: "cleanup_required" as const,
+        })),
+      );
+    }
+    // Also capture uploads whose reservation committed but whose blob is
+    // now orphaned by this deletion, and in-flight reserved attempts.
+    await tx.update(incidentEvidenceUploadAttempts)
+      .set({ state: "cleanup_required" })
+      .where(eq(incidentEvidenceUploadAttempts.incidentId, incident.id));
     const auditSnapshot = buildIncidentDeletionAuditSnapshot({ incident, assignments, events, reason: input.reason.trim() });
     await tx.insert(auditLogs).values({
       resourceType: "incident",
