@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
 import { randomUUID } from "node:crypto";
@@ -43,6 +43,7 @@ import {
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 import { incidentTenantScopes } from "../drizzle/tenantScopeSchema";
 import { incidentEvidenceUploadAttempts } from "../drizzle/incidentEvidenceUploadSchema";
+import { EVIDENCE_RESERVATION_STALE_MINUTES, evidenceRecoveryReason } from "./evidenceReconciliation";
 import { localAuthSessions } from "../drizzle/localAuthSessionsSchema";
 import { assertOperationalSessionAtWriteBoundary, hashLocalSessionId, type LocalSessionIdentity } from "./localAuthSessions";
 import { requirePriorityChangeJustification } from "./priorityChangeJustification";
@@ -897,6 +898,75 @@ export async function uploadUserProfilePhoto(input: { userId: number; actorUserI
     });
     return { contentType: input.contentType, byteSize: bytes.length, updatedAt: photoPatch.avatarUpdatedAt, url: stored.url };
   });
+}
+
+/**
+ * Administrative read-only queue: this never returns storage keys and never
+ * requests signed URLs or deletes objects. The caller must enforce Super Admin.
+ * Query committed rows without a matching evidence reference as well, since
+ * crashes or pre-ledger deletion may leave drift.
+ */
+export async function listEvidenceReconciliationCandidates(input: {
+  page: number;
+  pageSize: number;
+  now?: Date;
+}) {
+  if (!Number.isSafeInteger(input.page) || input.page < 1 || input.page > 10000 ||
+      !Number.isSafeInteger(input.pageSize) || input.pageSize < 1 || input.pageSize > 100)
+    throw new Error("Paginação de conciliação inválida.");
+  const now = input.now ?? new Date();
+  const cutoff = new Date(now.getTime() - EVIDENCE_RESERVATION_STALE_MINUTES * 60_000);
+  const db = await requireDb();
+  const pending = or(
+    eq(incidentEvidenceUploadAttempts.state, "cleanup_required"),
+    and(eq(incidentEvidenceUploadAttempts.state, "reserved"), lt(incidentEvidenceUploadAttempts.updatedAt, cutoff)),
+    and(eq(incidentEvidenceUploadAttempts.state, "committed"), isNull(incidentEvidence.id)),
+  );
+  const base = () => db
+    .select({
+      attemptId: incidentEvidenceUploadAttempts.attemptId,
+      incidentId: incidentEvidenceUploadAttempts.incidentId,
+      actorUserId: incidentEvidenceUploadAttempts.actorUserId,
+      teamId: incidentEvidenceUploadAttempts.teamId,
+      state: incidentEvidenceUploadAttempts.state,
+      createdAt: incidentEvidenceUploadAttempts.createdAt,
+      updatedAt: incidentEvidenceUploadAttempts.updatedAt,
+      evidenceReferenceId: incidentEvidence.id,
+      currentIncidentId: incidents.id,
+    })
+    .from(incidentEvidenceUploadAttempts)
+    .leftJoin(incidentEvidence, eq(incidentEvidenceUploadAttempts.storageKey, incidentEvidence.storageKey))
+    .leftJoin(incidents, eq(incidentEvidenceUploadAttempts.incidentId, incidents.id))
+    .where(pending);
+  const [rows, countRows] = await Promise.all([
+    base().orderBy(incidentEvidenceUploadAttempts.updatedAt, incidentEvidenceUploadAttempts.attemptId)
+      .limit(input.pageSize).offset((input.page - 1) * input.pageSize),
+    db.select({ total: countDistinct(incidentEvidenceUploadAttempts.attemptId) })
+      .from(incidentEvidenceUploadAttempts)
+      .leftJoin(incidentEvidence, eq(incidentEvidenceUploadAttempts.storageKey, incidentEvidence.storageKey))
+      .where(pending),
+  ]);
+  return {
+    page: input.page, pageSize: input.pageSize,
+    total: Number(countRows[0]?.total ?? 0),
+    staleAfterMinutes: EVIDENCE_RESERVATION_STALE_MINUTES,
+    rows: rows.map(row => ({
+      attemptId: row.attemptId,
+      incidentId: row.incidentId,
+      actorUserId: row.actorUserId,
+      teamId: row.teamId,
+      state: row.state,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      hasEvidenceReference: row.evidenceReferenceId !== null,
+      incidentExists: row.currentIncidentId !== null,
+      reason: evidenceRecoveryReason({
+        state: row.state, updatedAt: row.updatedAt,
+        hasEvidenceReference: row.evidenceReferenceId !== null, now,
+      }),
+      // No storageKey or signed URL: the queue is for manual review ONLY.
+    })),
+  };
 }
 
 export async function listIncidentEvidence(incidentId: number) {
