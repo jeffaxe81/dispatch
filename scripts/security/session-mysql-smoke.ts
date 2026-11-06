@@ -20,7 +20,7 @@ import {
   isLocalAuthSessionActive,
   revokeAllLocalAuthSessions,
 } from "../../server/localAuthSessions";
-import { assignTeamToIncident, assignUserRole, createAccessRole, createIncident, permanentlyDeleteIncident, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole, updateIncident } from "../../server/db";
+import { addIncidentEvidence, assignTeamToIncident, assignUserRole, createAccessRole, createIncident, permanentlyDeleteIncident, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole, updateIncident } from "../../server/db";
 
 function guardedTestDatabaseUrl(): string {
   const url = process.env.DATABASE_URL ?? "";
@@ -40,6 +40,33 @@ function guardedTestDatabaseUrl(): string {
 
 async function main(): Promise<void> {
   const url = guardedTestDatabaseUrl();
+  if (process.env.BUILT_IN_FORGE_API_URL !== "http://127.0.0.1:8765" ||
+      process.env.BUILT_IN_FORGE_API_KEY !== "ci-synthetic-storage-only")
+    throw new Error("Synthetic Forge tests must use the loopback-only CI configuration.");
+  const previousFetch = globalThis.fetch;
+  const uploads: string[] = [];
+  let revokeDuringNextUpload: (() => Promise<void>) | null = null;
+  // Never contact a provider: this test intercepts the synthetic loopback host.
+  globalThis.fetch = async (resource, options) => {
+    const target = new URL(typeof resource === "string" ? resource : resource instanceof URL ? resource.href : resource.url);
+    if (target.origin !== "http://127.0.0.1:8765")
+      throw new Error("Evidence smoke blocked non-synthetic storage network request.");
+    if (target.pathname === "/v1/storage/presign/put") {
+      const key = target.searchParams.get("path");
+      assert.ok(key?.startsWith("incident-evidence/"));
+      return new Response(JSON.stringify({
+        url: "http://127.0.0.1:8765/synthetic-put/" + encodeURIComponent(key),
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (target.pathname.startsWith("/synthetic-put/") && options?.method === "PUT") {
+      uploads.push(decodeURIComponent(target.pathname.slice("/synthetic-put/".length)));
+      const action = revokeDuringNextUpload;
+      revokeDuringNextUpload = null;
+      if (action) await action();
+      return new Response(null, { status: 200 });
+    }
+    throw new Error("Unrecognized synthetic storage operation.");
+  };
   // Independent connection simulates a second node observing the shared registry.
   const independent = await mysql.createConnection(url);
   let userId: number | null = null;
@@ -219,6 +246,50 @@ async function main(): Promise<void> {
     assert.equal(untouched[0]?.status, "aceita");
     assert.equal(untouched[0]?.description, "Isolated session write boundary scenario");
 
+    // File upload writes a DURABLE reservation before the (fake) remote PUT.
+    // It is only published after a second authorization check at commit.
+    await independent.execute(
+      "UPDATE users SET operational_role = 'agente', team_id = ? WHERE id = ?",
+      [teamId, userId],
+    );
+    const syntheticPdf = Buffer.from("%PDF-1.4\\n%%EOF\\n").toString("base64");
+    const evidenceInput = {
+      incidentId, actorUserId: userId, teamId,
+      fileName: "isolated-evidence.pdf",
+      contentType: "application/pdf",
+      dataBase64: syntheticPdf,
+      session: liveOperationalSession,
+    };
+    const successfulEvidence = await addIncidentEvidence(evidenceInput);
+    assert.ok(successfulEvidence.id > 0);
+    const [committed] = await independent.execute<RowDataPacket[]>(
+      "SELECT state, evidence_id, storage_key FROM incident_evidence_upload_attempts WHERE actor_user_id = ? AND state = 'committed'",
+      [userId],
+    );
+    assert.equal(committed.length, 1);
+    assert.equal(committed[0]?.evidence_id, successfulEvidence.id);
+    assert.equal(committed[0]?.storage_key, uploads.at(-1));
+
+    // A revoked session must not reach the synthetic storage service at all.
+    const uploadCount = uploads.length;
+    await assert.rejects(addIncidentEvidence({ ...evidenceInput, session: conflictingSession }));
+    assert.equal(uploads.length, uploadCount);
+
+    // Simulate logout while the external upload is in flight. The file has
+    // been uploaded but the DB must NOT publish its evidence metadata.
+    revokeDuringNextUpload = async () => { await revokeAllLocalAuthSessions(userId); };
+    await assert.rejects(addIncidentEvidence({ ...evidenceInput, fileName: "revoked-in-flight.pdf" }));
+    const [cleanupNeeded] = await independent.execute<RowDataPacket[]>(
+      "SELECT state, storage_key FROM incident_evidence_upload_attempts WHERE actor_user_id = ? AND state = 'cleanup_required'",
+      [userId],
+    );
+    assert.equal(cleanupNeeded.length, 1);
+    assert.ok(uploads.includes(cleanupNeeded[0].storage_key));
+    const [evidenceRows] = await independent.execute<RowDataPacket[]>(
+      "SELECT id FROM incident_evidence WHERE incident_id = ?", [incidentId],
+    );
+    assert.equal(evidenceRows.length, 1, "revoked in-flight upload must not publish evidence");
+
     const newPassword = "ci-replacement-" + randomUUID();
     const newHash = await hashLocalPassword(newPassword);
     await setUserLocalCredentials({
@@ -324,7 +395,7 @@ async function main(): Promise<void> {
 
     await revokeAllLocalAuthSessions(userId);
     assert.equal(await authenticateLocalRequest(newestReq), null);
-    console.log("PASS: MySQL 8.4 durable session, create/edit/delete, atomic tenant rollback, dispatch, concurrent revocation, RBAC, reset, fail-closed.");
+    console.log("PASS: MySQL 8.4 durable session, incident writes, evidence reservation/commit/revocation cleanup, atomic tenant rollback, RBAC and fail-closed.");
   } finally {
     if (lockConnection) {
       await lockConnection.rollback().catch(() => {});
@@ -332,6 +403,8 @@ async function main(): Promise<void> {
     }
     if (sessionTableTemporarilyRenamed)
       await independent.query("RENAME TABLE local_auth_sessions_smoke_unavailable TO local_auth_sessions").catch(() => {});
+    if (userId !== null)
+      await independent.execute("DELETE FROM incident_evidence_upload_attempts WHERE actor_user_id = ?", [userId]).catch(() => {});
     if (newIncidentId !== null)
       await independent.execute("DELETE FROM incidents WHERE id = ?", [newIncidentId]).catch(() => {});
     if (incidentId !== null)
@@ -343,6 +416,7 @@ async function main(): Promise<void> {
     if (userId !== null)
       await independent.execute("DELETE FROM users WHERE id = ?", [userId]).catch(() => {});
     await independent.end();
+    globalThis.fetch = previousFetch;
   }
 }
 
