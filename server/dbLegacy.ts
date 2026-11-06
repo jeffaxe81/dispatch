@@ -392,7 +392,13 @@ export async function permanentlyDeleteIncident(input: { incidentId: number; act
     }).from(incidentEvidenceUploadAttempts)
       .where(eq(incidentEvidenceUploadAttempts.incidentId, incident.id));
     const knownKeys = new Set(reservedKeys.map(row => row.storageKey));
-    const legacyObjects = evidenceObjects.filter(row => !knownKeys.has(row.storageKey));
+    // Older data may have several DB references to the same physical blob.
+    // The reconciliation ledger has one record per key, so deduplicate.
+    const legacyObjects = evidenceObjects.filter(row => {
+      if (knownKeys.has(row.storageKey)) return false;
+      knownKeys.add(row.storageKey);
+      return true;
+    });
     for (let offset = 0; offset < legacyObjects.length; offset += 100) {
       await tx.insert(incidentEvidenceUploadAttempts).values(
         legacyObjects.slice(offset, offset + 100).map(row => ({
