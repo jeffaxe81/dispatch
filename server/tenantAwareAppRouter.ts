@@ -232,7 +232,7 @@ const tenantOverrides = router({
         await assertTeamTenant(tenantId, ctx.user.teamId);
         await assertTeamScope(ctx.user, ctx.user.teamId, "occurrences.view", tenantId);
         assertCanAddIncidentEvidence(ctx.user, incident);
-        return addIncidentEvidence({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id });
+        return addIncidentEvidence({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id, expectedTenantId: tenantId, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     }),
     timeline: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
