@@ -36,14 +36,18 @@ describe("AXED-F014: intervalo de abertura de ocorrências", () => {
 const read = (relative: string) => fs.readFileSync(path.resolve(import.meta.dirname, "..", relative), "utf8");
 
 describe("AXED-F013/F014/F018: contrato de listagem tenant-aware", () => {
-  it("ambos os routers usam o mesmo validador de período e preservam autorização", () => {
+  it("ambos os routers usam o mesmo validador de período e o filtro autorizado de equipe", () => {
     for (const file of ["server/routers.ts", "server/tenantAwareAppRouter.ts"]) {
       const code = read(file);
       const incidentArea = code.slice(code.indexOf("  incidents: router({"));
       expect(incidentArea).toContain(".input(incidentListInputSchema)");
-      expect(incidentArea).toContain('assertPermission(ctx.user, "occurrences.view")');
-      expect(incidentArea).toContain("assertTeamScope(ctx.user, teamId");
+      expect(incidentArea).toContain('resolveAuthorizedTeamFilter(ctx.user, input.teamId, "occurrences.view")');
     }
+
+    const tenantAware = read("server/tenantAwareAppRouter.ts");
+    const tenantIncidentArea = tenantAware.slice(tenantAware.indexOf("  incidents: router({"));
+    expect(tenantIncidentArea).toContain("assertTeamTenant(tenantId, teamId)");
+    expect(tenantIncidentArea).toContain('assertTeamScope(ctx.user, teamId, "occurrences.view", tenantId)');
   });
 
   it("data de abertura é filtrada na consulta SQL, antes da contagem/paginação", () => {
