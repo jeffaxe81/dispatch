@@ -49,6 +49,14 @@ export async function storagePutReservedIncidentEvidence(
 ): Promise<{ key: string; url: string }> {
   if (!isReservedIncidentEvidenceKey(key))
     throw new Error("Invalid reserved incident evidence storage key.");
+  const extensionByType: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "application/pdf": "pdf",
+  };
+  if (!extensionByType[contentType] || !key.endsWith(`.${extensionByType[contentType]}`))
+    throw new Error("Reserved evidence extension does not match its content type.");
   return putAtKnownKey(key, data, contentType);
 }
 
