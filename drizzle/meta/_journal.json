@@ -176,6 +176,13 @@
       "when": 1793907000000,
       "tag": "0024_local_auth_session_revocation",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1793980800000,
+      "tag": "0025_mobile_auth_registry",
+      "breakpoints": true
     }
   ]
 }
