@@ -55,6 +55,28 @@ as permissões, a idempotência e a proteção contra exclusão de chave já
 referenciada por `incident_evidence`. Registrar motivo, operador, resultado e
 janela de retenção. **Não ativar limpeza automática antes disso.**
 
+## Consulta administrativa de conciliação — somente leitura
+
+A procedure tRPC `settings.evidenceRecovery({page, pageSize})` exige usuário
+operacional autenticado e autorização de **Super Administrador**. A consulta
+aceita página 1..10.000 e de 1 a 100 registros por página, com ordenação por
+data de última atualização e ID da tentativa. Ela retorna somente o número
+da tentativa, ocorrência, usuário/equipe, estado, datas, existência da
+ocorrência e existência da referência de evidência. **Não retorna storageKey,
+URL assinada, conteúdo do arquivo nem autoriza exclusão de objetos.**
+
+Condições de inclusão no relatório:
+- `cleanup_required`: sempre necessita verificação humana.
+- `reserved`: somente se a última atualização tiver mais de 15 minutos;
+  pode ser um upload em andamento ou um objeto remoto parcialmente gravado.
+- `committed`: somente quando a referência a
+  `incident_evidence` não existir, o que indica possível divergência.
+
+A flag `hasEvidenceReference` deve ser conferida antes de qualquer operação
+de limpeza; a presença de referência **bloqueia remoção física**. O resultado
+é uma fila de investigação, não uma instrução ou autorização para apagar
+arquivos. Logs gerais não devem incluir identificadores privados do storage.
+
 ## Homologação ainda necessária
 - Queda do processo antes/depois do PUT e antes/depois do commit.
 - Duas instâncias de backend, mudança simultânea de sessão/perfil/tenant,
