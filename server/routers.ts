@@ -535,7 +535,7 @@ export const appRouter = router({
         const incident = requireIncident(await getIncidentById(input.incidentId));
         await assertTeamScope(ctx.user, ctx.user.teamId, "occurrences.view");
         assertCanAddIncidentEvidence(ctx.user, incident);
-        return addIncidentEvidence({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id });
+        return addIncidentEvidence({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     }),
     timeline: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
