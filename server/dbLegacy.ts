@@ -1,6 +1,7 @@
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
+import { randomUUID } from "node:crypto";
 import {
   auditLogs,
   alrtIncomingEvents,
@@ -41,6 +42,7 @@ import {
 } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
 import { incidentTenantScopes } from "../drizzle/tenantScopeSchema";
+import { incidentEvidenceUploadAttempts } from "../drizzle/incidentEvidenceUploadSchema";
 import { localAuthSessions } from "../drizzle/localAuthSessionsSchema";
 import { assertOperationalSessionAtWriteBoundary, hashLocalSessionId, type LocalSessionIdentity } from "./localAuthSessions";
 import { requirePriorityChangeJustification } from "./priorityChangeJustification";
@@ -55,7 +57,8 @@ import type { WorkShiftAction } from "../shared/workShifts";
 import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
 import { parseOpenapiDocument } from "./openapi";
-import { storageGet, storagePut } from "./storage";
+import { storageGet, storagePut, storagePutReservedIncidentEvidence } from "./storage";
+import { assertCanAddIncidentEvidence } from "./authorization";
 import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
 import { workflowConditionSchema } from "./workflow/workflowConditionEvaluator";
 import { workflowFormRequirementSchema } from "./workflow/workflowFormRequirement";
@@ -897,18 +900,135 @@ export async function getStoredObjectAuthorization(storageKey: string): Promise<
   return null;
 }
 
-export async function addIncidentEvidence(input: { incidentId: number; actorUserId: number; teamId: number; fileName: string; contentType: string; description?: string | null; dataBase64: string }) {
+export async function addIncidentEvidence(input: {
+  incidentId: number;
+  actorUserId: number;
+  teamId: number;
+  fileName: string;
+  contentType: string;
+  description?: string | null;
+  dataBase64: string;
+  session: LocalSessionIdentity;
+  expectedTenantId?: number;
+}) {
   const { bytes, extension } = decodeEvidenceBase64(input);
   const fileName = evidenceFilename(input.fileName, extension);
-  const stored = await storagePut(`incident-evidence/${input.incidentId}/${input.actorUserId}/${Date.now()}-${fileName}`, bytes, input.contentType);
+  const attemptId = randomUUID();
+  const storageKey = `incident-evidence/${input.incidentId}/${input.actorUserId}/${attemptId}-${fileName}`;
   const db = await requireDb();
-  return db.transaction(async tx => {
-    const [created] = await tx.insert(incidentEvidence).values({ incidentId: input.incidentId, storageKey: stored.key, fileName, contentType: input.contentType, byteSize: bytes.length, description: input.description?.trim() || null, uploadedByUserId: input.actorUserId }).$returningId();
-    const metadata = { evidenceId: created.id, fileName, contentType: input.contentType, byteSize: bytes.length, description: input.description?.trim() || null };
-    await tx.insert(incidentEvents).values({ incidentId: input.incidentId, actorUserId: input.actorUserId, teamId: input.teamId, eventType: "evidence_added", message: `Evidência adicionada: ${fileName}`, metadata });
-    await tx.insert(auditLogs).values({ resourceType: "incident_evidence", resourceId: created.id, action: "create", actorUserId: input.actorUserId, beforeData: null, afterData: { incidentId: input.incidentId, ...metadata, storagePersisted: true } });
-    return { id: created.id, fileName, contentType: input.contentType, byteSize: bytes.length, description: input.description?.trim() || null, createdAt: new Date(), url: stored.url };
+
+  // Two transaction boundaries are intentional: (1) durable reservation BEFORE
+  // the external upload, (2) publish evidence/events/audit only AFTER upload.
+  // A crash in between leaves a discoverable reservation, not an invisible blob.
+  const checkWriteBoundary = async (
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  ) => {
+    let currentUser: typeof users.$inferSelect | undefined;
+    await assertOperationalSessionAtWriteBoundary({
+      identity: input.session,
+      actorUserId: input.actorUserId,
+      lockUser: async () => {
+        currentUser = (await tx.select().from(users)
+          .where(eq(users.id, input.actorUserId)).limit(1).for("update"))[0];
+        return currentUser;
+      },
+      lockSession: async () => (await tx.select({
+        userId: localAuthSessions.userId,
+        expiresAt: localAuthSessions.expiresAt,
+        revokedAt: localAuthSessions.revokedAt,
+      }).from(localAuthSessions)
+        .where(eq(localAuthSessions.sessionHash, hashLocalSessionId(input.session.jti)))
+        .limit(1).for("update"))[0],
+    });
+    const currentIncident = (await tx.select().from(incidents)
+      .where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
+    if (!currentIncident) throw new Error("Ocorrência não encontrada.");
+    if (!currentUser) throw new Error("Acesso operacional revogado.");
+    // This check uses fresh, locked rows, not an earlier tRPC snapshot.
+    if (currentUser.teamId !== input.teamId)
+      throw new Error("A equipe do agente foi alterada. Entre novamente.");
+    assertCanAddIncidentEvidence(currentUser, currentIncident);
+    if (input.expectedTenantId !== undefined) {
+      const scope = (await tx.select({ organizationId: incidentTenantScopes.organizationId })
+        .from(incidentTenantScopes)
+        .where(eq(incidentTenantScopes.incidentId, input.incidentId))
+        .limit(1).for("update"))[0];
+      if (!scope || scope.organizationId !== input.expectedTenantId)
+        throw new Error("A ocorrência não pertence ao tenant autorizado.");
+    }
+  };
+
+  await db.transaction(async tx => {
+    await checkWriteBoundary(tx);
+    await tx.insert(incidentEvidenceUploadAttempts).values({
+      attemptId, storageKey, incidentId: input.incidentId,
+      actorUserId: input.actorUserId, teamId: input.teamId,
+      state: "reserved",
+    });
   });
+
+  try {
+    const stored = await storagePutReservedIncidentEvidence(storageKey, bytes, input.contentType);
+    if (stored.key !== storageKey) throw new Error("Divergência na chave reservada do objeto.");
+
+    return await db.transaction(async tx => {
+      await checkWriteBoundary(tx);
+      const [created] = await tx.insert(incidentEvidence).values({
+        incidentId: input.incidentId,
+        storageKey,
+        fileName,
+        contentType: input.contentType,
+        byteSize: bytes.length,
+        description: input.description?.trim() || null,
+        uploadedByUserId: input.actorUserId,
+      }).$returningId();
+      const metadata = {
+        evidenceId: created.id,
+        fileName,
+        contentType: input.contentType,
+        byteSize: bytes.length,
+        description: input.description?.trim() || null,
+      };
+      await tx.insert(incidentEvents).values({
+        incidentId: input.incidentId,
+        actorUserId: input.actorUserId,
+        teamId: input.teamId,
+        eventType: "evidence_added",
+        message: `Evidência adicionada: ${fileName}`,
+        metadata,
+      });
+      await tx.insert(auditLogs).values({
+        resourceType: "incident_evidence",
+        resourceId: created.id,
+        action: "create",
+        actorUserId: input.actorUserId,
+        beforeData: null,
+        afterData: { incidentId: input.incidentId, ...metadata, storagePersisted: true },
+      });
+      await tx.update(incidentEvidenceUploadAttempts)
+        .set({ state: "committed", evidenceId: created.id })
+        .where(and(
+          eq(incidentEvidenceUploadAttempts.attemptId, attemptId),
+          eq(incidentEvidenceUploadAttempts.state, "reserved"),
+        ));
+      return {
+        id: created.id, fileName, contentType: input.contentType,
+        byteSize: bytes.length, description: input.description?.trim() || null,
+        createdAt: new Date(), url: stored.url,
+      };
+    });
+  } catch (error) {
+    // Never discard the reservation even if the storage provider or DB fails.
+    // This is a reconciliation signal, NOT a claim that remote deletion occurred.
+    // If DB is temporarily unavailable the original "reserved" row survives.
+    await db.update(incidentEvidenceUploadAttempts)
+      .set({ state: "cleanup_required" })
+      .where(and(
+        eq(incidentEvidenceUploadAttempts.attemptId, attemptId),
+        eq(incidentEvidenceUploadAttempts.state, "reserved"),
+      )).catch(() => {});
+    throw error;
+  }
 }
 
 export async function listTeams(teamId?: number) {
