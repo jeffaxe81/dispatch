@@ -1,11 +1,15 @@
 /**
- * Durable MySQL adapter for the dormant native-authorization code protocol.
- * The table migration must be separately applied and audited before an
- * endpoint is permitted to use this repository.
+ * Dormant PKCE authorization-code MySQL adapter.
+ * Every issuance/exchange checks an already-approved mobile device under
+ * the SAME row lock used for revocation, across all backend instances.
+ * Database migration and verified system-browser auth are prerequisites.
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "./dbLegacy";
 import { mobileAuthorizationCodes } from "./mobileAuthorizationCodeSchema";
+import { mobileRegisteredDevices } from "./mobileDeviceRegistrySchema";
+import { assertRegisteredMobileDevice } from "./mobileDeviceRegistry";
+import { revokeRegisteredMobileDeviceHash } from "./mobileDeviceMySqlRegistry";
 import type { MobileCodeRecord, MobileCodeStore } from "./mobileAuthCodes";
 
 async function requireMobileDatabase() {
@@ -13,24 +17,51 @@ async function requireMobileDatabase() {
   if(!db)throw new Error("Armazenamento móvel indisponível.");
   return db;
 }
-
+function assertGrantDevice(device:typeof mobileRegisteredDevices.$inferSelect|undefined,
+  grant:MobileCodeRecord):void {
+  assertRegisteredMobileDevice(device,{
+    deviceHash:grant.deviceHash,
+    userId:grant.userId,
+    organizationId:grant.organizationId,
+    teamId:grant.teamId,
+    issuedAtMs:grant.issuedAtMs,
+  });
+}
 export function createMySqlMobileCodeStore():MobileCodeStore {
   return {
     async put(record:MobileCodeRecord) {
       const db=await requireMobileDatabase();
-      // Primary key: UNIQUE codeHash, so duplicate random code fails closed.
-      await db.insert(mobileAuthorizationCodes).values(record);
+      await db.transaction(async tx=>{
+        // Lock enrollment BEFORE inserting the code. A concurrent revoke
+        // cannot interleave between checking the device and insertion.
+        const device=(await tx.select().from(mobileRegisteredDevices)
+          .where(eq(mobileRegisteredDevices.deviceHash,record.deviceHash))
+          .limit(1).for("update"))[0];
+        assertGrantDevice(device,record);
+        await tx.insert(mobileAuthorizationCodes).values(record);
+      });
     },
     async take(codeHash:string,now:number):Promise<MobileCodeRecord|null> {
       const db=await requireMobileDatabase();
       return db.transaction(async tx=>{
-        // Row lock serializes exchange attempts across all MySQL connections
-        // and application replicas, not just in one Node process.
+        // The first read is only a hint to identify the device, not an
+        // authorization decision. Acquire locks in device -> code order.
+        const hint=(await tx.select().from(mobileAuthorizationCodes)
+          .where(eq(mobileAuthorizationCodes.codeHash,codeHash))
+          .limit(1))[0];
+        if(!hint)return null;
+        const device=(await tx.select().from(mobileRegisteredDevices)
+          .where(eq(mobileRegisteredDevices.deviceHash,hint.deviceHash))
+          .limit(1).for("update"))[0];
+        // A now-revoked/unknown device always fails closed.
+        assertGrantDevice(device,hint);
         const found=(await tx.select().from(mobileAuthorizationCodes)
           .where(eq(mobileAuthorizationCodes.codeHash,codeHash))
           .limit(1).for("update"))[0];
-        if(!found || found.consumedAtMs!==null || found.revokedAtMs!==null ||
+        if(!found || found.deviceHash!==hint.deviceHash ||
+           found.consumedAtMs!==null || found.revokedAtMs!==null ||
            found.expiresAtMs<=now || found.issuedAtMs>now)return null;
+        assertGrantDevice(device,found);
         await tx.update(mobileAuthorizationCodes)
           .set({consumedAtMs:now})
           .where(and(eq(mobileAuthorizationCodes.codeHash,codeHash),
@@ -40,15 +71,9 @@ export function createMySqlMobileCodeStore():MobileCodeStore {
       });
     },
     async revokeDevice(deviceHash:string,now:number):Promise<void> {
-      const db=await requireMobileDatabase();
-      // A row already consumed stays consumed; all unused device grants
-      // become permanently unusable. Access-token/session revocation is
-      // a separate backend dependency, NOT implemented here.
-      await db.update(mobileAuthorizationCodes)
-        .set({revokedAtMs:now})
-        .where(and(eq(mobileAuthorizationCodes.deviceHash,deviceHash),
-          isNull(mobileAuthorizationCodes.revokedAtMs),
-          isNull(mobileAuthorizationCodes.consumedAtMs)));
+      // Revocation always covers registrations, pending codes AND issued
+      // sessions. It must not leave a path to issue a new code later.
+      await revokeRegisteredMobileDeviceHash(deviceHash,now);
     }
   };
 }
