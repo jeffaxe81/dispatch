@@ -25,6 +25,11 @@ automaticamente** e não afirma que todos os órfãos já foram eliminados.
 ## Conciliação
 A tabela de tentativas **não possui FK com ocorrência/usuário** para que a
 exclusão operacional da ocorrência não apague o histórico de reconciliação.
+Ao excluir permanentemente uma ocorrência, a transação marca as reservas
+ligadas a ela como `cleanup_required` e cria registros de conciliação para
+evidências legadas que ainda não tinham ledger. O vínculo no MySQL pode ser
+apagado por cascade, mas a referência necessária para verificar o objeto
+externo permanece. Essa mudança **não equivale a expurgo do arquivo remoto**.
 Estados:
 
 - `reserved`: PUT pendente, falhou ou ocorreu antes de uma interrupção.
