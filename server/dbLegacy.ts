@@ -925,8 +925,10 @@ export async function listEvidenceReconciliationCandidates(input: {
   const db = await requireDb();
   // Correlated EXISTS avoids duplicate pagination rows if a legacy object
   // accidentally has multiple evidence references with the same storage key.
-  const referenceExists = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM incident_evidence AS ie WHERE ie.storage_key = ${incidentEvidenceUploadAttempts.storageKey}) THEN 1 ELSE 0 END`;
-  const incidentExists = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM incidents AS i WHERE i.id = ${incidentEvidenceUploadAttempts.incidentId}) THEN 1 ELSE 0 END`;
+  // Fully qualify the OUTER columns. An unqualified storage_key inside
+  // EXISTS resolves to the inner table and silently makes every row "linked".
+  const referenceExists = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM incident_evidence AS ie WHERE ie.storage_key = incident_evidence_upload_attempts.storage_key) THEN 1 ELSE 0 END`;
+  const incidentExists = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM incidents AS i WHERE i.id = incident_evidence_upload_attempts.incident_id) THEN 1 ELSE 0 END`;
   const pending = or(
     eq(incidentEvidenceUploadAttempts.state, "cleanup_required"),
     and(eq(incidentEvidenceUploadAttempts.state, "reserved"), lt(incidentEvidenceUploadAttempts.updatedAt, cutoff)),
