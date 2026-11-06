@@ -1,4 +1,4 @@
-import { and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
 import { randomUUID } from "node:crypto";
@@ -917,13 +917,17 @@ export async function listEvidenceReconciliationCandidates(input: {
   const now = input.now ?? new Date();
   const cutoff = new Date(now.getTime() - EVIDENCE_RESERVATION_STALE_MINUTES * 60_000);
   const db = await requireDb();
+  // Correlated EXISTS avoids duplicate pagination rows if a legacy object
+  // accidentally has multiple evidence references with the same storage key.
+  const referenceExists = sql<number>`EXISTS (SELECT 1 FROM incident_evidence AS ie WHERE ie.storage_key = ${incidentEvidenceUploadAttempts.storageKey})`;
+  const incidentExists = sql<number>`EXISTS (SELECT 1 FROM incidents AS i WHERE i.id = ${incidentEvidenceUploadAttempts.incidentId})`;
   const pending = or(
     eq(incidentEvidenceUploadAttempts.state, "cleanup_required"),
     and(eq(incidentEvidenceUploadAttempts.state, "reserved"), lt(incidentEvidenceUploadAttempts.updatedAt, cutoff)),
-    and(eq(incidentEvidenceUploadAttempts.state, "committed"), isNull(incidentEvidence.id)),
+    and(eq(incidentEvidenceUploadAttempts.state, "committed"), sql`NOT (${referenceExists})`),
   );
-  const base = () => db
-    .select({
+  const [rows, countRows] = await Promise.all([
+    db.select({
       attemptId: incidentEvidenceUploadAttempts.attemptId,
       incidentId: incidentEvidenceUploadAttempts.incidentId,
       actorUserId: incidentEvidenceUploadAttempts.actorUserId,
@@ -931,19 +935,14 @@ export async function listEvidenceReconciliationCandidates(input: {
       state: incidentEvidenceUploadAttempts.state,
       createdAt: incidentEvidenceUploadAttempts.createdAt,
       updatedAt: incidentEvidenceUploadAttempts.updatedAt,
-      evidenceReferenceId: incidentEvidence.id,
-      currentIncidentId: incidents.id,
-    })
-    .from(incidentEvidenceUploadAttempts)
-    .leftJoin(incidentEvidence, eq(incidentEvidenceUploadAttempts.storageKey, incidentEvidence.storageKey))
-    .leftJoin(incidents, eq(incidentEvidenceUploadAttempts.incidentId, incidents.id))
-    .where(pending);
-  const [rows, countRows] = await Promise.all([
-    base().orderBy(incidentEvidenceUploadAttempts.updatedAt, incidentEvidenceUploadAttempts.attemptId)
+      hasEvidenceReference: referenceExists,
+      incidentExists,
+    }).from(incidentEvidenceUploadAttempts)
+      .where(pending)
+      .orderBy(incidentEvidenceUploadAttempts.updatedAt, incidentEvidenceUploadAttempts.attemptId)
       .limit(input.pageSize).offset((input.page - 1) * input.pageSize),
-    db.select({ total: countDistinct(incidentEvidenceUploadAttempts.attemptId) })
+    db.select({ total: count() })
       .from(incidentEvidenceUploadAttempts)
-      .leftJoin(incidentEvidence, eq(incidentEvidenceUploadAttempts.storageKey, incidentEvidence.storageKey))
       .where(pending),
   ]);
   return {
@@ -958,11 +957,11 @@ export async function listEvidenceReconciliationCandidates(input: {
       state: row.state,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      hasEvidenceReference: row.evidenceReferenceId !== null,
-      incidentExists: row.currentIncidentId !== null,
+      hasEvidenceReference: Boolean(row.hasEvidenceReference),
+      incidentExists: Boolean(row.incidentExists),
       reason: evidenceRecoveryReason({
         state: row.state, updatedAt: row.updatedAt,
-        hasEvidenceReference: row.evidenceReferenceId !== null, now,
+        hasEvidenceReference: Boolean(row.hasEvidenceReference), now,
       }),
       // No storageKey or signed URL: the queue is for manual review ONLY.
     })),
