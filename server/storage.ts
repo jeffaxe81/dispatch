@@ -30,9 +30,30 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = appendHashSuffix(normalizeKey(relKey));
+  return putAtKnownKey(appendHashSuffix(normalizeKey(relKey)), data, contentType);
+}
 
+/**
+ * Persist the exact key BEFORE uploading any bytes. Only caller-generated,
+ * collision-resistant incident evidence keys are accepted. Does not allow
+ * arbitrary storage overwrites.
+ */
+export async function storagePutReservedIncidentEvidence(
+  key: string,
+  data: Buffer | Uint8Array,
+  contentType: string,
+): Promise<{ key: string; url: string }> {
+  if (!/^incident-evidence\/\d+\/\d+\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[A-Za-z0-9_-]{1,100}\.(jpg|png|webp|pdf)$/.test(key))
+    throw new Error("Invalid reserved incident evidence storage key.");
+  return putAtKnownKey(key, data, contentType);
+}
+
+async function putAtKnownKey(
+  key: string,
+  data: Buffer | Uint8Array | string,
+  contentType: string,
+): Promise<{ key: string; url: string }> {
+  const { forgeUrl, forgeKey } = getForgeConfig();
   const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
   presignUrl.searchParams.set("path", key);
   const presignResp = await fetch(presignUrl, {
