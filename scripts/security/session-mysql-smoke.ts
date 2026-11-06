@@ -313,6 +313,12 @@ async function main(): Promise<void> {
       "INSERT INTO incident_evidence (incident_id, storage_key, file_name, content_type, byte_size, uploaded_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
       [incidentId, legacyStorageKey, "pre-ledger.pdf", "application/pdf", 11, userId],
     );
+    // Legacy imports may point multiple evidence rows to one physical blob.
+    // A delete must retain only ONE cleanup reservation for that object.
+    await independent.execute(
+      "INSERT INTO incident_evidence (incident_id, storage_key, file_name, content_type, byte_size, uploaded_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+      [incidentId, legacyStorageKey, "duplicate-pre-ledger.pdf", "application/pdf", 11, userId],
+    );
     const cleanupSession = await verifyLocalSessionToken(
       await createLocalSessionToken(userId, initialHash),
     );
@@ -347,19 +353,31 @@ async function main(): Promise<void> {
           stale ? new Date(Date.now() - 31 * 60_000) : new Date()],
       );
     }
+    const missingCommittedId = randomUUID();
+    const missingKey = `incident-evidence/${deletionIncidentId}/${userId}/${missingCommittedId}-missing.pdf`;
+    await independent.execute(
+      "INSERT INTO incident_evidence_upload_attempts (attempt_id, storage_key, incident_id, actor_user_id, team_id, state) VALUES (?, ?, ?, ?, ?, 'committed')",
+      [missingCommittedId, missingKey, deletionIncidentId, userId, teamId],
+    );
     const report = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 100 });
-    assert.equal(report.total, 4, "three deleted uploads and one stale reservation require review");
+    assert.equal(report.total, 5, "review must include missing committed references and stale reservations");
     assert.ok(report.rows.every(row => row.incidentExists === false));
     assert.ok(report.rows.every(row => !Object.hasOwn(row, "storageKey")));
     assert.ok(report.rows.some(row =>
       row.attemptId === staleAttemptId && row.reason === "stale_upload_reservation"));
+    assert.ok(report.rows.some(row =>
+      row.attemptId === missingCommittedId && row.reason === "missing_evidence_reference"));
     assert.ok(!report.rows.some(row => row.attemptId === recentAttemptId),
       "recent reservations must not be queued while the upload may still be active");
     const page1 = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 2 });
     const page2 = await listEvidenceReconciliationCandidates({ page: 2, pageSize: 2 });
+    const page3 = await listEvidenceReconciliationCandidates({ page: 3, pageSize: 2 });
     assert.equal(page1.total, report.total);
     assert.equal(page1.rows.length, 2);
     assert.equal(page2.rows.length, 2);
+    assert.equal(page3.rows.length, 1);
+    assert.ok(!page1.rows.some(row => page3.rows.some(other => other.attemptId === row.attemptId)));
+    assert.ok(!page2.rows.some(row => page3.rows.some(other => other.attemptId === row.attemptId)));
     assert.ok(!page1.rows.some(row => page2.rows.some(other => other.attemptId === row.attemptId)),
       "bounded pagination must not return duplicate review records");
 
