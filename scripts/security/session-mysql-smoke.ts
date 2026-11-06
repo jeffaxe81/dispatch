@@ -298,6 +298,37 @@ async function main(): Promise<void> {
     );
     assert.equal(evidenceRows.length, 1, "revoked in-flight upload must not publish evidence");
 
+    // Permanent deletion must preserve reconciliation for BOTH ledger-backed
+    // uploads and an older evidence file with no upload reservation.
+    const deletionIncidentId = incidentId;
+    const legacyStorageKey = `incident-evidence/${incidentId}/${userId}/pre-ledger-${randomUUID()}.pdf`;
+    await independent.execute(
+      "INSERT INTO incident_evidence (incident_id, storage_key, file_name, content_type, byte_size, uploaded_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+      [incidentId, legacyStorageKey, "pre-ledger.pdf", "application/pdf", 11, userId],
+    );
+    const cleanupSession = await verifyLocalSessionToken(
+      await createLocalSessionToken(userId, initialHash),
+    );
+    assert.ok(cleanupSession);
+    const deletedWithEvidence = await permanentlyDeleteIncident({
+      incidentId, actorUserId: userId,
+      reason: "Remove disposable incident and preserve object cleanup queue",
+      session: cleanupSession,
+    });
+    assert.equal(deletedWithEvidence.auditPreserved, true);
+    incidentId = null;
+    const [reconciliation] = await independent.execute<RowDataPacket[]>(
+      "SELECT state, storage_key FROM incident_evidence_upload_attempts WHERE incident_id = ?",
+      [deletionIncidentId],
+    );
+    assert.equal(reconciliation.length, 3);
+    assert.ok(reconciliation.every(row => row.state === "cleanup_required"));
+    assert.ok(reconciliation.some(row => row.storage_key === legacyStorageKey));
+    const [deletedRows] = await independent.execute<RowDataPacket[]>(
+      "SELECT id FROM incident_evidence WHERE incident_id = ?", [deletionIncidentId],
+    );
+    assert.equal(deletedRows.length, 0, "incident deletion cascades DB evidence while retaining cleanup ledger");
+
     const newPassword = "ci-replacement-" + randomUUID();
     const newHash = await hashLocalPassword(newPassword);
     await setUserLocalCredentials({
