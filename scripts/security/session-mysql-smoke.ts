@@ -20,7 +20,7 @@ import {
   isLocalAuthSessionActive,
   revokeAllLocalAuthSessions,
 } from "../../server/localAuthSessions";
-import { addIncidentEvidence, assignTeamToIncident, assignUserRole, createAccessRole, createIncident, permanentlyDeleteIncident, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole, updateIncident } from "../../server/db";
+import { addIncidentEvidence, assignTeamToIncident, assignUserRole, createAccessRole, createIncident, listEvidenceReconciliationCandidates, permanentlyDeleteIncident, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole, updateIncident } from "../../server/db";
 
 function guardedTestDatabaseUrl(): string {
   const url = process.env.DATABASE_URL ?? "";
@@ -297,6 +297,13 @@ async function main(): Promise<void> {
       "SELECT id FROM incident_evidence WHERE incident_id = ?", [incidentId],
     );
     assert.equal(evidenceRows.length, 1, "revoked in-flight upload must not publish evidence");
+    const pendingReview = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 10 });
+    assert.equal(pendingReview.total, 1);
+    assert.equal(pendingReview.rows[0]?.reason, "cleanup_pending_review");
+    assert.equal(pendingReview.rows[0]?.hasEvidenceReference, false);
+    assert.equal(pendingReview.rows[0]?.incidentExists, true);
+    assert.ok(!Object.hasOwn(pendingReview.rows[0], "storageKey"),
+      "admin reconciliation must never return private blob keys");
 
     // Permanent deletion must preserve reconciliation for BOTH ledger-backed
     // uploads and an older evidence file with no upload reservation.
@@ -328,6 +335,33 @@ async function main(): Promise<void> {
       "SELECT id FROM incident_evidence WHERE incident_id = ?", [deletionIncidentId],
     );
     assert.equal(deletedRows.length, 0, "incident deletion cascades DB evidence while retaining cleanup ledger");
+
+    // A stale reservation is reviewable, but a recent upload is not.
+    const staleAttemptId = randomUUID();
+    const recentAttemptId = randomUUID();
+    for (const [attemptId, stale] of [[staleAttemptId, true], [recentAttemptId, false]] as const) {
+      const key = `incident-evidence/${deletionIncidentId}/${userId}/${attemptId}-recovery.pdf`;
+      await independent.execute(
+        "INSERT INTO incident_evidence_upload_attempts (attempt_id, storage_key, incident_id, actor_user_id, team_id, state, updated_at) VALUES (?, ?, ?, ?, ?, 'reserved', ?)",
+        [attemptId, key, deletionIncidentId, userId, teamId,
+          stale ? new Date(Date.now() - 31 * 60_000) : new Date()],
+      );
+    }
+    const report = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 100 });
+    assert.equal(report.total, 4, "three deleted uploads and one stale reservation require review");
+    assert.ok(report.rows.every(row => row.incidentExists === false));
+    assert.ok(report.rows.every(row => !Object.hasOwn(row, "storageKey")));
+    assert.ok(report.rows.some(row =>
+      row.attemptId === staleAttemptId && row.reason === "stale_upload_reservation"));
+    assert.ok(!report.rows.some(row => row.attemptId === recentAttemptId),
+      "recent reservations must not be queued while the upload may still be active");
+    const page1 = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 2 });
+    const page2 = await listEvidenceReconciliationCandidates({ page: 2, pageSize: 2 });
+    assert.equal(page1.total, report.total);
+    assert.equal(page1.rows.length, 2);
+    assert.equal(page2.rows.length, 2);
+    assert.ok(!page1.rows.some(row => page2.rows.some(other => other.attemptId === row.attemptId)),
+      "bounded pagination must not return duplicate review records");
 
     const newPassword = "ci-replacement-" + randomUUID();
     const newHash = await hashLocalPassword(newPassword);
@@ -434,7 +468,7 @@ async function main(): Promise<void> {
 
     await revokeAllLocalAuthSessions(userId);
     assert.equal(await authenticateLocalRequest(newestReq), null);
-    console.log("PASS: MySQL 8.4 durable session, incident writes, evidence reservation/commit/revocation cleanup, atomic tenant rollback, RBAC and fail-closed.");
+    console.log("PASS: MySQL 8.4 sessions, incident writes, durable evidence, read-only reconciliation, pagination, recovery after deletion, RBAC and fail-closed.");
   } finally {
     if (lockConnection) {
       await lockConnection.rollback().catch(() => {});
