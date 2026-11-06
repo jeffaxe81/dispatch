@@ -84,6 +84,7 @@ import {
   getIncidentTimeline,
   listIncidents,
   listIncidentEvidence,
+  listEvidenceReconciliationCandidates,
   listAccessPermissions,
   listAccessRoles,
   listIntegrationEventCatalog,
@@ -816,6 +817,15 @@ export const appRouter = router({
       await assertSuperAdministrator(ctx.user);
       return listFutureGeneralSettingEntries();
     }),
+    evidenceRecovery: operationalProcedure
+      .input(z.object({
+        page: z.number().int().min(1).max(10000).default(1),
+        pageSize: z.number().int().min(1).max(100).default(25),
+      }))
+      .query(async ({ ctx, input }) => {
+        await assertSuperAdministrator(ctx.user);
+        return listEvidenceReconciliationCandidates(input);
+      }),
     resetPreview: operationalProcedure.input(z.object({ scope: z.enum(["operational", "total"]).default("operational") })).query(async ({ ctx, input }) => {
       await assertSuperAdministrator(ctx.user);
       return getSolutionResetPreview({ ...input, actorUserId: ctx.user.id });
