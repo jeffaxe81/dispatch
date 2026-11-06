@@ -260,6 +260,14 @@ async function main(): Promise<void> {
       dataBase64: syntheticPdf,
       session: liveOperationalSession,
     };
+    // An incident without the selected tenant scope cannot upload at all.
+    const beforeTenantRejection = uploads.length;
+    await assert.rejects(addIncidentEvidence({
+      ...evidenceInput, expectedTenantId: 2147483647,
+    }));
+    assert.equal(uploads.length, beforeTenantRejection,
+      "tenant scope mismatch must be rejected before an external PUT");
+
     const successfulEvidence = await addIncidentEvidence(evidenceInput);
     assert.ok(successfulEvidence.id > 0);
     const [committed] = await independent.execute<RowDataPacket[]>(
