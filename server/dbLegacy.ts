@@ -925,8 +925,8 @@ export async function listEvidenceReconciliationCandidates(input: {
   const db = await requireDb();
   // Correlated EXISTS avoids duplicate pagination rows if a legacy object
   // accidentally has multiple evidence references with the same storage key.
-  const referenceExists = sql<number>`EXISTS (SELECT 1 FROM incident_evidence AS ie WHERE ie.storage_key = ${incidentEvidenceUploadAttempts.storageKey})`;
-  const incidentExists = sql<number>`EXISTS (SELECT 1 FROM incidents AS i WHERE i.id = ${incidentEvidenceUploadAttempts.incidentId})`;
+  const referenceExists = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM incident_evidence AS ie WHERE ie.storage_key = ${incidentEvidenceUploadAttempts.storageKey}) THEN 1 ELSE 0 END`;
+  const incidentExists = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM incidents AS i WHERE i.id = ${incidentEvidenceUploadAttempts.incidentId}) THEN 1 ELSE 0 END`;
   const pending = or(
     eq(incidentEvidenceUploadAttempts.state, "cleanup_required"),
     and(eq(incidentEvidenceUploadAttempts.state, "reserved"), lt(incidentEvidenceUploadAttempts.updatedAt, cutoff)),
@@ -963,11 +963,13 @@ export async function listEvidenceReconciliationCandidates(input: {
       state: row.state,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      hasEvidenceReference: Boolean(row.hasEvidenceReference),
-      incidentExists: Boolean(row.incidentExists),
+      // MySQL drivers may return computed 0/1 as strings; Boolean("0")
+      // would incorrectly label an orphaned object as still referenced.
+      hasEvidenceReference: Number(row.hasEvidenceReference) === 1,
+      incidentExists: Number(row.incidentExists) === 1,
       reason: evidenceRecoveryReason({
         state: row.state, updatedAt: row.updatedAt,
-        hasEvidenceReference: Boolean(row.hasEvidenceReference), now,
+        hasEvidenceReference: Number(row.hasEvidenceReference) === 1, now,
       }),
       // No storageKey or signed URL: the queue is for manual review ONLY.
     })),
