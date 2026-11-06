@@ -13,6 +13,7 @@ export default defineConfig({
     "./drizzle/workShiftSchema.ts",
     "./server/mobileAuthorizationCodeSchema.ts",
     "./server/mobileSessionSchema.ts",
+    "./server/mobileDeviceRegistrySchema.ts",
     "./drizzle/workspaceLayoutSchema.ts",
     "./server/rbac/rbacAssignmentSourceSchema.ts",
     "./server/workflow/workflowTaskSchema.ts",
