@@ -249,7 +249,7 @@ async function main(): Promise<void> {
     // File upload writes a DURABLE reservation before the (fake) remote PUT.
     // It is only published after a second authorization check at commit.
     await independent.execute(
-      "UPDATE users SET operational_role = 'agente', team_id = ? WHERE id = ?",
+      "UPDATE users SET operational_role = 'agente', teamId = ? WHERE id = ?",
       [teamId, userId],
     );
     const syntheticPdf = Buffer.from("%PDF-1.4\\n%%EOF\\n").toString("base64");
