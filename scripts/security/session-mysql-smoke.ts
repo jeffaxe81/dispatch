@@ -20,7 +20,7 @@ import {
   isLocalAuthSessionActive,
   revokeAllLocalAuthSessions,
 } from "../../server/localAuthSessions";
-import { assignTeamToIncident, assignUserRole, createAccessRole, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole } from "../../server/db";
+import { assignTeamToIncident, assignUserRole, createAccessRole, createIncident, permanentlyDeleteIncident, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole, updateIncident } from "../../server/db";
 
 function guardedTestDatabaseUrl(): string {
   const url = process.env.DATABASE_URL ?? "";
@@ -45,6 +45,7 @@ async function main(): Promise<void> {
   let userId: number | null = null;
   let unrelatedUserId: number | null = null;
   let incidentId: number | null = null;
+  let newIncidentId: number | null = null;
   let teamId: number | null = null;
   let lockConnection: Connection | undefined;
   let sessionTableTemporarilyRenamed = false;
@@ -110,6 +111,54 @@ async function main(): Promise<void> {
     incidentId = incidentInsert.insertId;
     const liveOperationalSession = await verifyLocalSessionToken(token2);
     assert.ok(liveOperationalSession);
+    // Create, update and delete must share the live-session write boundary.
+    const creationInput = {
+      actorUserId: userId,
+      category: "Protected creation",
+      priority: "media" as const,
+      origin: "central" as const,
+      description: "Generated inside disposable MySQL session smoke",
+      address: "Isolated CI address",
+      latitude: -27.1,
+      longitude: -48.9,
+      session: liveOperationalSession,
+    };
+    const created = await createIncident(creationInput);
+    newIncidentId = created.id;
+    assert.equal(created.status, "triagem");
+    const edited = await updateIncident({
+      incidentId: created.id, actorUserId: userId,
+      description: "Edited with valid durable JWT session",
+      session: liveOperationalSession,
+    });
+    assert.equal(edited.description, "Edited with valid durable JWT session");
+
+    // A failed tenant reference must roll back the incident and its audit.
+    const [countBeforeInvalidTenant] = await independent.execute<RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM incidents",
+    );
+    await assert.rejects(createIncident({
+      ...creationInput,
+      organizationId: 2147483647, // Missing FK in the disposable CI database.
+    }));
+    const [countAfterInvalidTenant] = await independent.execute<RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM incidents",
+    );
+    assert.equal(countAfterInvalidTenant[0]?.n, countBeforeInvalidTenant[0]?.n,
+      "failed tenant FK cannot leave an unscoped incident behind");
+
+    const deleted = await permanentlyDeleteIncident({
+      incidentId: created.id, actorUserId: userId,
+      reason: "Test-only irreversible deletion with audit",
+      session: liveOperationalSession,
+    });
+    assert.equal(deleted.auditPreserved, true);
+    newIncidentId = null;
+    const [afterDeletion] = await independent.execute<RowDataPacket[]>(
+      "SELECT id FROM incidents WHERE id = ?", [created.id],
+    );
+    assert.equal(afterDeletion.length, 0);
+
     const queued = await transitionIncident({
       incidentId, actorUserId: userId, nextStatus: "aguardando_despacho",
       note: "Isolated session validation before transition",
@@ -151,6 +200,24 @@ async function main(): Promise<void> {
       "SELECT incident_status AS status FROM incidents WHERE id = ?", [incidentId],
     );
     assert.equal(stillAccepted[0]?.status, "aceita");
+
+    // All three new write paths must reject the revoked token as well.
+    await assert.rejects(createIncident({ ...creationInput, session: conflictingSession }));
+    await assert.rejects(updateIncident({
+      incidentId, actorUserId: userId,
+      description: "This unauthorized update must not commit",
+      session: conflictingSession,
+    }));
+    await assert.rejects(permanentlyDeleteIncident({
+      incidentId, actorUserId: userId,
+      reason: "This unauthorized delete must not commit",
+      session: conflictingSession,
+    }));
+    const [untouched] = await independent.execute<RowDataPacket[]>(
+      "SELECT incident_status AS status, description FROM incidents WHERE id = ?", [incidentId],
+    );
+    assert.equal(untouched[0]?.status, "aceita");
+    assert.equal(untouched[0]?.description, "Isolated session write boundary scenario");
 
     const newPassword = "ci-replacement-" + randomUUID();
     const newHash = await hashLocalPassword(newPassword);
@@ -257,7 +324,7 @@ async function main(): Promise<void> {
 
     await revokeAllLocalAuthSessions(userId);
     assert.equal(await authenticateLocalRequest(newestReq), null);
-    console.log("PASS: MySQL 8.4 sessions, dispatch transitions/assignment/acceptance, concurrent revocation, replay, RBAC changes, reset, fail-closed.");
+    console.log("PASS: MySQL 8.4 durable session, create/edit/delete, atomic tenant rollback, dispatch, concurrent revocation, RBAC, reset, fail-closed.");
   } finally {
     if (lockConnection) {
       await lockConnection.rollback().catch(() => {});
@@ -265,6 +332,8 @@ async function main(): Promise<void> {
     }
     if (sessionTableTemporarilyRenamed)
       await independent.query("RENAME TABLE local_auth_sessions_smoke_unavailable TO local_auth_sessions").catch(() => {});
+    if (newIncidentId !== null)
+      await independent.execute("DELETE FROM incidents WHERE id = ?", [newIncidentId]).catch(() => {});
     if (incidentId !== null)
       await independent.execute("DELETE FROM incidents WHERE id = ?", [incidentId]).catch(() => {});
     if (teamId !== null)
