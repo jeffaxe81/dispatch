@@ -15,3 +15,5 @@ CREATE TABLE `incident_evidence_upload_attempts` (
 CREATE INDEX `incident_evidence_upload_state_updated_idx` ON `incident_evidence_upload_attempts` (`state`, `updated_at`);
 --> statement-breakpoint
 CREATE INDEX `incident_evidence_upload_incident_idx` ON `incident_evidence_upload_attempts` (`incident_id`);
+--> statement-breakpoint
+CREATE INDEX `incident_evidence_storage_key_idx` ON `incident_evidence` (`storage_key`);
