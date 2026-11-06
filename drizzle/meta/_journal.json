@@ -176,6 +176,13 @@
       "when": 1793907000000,
       "tag": "0024_local_auth_session_revocation",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1793977800000,
+      "tag": "0025_evidence_upload_reservations",
+      "breakpoints": true
     }
   ]
 }
