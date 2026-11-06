@@ -1,0 +1,74 @@
+name: Native mobile auth MySQL 8.4 smoke (isolated)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/mobile*'
+      - 'drizzle/**'
+      - 'drizzle.config.ts'
+      - 'scripts/security/mobile-auth-mysql-smoke.ts'
+      - '.github/workflows/mobile-auth-mysql.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'server/mobile*'
+      - 'drizzle/**'
+      - 'drizzle.config.ts'
+      - 'scripts/security/mobile-auth-mysql-smoke.ts'
+      - '.github/workflows/mobile-auth-mysql.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-mobile-auth-mysql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-mobile-auth-mysql:
+    name: PKCE, device registry, session revocation / MySQL 8.4
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      NODE_ENV: test
+      MOBILE_AUTH_MYSQL_SMOKE: "1"
+      # One-use test credentials; never point this workflow at a client DB.
+      DATABASE_URL: mysql://mobile_auth_ci:ci-only-mobile-auth@127.0.0.1:3306/dispatch_mobile_auth_ci
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: dispatch_mobile_auth_ci
+          MYSQL_USER: mobile_auth_ci
+          MYSQL_PASSWORD: ci-only-mobile-auth
+          MYSQL_ROOT_PASSWORD: ci-only-mobile-auth-root
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install pinned dependencies
+        run: corepack pnpm install --frozen-lockfile
+      - name: TypeScript contract check
+        run: corepack pnpm check
+      - name: Apply migrations through 0025 in disposable MySQL
+        run: corepack pnpm db:migrate
+      - name: Test physical MySQL locking, replay and durable revocation
+        run: corepack pnpm exec tsx scripts/security/mobile-auth-mysql-smoke.ts
