@@ -463,7 +463,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "occurrences.create");
-        return createIncident({ ...input, actorUserId: ctx.user.id });
+        return createIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     update: operationalProcedure
       .input(z.object({
@@ -481,13 +481,13 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "occurrences.edit");
         assertCanEditIncident(ctx.user, requireIncident(await getIncidentById(input.incidentId)));
-        return updateIncident({ ...input, actorUserId: ctx.user.id });
+        return updateIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     permanentlyDelete: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), reason: z.string().trim().min(10).max(1000) }))
       .mutation(async ({ ctx, input }) => {
         await assertSuperAdministrator(ctx.user);
-        return permanentlyDeleteIncident({ ...input, actorUserId: ctx.user.id });
+        return permanentlyDeleteIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     transition: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), nextStatus: statusEnum, expectedStatus: statusEnum.optional(), expectedStatusRevision: z.number().int().positive().optional(), note: z.string().trim().min(3).max(1000) }))
