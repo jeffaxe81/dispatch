@@ -169,6 +169,13 @@
       "when": 1793716800000,
       "tag": "0023_dispatch_f020_incident_status_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1793907000000,
+      "tag": "0024_local_auth_session_revocation",
+      "breakpoints": true
     }
   ]
 }

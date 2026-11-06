@@ -1,0 +1,67 @@
+name: Local auth session MySQL 8.4 smoke (isolated)
+
+on:
+  pull_request:
+    paths:
+      - 'server/localAuth*'
+      - 'server/dbLegacy.ts'
+      - 'server/routers.ts'
+      - 'drizzle/**'
+      - 'drizzle.config.ts'
+      - 'scripts/security/session-mysql-smoke.ts'
+      - '.github/workflows/local-auth-session-mysql.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-mysql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  session-mysql:
+    name: Session registry and replay / MySQL 8.4
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      NODE_ENV: test
+      SESSION_AUTH_MYSQL_SMOKE: "1"
+      # Test-only ephemeral CI database. Never use any client credentials or
+      # production server, even when the workflow is triggered manually.
+      DATABASE_URL: mysql://root:ci-only-dedicated-session-db@127.0.0.1:3306/dispatch_auth_ci
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-dedicated-session-db
+          MYSQL_DATABASE: dispatch_auth_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-only-dedicated-session-db --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install pinned dependencies
+        run: corepack pnpm install --frozen-lockfile
+      - name: Generate per-run JWT key
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - name: Apply complete migrations to isolated MySQL 8.4
+        run: corepack pnpm db:migrate
+      - name: Exercise real sessions, replay, password reset, race and DB outage
+        run: corepack pnpm exec tsx scripts/security/session-mysql-smoke.ts

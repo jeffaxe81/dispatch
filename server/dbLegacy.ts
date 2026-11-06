@@ -40,6 +40,8 @@ import {
   integrationWebhooks,
 } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
+import { localAuthSessions } from "../drizzle/localAuthSessionsSchema";
+import { assertOperationalSessionAtWriteBoundary, hashLocalSessionId, type LocalSessionIdentity } from "./localAuthSessions";
 import { requirePriorityChangeJustification } from "./priorityChangeJustification";
 import { assertCurrentIncidentTransition, assertExpectedIncidentStatusRevision } from "./incidentTransitionConcurrency";
 import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WINDOW_MS } from "./shiftHandoff";
@@ -550,9 +552,24 @@ export async function listOperationLogs(input: { page: number; pageSize: number;
   return { rows, total: Number(totalRows[0]?.total ?? 0) };
 }
 
-export async function transitionIncident(input: { incidentId: number; actorUserId: number; nextStatus: IncidentStatus; note: string; expectedStatus?: IncidentStatus; expectedStatusRevision?: number }) {
+export async function transitionIncident(input: { incidentId: number; actorUserId: number; nextStatus: IncidentStatus; note: string; expectedStatus?: IncidentStatus; expectedStatusRevision?: number; session: LocalSessionIdentity }) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    // Guard the actual write boundary, not just the earlier tRPC read.
+    // User and session rows are locked in a consistent order until commit.
+    await assertOperationalSessionAtWriteBoundary({
+      identity: input.session,
+      actorUserId: input.actorUserId,
+      lockUser: async () => (await tx.select({ id: users.id, active: users.active })
+        .from(users).where(eq(users.id, input.actorUserId)).limit(1).for("update"))[0],
+      lockSession: async () => (await tx.select({
+        userId: localAuthSessions.userId,
+        expiresAt: localAuthSessions.expiresAt,
+        revokedAt: localAuthSessions.revokedAt,
+      }).from(localAuthSessions)
+        .where(eq(localAuthSessions.sessionHash, hashLocalSessionId(input.session.jti)))
+        .limit(1).for("update"))[0],
+    });
     const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
     assertCurrentIncidentTransition(before.status, input.nextStatus, input.expectedStatus);
@@ -593,9 +610,24 @@ export async function transitionIncident(input: { incidentId: number; actorUserI
   });
 }
 
-export async function assignTeamToIncident(input: { incidentId: number; teamId: number; vehicleId?: number; actorUserId: number; estimatedArrivalMinutes?: number }) {
+export async function assignTeamToIncident(input: { incidentId: number; teamId: number; vehicleId?: number; actorUserId: number; estimatedArrivalMinutes?: number; session: LocalSessionIdentity }) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    // Guard the actual write boundary, not just the earlier tRPC read.
+    // User and session rows are locked in a consistent order until commit.
+    await assertOperationalSessionAtWriteBoundary({
+      identity: input.session,
+      actorUserId: input.actorUserId,
+      lockUser: async () => (await tx.select({ id: users.id, active: users.active })
+        .from(users).where(eq(users.id, input.actorUserId)).limit(1).for("update"))[0],
+      lockSession: async () => (await tx.select({
+        userId: localAuthSessions.userId,
+        expiresAt: localAuthSessions.expiresAt,
+        revokedAt: localAuthSessions.revokedAt,
+      }).from(localAuthSessions)
+        .where(eq(localAuthSessions.sessionHash, hashLocalSessionId(input.session.jti)))
+        .limit(1).for("update"))[0],
+    });
     const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     const team = (await tx.select().from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
@@ -638,9 +670,24 @@ export async function assignTeamToIncident(input: { incidentId: number; teamId: 
   });
 }
 
-export async function respondToAssignment(input: { incidentId: number; teamId: number; actorUserId: number; accepted: boolean; note?: string }) {
+export async function respondToAssignment(input: { incidentId: number; teamId: number; actorUserId: number; accepted: boolean; note?: string; session: LocalSessionIdentity }) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    // Guard the actual write boundary, not just the earlier tRPC read.
+    // User and session rows are locked in a consistent order until commit.
+    await assertOperationalSessionAtWriteBoundary({
+      identity: input.session,
+      actorUserId: input.actorUserId,
+      lockUser: async () => (await tx.select({ id: users.id, active: users.active })
+        .from(users).where(eq(users.id, input.actorUserId)).limit(1).for("update"))[0],
+      lockSession: async () => (await tx.select({
+        userId: localAuthSessions.userId,
+        expiresAt: localAuthSessions.expiresAt,
+        revokedAt: localAuthSessions.revokedAt,
+      }).from(localAuthSessions)
+        .where(eq(localAuthSessions.sessionHash, hashLocalSessionId(input.session.jti)))
+        .limit(1).for("update"))[0],
+    });
     const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
     const assignment = (await tx.select().from(incidentAssignments).where(and(eq(incidentAssignments.incidentId, input.incidentId), eq(incidentAssignments.teamId, input.teamId))).orderBy(desc(incidentAssignments.createdAt)).limit(1).for("update"))[0];
@@ -1376,7 +1423,7 @@ export async function listUsersForAdministration() {
 export async function updateOperationalUser(input: { userId: number; operationalRole: OperationalRole; teamId?: number | null; active?: boolean; actorUserId: number }) {
   const db = await requireDb();
   await db.transaction(async tx => {
-    const before = (await tx.select().from(users).where(eq(users.id, input.userId)).limit(1))[0];
+    const before = (await tx.select().from(users).where(eq(users.id, input.userId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Usuário não encontrado.");
     const resolvedTeamId = input.teamId !== undefined ? input.teamId : before.teamId;
     if (requiresTeamForOperationalRole(input.operationalRole) && !resolvedTeamId) throw new Error("Agente de Campo precisa estar vinculado a uma equipe antes de salvar o perfil.");
@@ -1384,6 +1431,16 @@ export async function updateOperationalUser(input: { userId: number; operational
     if (input.teamId !== undefined) patch.teamId = input.teamId;
     if (input.active !== undefined) patch.active = input.active;
     await tx.update(users).set(patch).where(eq(users.id, input.userId));
+    if (
+      input.operationalRole !== before.operationalRole ||
+      (input.teamId !== undefined && input.teamId !== before.teamId) ||
+      input.active === false
+    ) {
+      // Prevent old privileged sessions from continuing after role/team changes.
+      await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+        and(eq(localAuthSessions.userId, input.userId), isNull(localAuthSessions.revokedAt)),
+      );
+    }
     if (input.operationalRole === "agente") {
       const agentRole = (await tx.select().from(accessRoles).where(and(eq(accessRoles.code, "agente_campo"), eq(accessRoles.active, true))).limit(1))[0];
       if (!agentRole) throw new Error("O perfil dinâmico Agente de Campo não está disponível ou está inativo.");
@@ -1732,6 +1789,10 @@ export async function setUserLocalCredentials(input: { userId: number; username:
     const duplicate = (await tx.select({ id: users.id }).from(users).where(eq(users.username, input.username)).limit(1))[0];
     if (duplicate && duplicate.id !== user.id) throw new Error("Este nome de usuário já está em uso.");
     await tx.update(users).set({ username: input.username, passwordHash: input.passwordHash, loginMethod: "local_password", failedLoginAttempts: 0, lockedUntil: null }).where(eq(users.id, user.id));
+    // A credential reset must invalidate active JWTs in the SAME transaction.
+    await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+      and(eq(localAuthSessions.userId, user.id), isNull(localAuthSessions.revokedAt)),
+    );
     await tx.insert(auditLogs).values({ resourceType: "user", resourceId: user.id, action: "local_credentials_set", actorUserId: input.actorUserId, beforeData: { username: user.username }, afterData: { username: input.username } });
     return { id: user.id, username: input.username };
   });
@@ -1755,6 +1816,24 @@ export async function updateAccessRole(input: { roleId: number; name?: string; d
     const before = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!before) throw new Error("Perfil não encontrado.");
     if (!canUpdateRoleDefinition({ isSystem: before.isSystem, permissionIdsProvided: input.permissionIds !== undefined, active: input.active })) throw new Error("Perfis padrão não permitem alteração de matriz ou ativação.");
+    if (input.permissionIds !== undefined || input.defaultScope !== undefined || input.active !== undefined) {
+      // Changing the shared definition can change effective permissions for
+      // every current assignee. Serialize with session issuance, then revoke
+      // the affected identities in the SAME transaction as the role update.
+      const assignmentRows = await tx.select({ userId: userRoleAssignments.userId })
+        .from(userRoleAssignments)
+        .where(and(eq(userRoleAssignments.roleId, input.roleId), eq(userRoleAssignments.active, true)));
+      const affectedUserIds = Array.from(new Set(assignmentRows.map(row => row.userId))).sort((a, b) => a - b);
+      // Bound IN clauses while locking user rows in a stable order.
+      for (let i = 0; i < affectedUserIds.length; i += 200) {
+        const userIds = affectedUserIds.slice(i, i + 200);
+        await tx.select({ id: users.id }).from(users)
+          .where(inArray(users.id, userIds)).orderBy(users.id).for("update");
+        await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+          and(inArray(localAuthSessions.userId, userIds), isNull(localAuthSessions.revokedAt)),
+        );
+      }
+    }
     const patch: Partial<typeof accessRoles.$inferInsert> = {};
     if (input.name !== undefined) patch.name = input.name;
     if (input.description !== undefined) patch.description = input.description;
@@ -1773,12 +1852,22 @@ export async function updateAccessRole(input: { roleId: number; name?: string; d
 export async function assignUserRole(input: { userId: number; roleId: number; organizationId?: number | null; organizationalUnitId?: number | null; teamId?: number | null; expiresAt?: Date | null; actorUserId: number }) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    // Session registration uses this same user-row lock. A role change must
+    // serialize against new logins, and it must reject unknown users.
+    const lockedUser = (await tx.select({ id: users.id }).from(users)
+      .where(eq(users.id, input.userId)).limit(1).for("update"))[0];
+    if (!lockedUser) throw new Error("Usuário não encontrado.");
     const role = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!role || !role.active) throw new Error("Perfil não encontrado ou inativo.");
     if (!isRoleScopeAssignmentValid({ defaultScope: role.defaultScope, organizationId: input.organizationId, organizationalUnitId: input.organizationalUnitId, teamId: input.teamId })) throw new Error("O escopo informado não atende ao nível exigido pelo perfil.");
     const previous = await tx.select({ id: userRoleAssignments.id, roleId: userRoleAssignments.roleId }).from(userRoleAssignments).where(and(eq(userRoleAssignments.userId, input.userId), eq(userRoleAssignments.active, true)));
     if (previous.length) await tx.update(userRoleAssignments).set({ active: false, activeUserId: null }).where(and(eq(userRoleAssignments.userId, input.userId), eq(userRoleAssignments.active, true)));
     const [created] = await tx.insert(userRoleAssignments).values({ userId: input.userId, roleId: input.roleId, organizationId: input.organizationId ?? null, organizationalUnitId: input.organizationalUnitId ?? null, teamId: input.teamId ?? null, activeUserId: input.userId, expiresAt: input.expiresAt ?? null, assignedByUserId: input.actorUserId }).$returningId();
+    // The replacement and session revocation are one atomic transaction:
+    // no previously issued token can retain an obsolete role assignment.
+    await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+      and(eq(localAuthSessions.userId, input.userId), isNull(localAuthSessions.revokedAt)),
+    );
     await tx.insert(auditLogs).values({ resourceType: "user_role_assignment", resourceId: created.id, action: "profile_replaced", actorUserId: input.actorUserId, beforeData: { replacedAssignmentIds: previous.map(assignment => assignment.id), replacedRoleIds: previous.map(assignment => assignment.roleId) }, afterData: { userId: input.userId, roleId: input.roleId, organizationId: input.organizationId ?? null, organizationalUnitId: input.organizationalUnitId ?? null, teamId: input.teamId ?? null, expiresAt: input.expiresAt?.toISOString() ?? null, singleActiveProfile: true } });
     return created;
   });
@@ -1789,9 +1878,18 @@ export async function setUserRoleAssignmentActive(input: { assignmentId: number;
   await db.transaction(async tx => {
     const before = (await tx.select().from(userRoleAssignments).where(eq(userRoleAssignments.id, input.assignmentId)).limit(1))[0];
     if (!before) throw new Error("Vínculo de perfil não encontrado.");
+    // Prevent issuance from crossing a role reassignment without observing
+    // its revocation; use the same users-row lock as JWT registration.
+    const lockedUser = (await tx.select({ id: users.id }).from(users)
+      .where(eq(users.id, before.userId)).limit(1).for("update"))[0];
+    if (!lockedUser) throw new Error("Usuário do vínculo não encontrado.");
     const replaced = input.active ? await tx.select({ id: userRoleAssignments.id }).from(userRoleAssignments).where(and(eq(userRoleAssignments.userId, before.userId), eq(userRoleAssignments.active, true), ne(userRoleAssignments.id, input.assignmentId))) : [];
     if (replaced.length) await tx.update(userRoleAssignments).set({ active: false, activeUserId: null }).where(and(eq(userRoleAssignments.userId, before.userId), eq(userRoleAssignments.active, true), ne(userRoleAssignments.id, input.assignmentId)));
     await tx.update(userRoleAssignments).set({ active: input.active, activeUserId: input.active ? before.userId : null }).where(eq(userRoleAssignments.id, input.assignmentId));
+    // Role assignments are an authorization boundary: revoke old sessions.
+    await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+      and(eq(localAuthSessions.userId, before.userId), isNull(localAuthSessions.revokedAt)),
+    );
     await tx.insert(auditLogs).values({ resourceType: "user_role_assignment", resourceId: input.assignmentId, action: input.active ? "activate_profile_exclusive" : "deactivate", actorUserId: input.actorUserId, beforeData: { active: before.active, replacedAssignmentIds: replaced.map(assignment => assignment.id) }, afterData: { active: input.active, singleActiveProfile: true } });
   });
 }
@@ -1799,10 +1897,18 @@ export async function setUserRoleAssignmentActive(input: { assignmentId: number;
 export async function updateUserProfileAccess(input: { userId: number; active?: boolean; displayName?: string | null; employeeId?: string | null; institutionalId?: string | null; phone?: string | null; jobTitle?: string | null; mfaEnabled?: boolean; accessExpiresAt?: Date | null; actorUserId: number }) {
   const db = await requireDb();
   await db.transaction(async tx => {
-    const beforeUser = (await tx.select().from(users).where(eq(users.id, input.userId)).limit(1))[0];
+    // Serialize access-policy changes against session issuance for this user.
+    const beforeUser = (await tx.select().from(users).where(eq(users.id, input.userId)).limit(1).for("update"))[0];
     if (!beforeUser) throw new Error("Usuário não encontrado.");
     const beforeProfile = (await tx.select().from(userProfiles).where(eq(userProfiles.userId, input.userId)).limit(1))[0];
     if (input.active !== undefined) await tx.update(users).set({ active: input.active }).where(eq(users.id, input.userId));
+    if (input.active === false ||
+        (input.mfaEnabled !== undefined && input.mfaEnabled !== beforeProfile?.mfaEnabled) ||
+        input.accessExpiresAt !== undefined) {
+      await tx.update(localAuthSessions).set({ revokedAt: new Date() }).where(
+        and(eq(localAuthSessions.userId, input.userId), isNull(localAuthSessions.revokedAt)),
+      );
+    }
     const profilePatch = {
       userId: input.userId,
       displayName: input.displayName !== undefined ? input.displayName : beforeProfile?.displayName ?? null,

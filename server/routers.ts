@@ -15,7 +15,7 @@ import {
 } from "./authorization";
 import { assertIntegrationApprovalAdministrator, assertPermission, assertSuperAdministrator, assertTeamScope, getEffectiveAccess, resolveAuthorizedTeamFilter } from "./accessControl";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername } from "./localAuth";
+import { createLocalSessionToken, hashLocalPassword, loginWithLocalCredentials, normalizeUsername, requireOperationalSessionIdentity, revokeLocalSessionFromRequest } from "./localAuth";
 import { systemRouter } from "./_core/systemRouter";
 import { getSimulatedIntegrationsOverview } from "./integrations";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -149,11 +149,14 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     login: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: z.string().min(12).max(256) })).mutation(async ({ ctx, input }) => {
       const user = await loginWithLocalCredentials(input);
-      const token = await createLocalSessionToken(user.id);
+      const token = await createLocalSessionToken(user.id, user.passwordHash!);
       ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 8 * 60 * 60 * 1000 });
       return { id: user.id, name: user.name, username: user.username, role: user.role, operationalRole: user.operationalRole };
     }),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      // Persist revocation BEFORE acknowledging logout, including in other
+      // backend instances. On storage failure the mobile client stays fenced.
+      await revokeLocalSessionFromRequest(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
       return { success: true } as const;
     }),
@@ -496,7 +499,7 @@ export const appRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "Transição de status inválida." });
         }
         assertCanTransitionIncident(ctx.user, incident, input.nextStatus);
-        return transitionIncident({ ...input, actorUserId: ctx.user.id });
+        return transitionIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     assign: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), teamId: z.number().int().positive(), vehicleId: z.number().int().positive().optional(), estimatedArrivalMinutes: z.number().int().min(1).max(720).optional() }))
@@ -507,7 +510,7 @@ export const appRouter = router({
         if (!(incident.status === "triagem" || incident.status === "aguardando_despacho")) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "A ocorrência não está disponível para despacho." });
         }
-        return assignTeamToIncident({ ...input, actorUserId: ctx.user.id });
+        return assignTeamToIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     respondToAssignment: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), accepted: z.boolean(), note: z.string().trim().max(1000).optional() }))
@@ -516,7 +519,7 @@ export const appRouter = router({
         await assertTeamScope(ctx.user, ctx.user.teamId, "occurrences.transition");
         assertOwnTeam(ctx.user, ctx.user.teamId);
         assertCanReadIncident(ctx.user, requireIncident(await getIncidentById(input.incidentId)));
-        return respondToAssignment({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id });
+        return respondToAssignment({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     evidence: router({
       list: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
