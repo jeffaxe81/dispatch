@@ -30,6 +30,13 @@ describe("immutable reserved incident evidence storage keys", () => {
       .rejects.toThrow(/Invalid reserved/);
   });
 
+  it("rejects mismatched MIME types before contacting any provider", async () => {
+    await expect(storagePutReservedIncidentEvidence(valid, Buffer.from("file"), "application/pdf"))
+      .rejects.toThrow(/extension does not match/);
+    await expect(storagePutReservedIncidentEvidence(valid, Buffer.from("file"), "application/octet-stream"))
+      .rejects.toThrow(/extension does not match/);
+  });
+
   it("never accepts a key with an arbitrary extra extension", () => {
     expect(isReservedIncidentEvidenceKey(valid + ".php")).toBe(false);
     expect(isReservedIncidentEvidenceKey(valid)).toBe(true);
