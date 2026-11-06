@@ -40,6 +40,7 @@ import {
   integrationWebhooks,
 } from "../drizzle/schema";
 import { workShiftEvents, workShiftSessions } from "../drizzle/workShiftSchema";
+import { incidentTenantScopes } from "../drizzle/tenantScopeSchema";
 import { localAuthSessions } from "../drizzle/localAuthSessionsSchema";
 import { assertOperationalSessionAtWriteBoundary, hashLocalSessionId, type LocalSessionIdentity } from "./localAuthSessions";
 import { requirePriorityChangeJustification } from "./priorityChangeJustification";
@@ -195,6 +196,8 @@ export async function getIncidentById(incidentId: number) {
 
 export async function createIncident(input: {
   actorUserId: number;
+  session: LocalSessionIdentity;
+  organizationId?: number;
   category: string;
   priority: IncidentPriority;
   origin: typeof incidents.$inferInsert.origin;
@@ -207,6 +210,21 @@ export async function createIncident(input: {
 }) {
   const db = await requireDb();
   return db.transaction(async tx => {
+    // Guard the actual write boundary, not just the earlier tRPC read.
+    // User and session rows are locked in a consistent order until commit.
+    await assertOperationalSessionAtWriteBoundary({
+      identity: input.session,
+      actorUserId: input.actorUserId,
+      lockUser: async () => (await tx.select({ id: users.id, active: users.active })
+        .from(users).where(eq(users.id, input.actorUserId)).limit(1).for("update"))[0],
+      lockSession: async () => (await tx.select({
+        userId: localAuthSessions.userId,
+        expiresAt: localAuthSessions.expiresAt,
+        revokedAt: localAuthSessions.revokedAt,
+      }).from(localAuthSessions)
+        .where(eq(localAuthSessions.sessionHash, hashLocalSessionId(input.session.jti)))
+        .limit(1).for("update"))[0],
+    });
     const [record] = await tx
       .insert(incidents)
       .values({
@@ -225,6 +243,13 @@ export async function createIncident(input: {
       .$returningId();
     const created = (await tx.select().from(incidents).where(eq(incidents.id, record.id)).limit(1))[0];
     if (!created) throw new Error("Falha ao criar ocorrência.");
+    if (input.organizationId !== undefined) {
+      // The tenant link and incident are now all-or-nothing, avoiding an
+      // unscoped incident when the tenant FK or scope write fails.
+      await tx.insert(incidentTenantScopes).values({
+        incidentId: created.id, organizationId: input.organizationId,
+      });
+    }
     await tx.insert(incidentEvents).values({
       incidentId: created.id,
       actorUserId: input.actorUserId,
@@ -248,6 +273,7 @@ export async function createIncident(input: {
 export async function updateIncident(input: {
   incidentId: number;
   actorUserId: number;
+  session: LocalSessionIdentity;
   category?: string;
   priority?: IncidentPriority;
   priorityChangeReason?: string;
@@ -260,7 +286,22 @@ export async function updateIncident(input: {
 }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
+    // Guard the actual write boundary, not just the earlier tRPC read.
+    // User and session rows are locked in a consistent order until commit.
+    await assertOperationalSessionAtWriteBoundary({
+      identity: input.session,
+      actorUserId: input.actorUserId,
+      lockUser: async () => (await tx.select({ id: users.id, active: users.active })
+        .from(users).where(eq(users.id, input.actorUserId)).limit(1).for("update"))[0],
+      lockSession: async () => (await tx.select({
+        userId: localAuthSessions.userId,
+        expiresAt: localAuthSessions.expiresAt,
+        revokedAt: localAuthSessions.revokedAt,
+      }).from(localAuthSessions)
+        .where(eq(localAuthSessions.sessionHash, hashLocalSessionId(input.session.jti)))
+        .limit(1).for("update"))[0],
+    });
+    const before = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     if (!before) throw new Error("Ocorrência não encontrada.");
     const priorityChangeReason = requirePriorityChangeJustification(before.priority, input.priority, input.priorityChangeReason);
     const patch: Partial<typeof incidents.$inferInsert> = { updatedAt: new Date() };
@@ -309,10 +350,25 @@ export function buildIncidentDeletionAuditSnapshot(input: { incident: typeof inc
   };
 }
 
-export async function permanentlyDeleteIncident(input: { incidentId: number; actorUserId: number; reason: string }) {
+export async function permanentlyDeleteIncident(input: { incidentId: number; actorUserId: number; reason: string; session: LocalSessionIdentity }) {
   const db = await requireDb();
   return db.transaction(async tx => {
-    const incident = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1))[0];
+    // Guard the actual write boundary, not just the earlier tRPC read.
+    // User and session rows are locked in a consistent order until commit.
+    await assertOperationalSessionAtWriteBoundary({
+      identity: input.session,
+      actorUserId: input.actorUserId,
+      lockUser: async () => (await tx.select({ id: users.id, active: users.active })
+        .from(users).where(eq(users.id, input.actorUserId)).limit(1).for("update"))[0],
+      lockSession: async () => (await tx.select({
+        userId: localAuthSessions.userId,
+        expiresAt: localAuthSessions.expiresAt,
+        revokedAt: localAuthSessions.revokedAt,
+      }).from(localAuthSessions)
+        .where(eq(localAuthSessions.sessionHash, hashLocalSessionId(input.session.jti)))
+        .limit(1).for("update"))[0],
+    });
+    const incident = (await tx.select().from(incidents).where(eq(incidents.id, input.incidentId)).limit(1).for("update"))[0];
     if (!incident) throw new Error("Ocorrência não encontrada.");
     const [assignments, events] = await Promise.all([
       tx.select().from(incidentAssignments).where(eq(incidentAssignments.incidentId, input.incidentId)),
