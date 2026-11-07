@@ -7,11 +7,14 @@ const source = path.resolve(import.meta.dirname, "../../docs/quality/real-enviro
 const original = () => JSON.parse(fs.readFileSync(source, "utf8"));
 const now = new Date("2026-10-26T12:00:00Z");
 function withEvidence(m: any) {
+  m.review_date = "2026-10-25";
   for (const g of m.external_environment_tests) {
     g.status = "PASSED_REAL_ENVIRONMENT";
     g.owner = "homologation-team";
     g.executed_at = "2026-10-25T10:00:00Z";
     g.evidence_url = "https://github.com/jeffaxe81/dispatch/issues/97";
+    g.code_sha = "a".repeat(40);
+    g.component_versions = { dispatch: "2.19.0-rc.1", worker: "2026.11" };
   }
   return m;
 }
@@ -80,6 +83,64 @@ describe("Gate passivo de release AXE Dispatch", () => {
     expect(review).toContain("MANUAL_GO_REVIEW_REQUIRED");
     expect(review).toContain("Autorização de produção: **NÃO**");
     expect(review).not.toContain("homologation-team");
+  });
+
+  it("rejeita revisão futura ou calendário inválido sem conferir acesso à rede", () => {
+    for(const invalid of ["2026-02-30","2026-10-27","25/10/2026","",null]) {
+      const m=original();m.review_date=invalid;
+      const result=evaluateDispatchReadiness(m,now);
+      expect(result).toMatchObject({decision:"NO_GO",manifest_valid:false,real_environment_progress_percent:0});
+    }
+  });
+  it("falha fechado quando o procedimento ou a descrição de prova são placeholders",()=>{
+    for(const placeholder of ["","pending","TBD","n/a","-"]) {
+      const m=original();
+      m.external_environment_tests[0].procedure=placeholder;
+      m.external_environment_tests[1].evidence_required=placeholder;
+      const result=evaluateDispatchReadiness(m,now);
+      expect(result.decision).toBe("NO_GO");
+      expect(result.manifest_valid).toBe(false);
+      expect(result.pending_gate_ids).toContain("DISPATCH-REAL-01");
+      expect(result.pending_gate_ids).toContain("DISPATCH-REAL-02");
+    }
+  });
+  it("bloqueia URL de prova com tokens em query, fragmentos e userinfo",()=>{
+    const m=withEvidence(original());
+    m.external_environment_tests[0].evidence_url="https://evidence.example.org/file?token=secret";
+    m.external_environment_tests[1].evidence_url="https://evidence.example.org/file#secret";
+    m.external_environment_tests[2].evidence_url="https://user:pass@evidence.example.org/file";
+    const result=evaluateDispatchReadiness(m,now);
+    expect(result).toMatchObject({decision:"NO_GO",evidenced_gates:0});
+    expect(JSON.stringify(result)).not.toContain("secret");
+  });
+  it("bloqueia prova sem SHA, versões dos componentes ou responsável humano",()=>{
+    const m=withEvidence(original());
+    delete m.external_environment_tests[0].code_sha;
+    m.external_environment_tests[1].component_versions={dispatch:"TBD"};
+    m.external_environment_tests[2].owner="unknown";
+    const result=evaluateDispatchReadiness(m,now);
+    expect(result.evidenced_gates).toBe(0);
+    expect(result.pending_gate_ids).toHaveLength(3);
+  });
+  it("bloqueia data de prova posterior à revisão do manifesto",()=>{
+    const m=withEvidence(original());m.review_date="2026-10-24";
+    m.external_environment_tests[1].executed_at="2026-10-24T09:00:00Z";
+    m.external_environment_tests[2].executed_at="2026-10-24T09:30:00Z";
+    const result=evaluateDispatchReadiness(m,now);
+    expect(result.evidenced_gates).toBe(2);
+    expect(result.pending_gate_ids).toContain("DISPATCH-REAL-01");
+  });
+  it("exige o mesmo SHA e as mesmas versões em todos os gates reais",()=>{
+    const differentSha=withEvidence(original());
+    differentSha.external_environment_tests[1].code_sha="b".repeat(40);
+    const shaResult=evaluateDispatchReadiness(differentSha,now);
+    expect(shaResult).toMatchObject({decision:"NO_GO",evidenced_gates:3});
+    expect(shaResult.findings).toContain("INCONSISTENT_EVIDENCE_SET");
+    const differentVersion=withEvidence(original());
+    differentVersion.external_environment_tests[2].component_versions.worker="2026.10";
+    const versionResult=evaluateDispatchReadiness(differentVersion,now);
+    expect(versionResult).toMatchObject({decision:"NO_GO",evidenced_gates:3});
+    expect(versionResult.findings).toContain("INCONSISTENT_COMPONENT_VERSIONS");
   });
   it("não revela dados externos ou segredos no relatório", () => {
     const m = withEvidence(original());
