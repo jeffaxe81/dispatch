@@ -43,7 +43,7 @@ async function readRequest(): Promise<RequestPayload> {
   if (value.kind === "upload-crash" &&
       "incidentId" in value && "actorUserId" in value && "teamId" in value &&
       [value.incidentId, value.actorUserId, value.teamId].every(
-        n => Number.isSafeInteger(n) && (n as number) > 0,
+        n => typeof n === "number" && Number.isSafeInteger(n) && n > 0,
       ))
     return {
       kind: "upload-crash", token: value.token,
