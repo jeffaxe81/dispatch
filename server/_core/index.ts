@@ -10,6 +10,7 @@ import { rootRouter } from "../rootRouter";
 import { alrtIngressJsonErrorHandler, registerAlrtIngressRoutes } from "../alrtIngress";
 import { registerAssetInventoryHomologationRoutes } from "../assetInventoryHomologation";
 import { createContext } from "./context";
+import { requireSameOriginTrpcMutation } from "./trpcCsrf";
 import { ENV, validateRuntimeEnv } from "./env";
 import { createOperationalHealthRegistry } from "./operationalHealth";
 import { installOperationalHealthRuntime } from "./operationalHealthRuntime";
@@ -69,6 +70,8 @@ async function startServer() {
   });
   registerStorageProxy(app);
   app.use(alrtIngressJsonErrorHandler);
+  // Reject cross-site cookie mutations before the tRPC handler or any side effects.
+  app.use("/api/trpc", requireSameOriginTrpcMutation);
   // tRPC API
   app.use(
     "/api/trpc",
