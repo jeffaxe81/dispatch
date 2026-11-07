@@ -57,7 +57,7 @@ janela de retenção. **Não ativar limpeza automática antes disso.**
 
 ## Consulta administrativa de conciliação — somente leitura
 
-A procedure tRPC `settings.evidenceRecovery({page, pageSize})` exige usuário
+A procedure tRPC `settings.evidenceRecovery({page, pageSize, state})` exige usuário
 operacional autenticado e autorização de **Super Administrador**. A consulta
 aceita página 1..10.000 e de 1 a 100 registros por página, com ordenação por
 data de última atualização e ID da tentativa. Ela retorna somente o número
@@ -76,6 +76,27 @@ A flag `hasEvidenceReference` deve ser conferida antes de qualquer operação
 de limpeza; a presença de referência **bloqueia remoção física**. O resultado
 é uma fila de investigação, não uma instrução ou autorização para apagar
 arquivos. Logs gerais não devem incluir identificadores privados do storage.
+
+## Interface administrativa
+
+A página `/administracao/conciliacao-evidencias` está disponível no menu
+**Conciliação de evidências** apenas para o Super Administrador e também pelo
+atalho em **Configurações gerais**. A página faz uma segunda checagem de
+permissão no frontend para evitar renderizar dados enquanto a sessão é
+revalidada; a proteção efetiva é feita **no backend** pela procedure tRPC.
+
+Filtros paginados de servidor:
+- `all`: todos os registros elegíveis para revisão;
+- `cleanup_required`: falhas ou exclusões já sinalizadas;
+- `stale_reserved`: reservas anteriores à janela mínima de 15 minutos;
+- `missing_reference`: upload concluído sem referência no banco.
+
+É possível atualizar os dados e navegar por páginas de 10, 25, 50 ou
+100 registros. A interface funciona em telas estreitas e exibe apenas
+identificadores administrativos, situação, motivo e datas. **Não há botão de
+exclusão, URL de storage, chave privada, ação de correção ou suposta
+confirmação de remoção remota.** Indicadores são relativos ao filtro
+selecionado, não à quantidade total de objetos armazenados no provedor.
 
 ## Homologação ainda necessária
 - Queda do processo antes/depois do PUT e antes/depois do commit.
