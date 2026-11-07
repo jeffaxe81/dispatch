@@ -1,6 +1,6 @@
-export function canUpdateRoleDefinition(input: { isSystem: boolean; permissionIdsProvided: boolean; active?: boolean }) {
+export function canUpdateRoleDefinition(input: { isSystem: boolean; permissionIdsProvided: boolean; defaultScopeProvided?: boolean; active?: boolean }) {
   if (!input.isSystem) return true;
-  if (input.permissionIdsProvided) return false;
+  if (input.permissionIdsProvided || input.defaultScopeProvided) return false;
   if (input.active !== undefined) return false;
   return true;
 }

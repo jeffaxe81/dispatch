@@ -28,6 +28,7 @@ import {
   createManualUser,
   setUserLocalCredentials,
   createAccessRole,
+  installHomologationProfiles,
   createAccessPermission,
   createOrganization,
   createOrganizationalUnit,
@@ -726,6 +727,12 @@ export const appRouter = router({
         await assertPermission(ctx.user, "users.edit");
         if (Boolean(input.username) !== Boolean(input.password)) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe usuário e senha juntos ou deixe ambos em branco para pré-cadastro." });
         return createManualUser({ ...input, username: input.username ? normalizeUsername(input.username) : null, passwordHash: input.password ? await hashLocalPassword(input.password) : null, actorUserId: ctx.user.id });
+      }),
+    installHomologationProfiles: operationalProcedure
+      .mutation(async ({ ctx }) => {
+        await assertSuperAdministrator(ctx.user);
+        await assertPermission(ctx.user, "roles.create");
+        return installHomologationProfiles({ actorUserId: ctx.user.id });
       }),
     createRole: operationalProcedure
       .input(z.object({ code: z.string().trim().regex(/^[a-z0-9_]+$/).min(3).max(80), name: z.string().trim().min(3).max(160), description: z.string().trim().max(1000).optional(), defaultScope: accessScopeEnum, permissionIds: z.array(z.number().int().positive()).max(100) }))

@@ -5,6 +5,7 @@ import type { OperationalRole } from "../shared/operations";
 import { getDb } from "./db";
 import { recordDeniedPermission } from "./deniedPermissionAudit";
 import { ENV } from "./_core/env";
+import { filterRolePermissionCodes } from "../shared/homologationProfiles";
 
 export type PermissionCode = string;
 type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
@@ -91,13 +92,17 @@ export async function getAccessSnapshot(userId: number) {
       organizationalUnitId: userRoleAssignments.organizationalUnitId,
       teamId: userRoleAssignments.teamId,
     }).from(userRoleAssignments).innerJoin(accessRoles, eq(userRoleAssignments.roleId, accessRoles.id)).where(validAssignment),
-    db.select({ code: accessPermissions.code }).from(userRoleAssignments)
+    db.select({ code: accessPermissions.code, roleCode: accessRoles.code }).from(userRoleAssignments)
       .innerJoin(accessRoles, eq(userRoleAssignments.roleId, accessRoles.id))
       .innerJoin(rolePermissions, eq(rolePermissions.roleId, accessRoles.id))
       .innerJoin(accessPermissions, eq(rolePermissions.permissionId, accessPermissions.id))
       .where(and(validAssignment, eq(accessPermissions.active, true))),
   ]);
-  return { assignments: assignments as AccessAssignment[], permissions: new Set(permissions.map(row => row.code)) };
+  // Keep an inactive-stage QA assignment in the snapshot: stripping the role
+  // itself could restore broad permissions from the user's legacy role.
+  return { assignments: assignments as AccessAssignment[],
+    permissions: new Set(filterRolePermissionCodes(permissions,
+      process.env.AXE_DEPLOYMENT_STAGE, process.env.AXE_HOMOLOGATION_ENABLED)) };
 }
 
 export async function hasPermission(user: CurrentUser, permission: PermissionCode) {
