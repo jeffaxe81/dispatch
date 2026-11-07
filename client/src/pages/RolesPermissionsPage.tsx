@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, BookOpenCheck, CopyPlus, LockKeyhole, Plus, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
+import { HOMOLOGATION_PROFILES } from "@shared/homologationProfiles";
 
 const scopes = ["global", "organizacao", "unidade", "departamento", "grupo", "equipe"] as const;
 const scopeLabels: Record<(typeof scopes)[number], string> = { global: "Global", organizacao: "Organização", unidade: "Unidade", departamento: "Departamento", grupo: "Grupo", equipe: "Equipe" };
@@ -26,6 +27,8 @@ function AccessGuidance({ message }: { message?: string }) {
 }
 
 function RolesPermissionsContent() {
+  const currentAccess = trpc.access.me.useQuery();
+  const [installationMessage, setInstallationMessage] = useState("");
   const roles = trpc.access.roles.useQuery();
   const permissions = trpc.access.permissions.useQuery();
   const utils = trpc.useUtils();
@@ -39,8 +42,18 @@ function RolesPermissionsContent() {
   const createRole = trpc.access.createRole.useMutation({ onSuccess: () => { utils.access.roles.invalidate(); setRoleDialogOpen(false); setRoleDraft(emptyRole); } });
   const createPermission = trpc.access.createPermission.useMutation({ onSuccess: () => { utils.access.permissions.invalidate(); setPermissionDialogOpen(false); setPermissionDraft(emptyPermission); } });
   const update = trpc.access.updateRole.useMutation({ onSuccess: () => utils.access.roles.invalidate() });
+  const installHomologation = trpc.access.installHomologationProfiles.useMutation({
+    onSuccess: result => {
+      void utils.access.roles.invalidate();
+      setInstallationMessage(
+        result.created.length + " perfil(is) protegido(s) criado(s); " +
+        result.existing.length + " já existente(s). Nenhum usuário foi vinculado."
+      );
+    },
+    onError: () => setInstallationMessage(""),
+  });
   const selectedPermissionIds = new Set(current?.permissionIds ?? roleDraft.permissionIds);
-  const errorMessage = createRole.error?.message ?? createPermission.error?.message ?? update.error?.message;
+  const errorMessage = installHomologation.error?.message ?? createRole.error?.message ?? createPermission.error?.message ?? update.error?.message;
 
   const openRoleCreate = (copy = false) => {
     const source = copy ? current : undefined;
@@ -66,6 +79,30 @@ function RolesPermissionsContent() {
     <header className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="text-xs font-semibold uppercase tracking-[.15em] text-sky-700">Administração</p><h1 className="mt-1 text-3xl font-semibold text-slate-950">Perfis e acessos</h1><p className="mt-1 max-w-3xl text-sm text-slate-500">Crie perfis e permissões locais de forma auditável. A aplicação valida regras no servidor e explica como corrigir configurações inválidas.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setPermissionDialogOpen(true)}><Plus className="mr-2 h-4 w-4" />Permissão local</Button><Button onClick={() => openRoleCreate()}><Plus className="mr-2 h-4 w-4" />Criar perfil</Button></div></header>
     <AccessGuidance message={errorMessage} />
     <Card className="border-sky-100 bg-sky-50/60"><CardContent className="flex gap-3 p-4"><BookOpenCheck className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" /><p className="text-sm leading-6 text-sky-900"><strong>Roteiro rápido:</strong> primeiro crie uma permissão local no padrão <code>recurso.acao</code>, depois inclua-a em um perfil local e, por fim, vincule o perfil ao usuário com o escopo requerido.</p></CardContent></Card>
+    {currentAccess.data?.isSuperAdministrator && <Card className="border-sky-200 shadow-sm">
+      <CardContent className="space-y-4 p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold text-slate-900">Perfis para homologação controlada</h2>
+            <p className="mt-1 text-sm text-slate-600">Cinco perfis de privilégios mínimos, exclusivos de um ambiente isolado habilitado. Nenhuma conta é criada, nenhum usuário recebe acesso automaticamente e não há autorização de produção.</p>
+          </div>
+          <Button type="button" onClick={() => { setInstallationMessage(""); installHomologation.mutate(); }}
+            disabled={installHomologation.isPending || roles.isLoading}>
+            <ShieldCheck className="mr-2 h-4 w-4" />
+            {installHomologation.isPending ? "Preparando..." : "Instalar perfis de homologação"}
+          </Button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Modelos de perfis de homologação">
+          {HOMOLOGATION_PROFILES.map(profile => <div key={profile.code} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="font-medium text-slate-900">{profile.name}</p>
+            <p className="mt-1 text-xs text-slate-600">{profile.description}</p>
+            <p className="mt-2 text-xs text-slate-500">{profile.permissionCodes.length} privilégios · {scopeLabels[profile.defaultScope]}</p>
+          </div>)}
+        </div>
+        <p className="text-xs text-slate-600">Ativação exige AXE_DEPLOYMENT_STAGE=homologation e AXE_HOMOLOGATION_ENABLED=true no backend isolado. Atribuições requerem organização, validade máxima de 14 dias e equipe para Agente de Campo.</p>
+        {installationMessage && <p role="status" className="text-sm text-emerald-700">{installationMessage}</p>}
+      </CardContent>
+    </Card>}
     <QueryState loading={roles.isLoading || permissions.isLoading} error={roles.error ?? permissions.error} label="perfis e permissões" />
     <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]"><Card className="border-slate-200 shadow-sm"><CardContent className="p-3"><div className="mb-2 px-2 text-xs font-semibold uppercase tracking-[.13em] text-slate-500">Perfis cadastrados</div><div className="space-y-1">{(roles.data ?? []).map(row => <button key={row.role.id} onClick={() => setSelectedRoleId(row.role.id)} className={`w-full rounded-xl px-3 py-3 text-left transition-colors ${current?.role.id === row.role.id ? "bg-sky-50 text-sky-950 ring-1 ring-sky-200" : "hover:bg-slate-50"}`}><div className="flex items-center justify-between gap-3"><span className="font-medium">{row.role.name}</span>{row.role.isSystem ? <LockKeyhole className="h-3.5 w-3.5 text-slate-500" /> : <Badge variant="outline" className="border-sky-200 text-[10px] text-sky-800">Local</Badge>}</div><div className="mt-1 flex items-center justify-between text-xs text-slate-500"><span>{scopeLabels[row.role.defaultScope]}</span><span>{row.assignedUsers} usuário(s)</span></div></button>)}{!roles.isLoading && !roles.data?.length && <p className="p-5 text-sm text-slate-500">Não há perfis disponíveis.</p>}</div></CardContent></Card>
       {current && <div className="space-y-4"><Card className="border-slate-200 shadow-sm"><CardContent className="p-5"><div className="flex flex-col justify-between gap-3 md:flex-row"><div><div className="flex items-center gap-2"><h2 className="text-xl font-semibold text-slate-950">{current.role.name}</h2>{current.role.isSystem ? <Badge variant="outline">Padrão protegido</Badge> : <Badge className="border-0 bg-sky-50 text-sky-800">Item local</Badge>}{!current.role.active && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Inativo</Badge>}</div><p className="mt-2 text-sm text-slate-600">{current.role.description ?? "Sem descrição."}</p><p className="mt-2 text-xs font-medium uppercase tracking-[.12em] text-slate-500">Escopo padrão: {scopeLabels[current.role.defaultScope]}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => openRoleCreate(true)}><CopyPlus className="mr-2 h-4 w-4" />Duplicar</Button>{!current.role.isSystem && <Button variant="outline" onClick={() => update.mutate({ roleId: current.role.id, active: !current.role.active })}>{current.role.active ? "Desativar" : "Ativar"}</Button>}</div></div></CardContent></Card>
