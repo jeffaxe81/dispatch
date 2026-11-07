@@ -127,8 +127,8 @@ async function main() {
       [teamId, userId],
     );
     const [incident] = await conn.execute<ResultSetHeader>(
-      "INSERT INTO incidents (code, incident_status, incident_priority, category, incident_origin, description, address, latitude, longitude, created_by_user_id) VALUES (?, 'aceita', 'media', 'Evidence CI', 'central', 'HTTP provider contract smoke', 'Local disposable CI address', '-27.0', '-48.0', ?)",
-      ["ST" + randomUUID().replaceAll("-", "").slice(0, 20), userId],
+      "INSERT INTO incidents (code, incident_status, incident_priority, category, incident_origin, description, address, latitude, longitude, assigned_team_id, created_by_user_id) VALUES (?, 'aceita', 'media', 'Evidence CI', 'central', 'HTTP provider contract smoke', 'Local disposable CI address', '-27.0', '-48.0', ?, ?)",
+      ["ST" + randomUUID().replaceAll("-", "").slice(0, 20), teamId, userId],
     );
     incidentId = incident.insertId;
     const token = await createLocalSessionToken(userId, passwordHash);
