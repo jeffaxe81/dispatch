@@ -31,6 +31,7 @@ A matriz combina inspeção verificável de código, renderização do component
 | `/administracao/perfis` | `RolesPermissionsPage.tsx` | direta: rota + fallback 404 | implementado no componente | implementado no componente | implementado no componente | contrato de rota + fonte idêntica | HTTP 200 + fonte preservada |
 | `/administracao/escopos` | `AccessScopesPage.tsx` | direta: rota + fallback 404 | implementado no componente | implementado no componente | implementado no componente | contrato de rota + fonte idêntica | HTTP 200 + fonte preservada |
 | `/administracao/configuracoes` | `GeneralSettingsPage.tsx` | direta: rota + fallback 404 | implementado no componente | não aplicável ao formulário ou detalhe | implementado no componente | inspeção estrutural + QueryState renderizado | desktop+mobile |
+| `/administracao/conciliacao-evidencias` | `EvidenceRecoveryPage.tsx` | direta: rota + fallback 404; Super Administrador | implementado no componente | implementado no componente | implementado no componente | `client/src/pages/EvidenceRecoveryPage.test.tsx` | fonte responsiva e testes de estados |
 | `/administracao/log-operacoes` | `OperationsLogPage.tsx` | direta: rota + fallback 404 | implementado no componente | implementado no componente | implementado no componente | `client/src/pages/OperationsLogPage.test.ts` | HTTP 200 + fonte preservada |
 | `/404` | `NotFound.tsx` | direta: rota + fallback 404 | global: layout/sessão | não aplicável | global: ErrorBoundary | contrato de rota + fonte idêntica | HTTP 200 + fallback global |
 
@@ -38,10 +39,10 @@ A matriz combina inspeção verificável de código, renderização do component
 
 | Métrica | Resultado |
 |---|---:|
-| Rotas explícitas | 29 |
-| Telas principais com validação estrutural dedicada | 10 |
+| Rotas explícitas | 30 |
+| Telas principais com validação estrutural dedicada | 11 |
 | Rotas com captura desktop e/ou mobile | 11 |
-| Rotas com carregamento implementado no componente | 28 |
-| Rotas com vazio implementado no componente | 24 |
-| Rotas com erro implementado no componente | 28 |
+| Rotas com carregamento implementado no componente | 29 |
+| Rotas com vazio implementado no componente | 25 |
+| Rotas com erro implementado no componente | 29 |
 | Rotas sem fallback de erro | 0 |
