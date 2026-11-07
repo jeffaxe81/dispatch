@@ -31,6 +31,15 @@ describe("AXED-F091: isolamento de escopo de auditoria", () => {
     expect(deriveTenantAuditVisibility(101, [grant("organizacao", 101)], false).allTenant).toBe(true);
   });
 
+  it("não transforma grant global malformado em acesso ao tenant inteiro", () => {
+    expect(deriveTenantAuditVisibility(101, [{
+      defaultScope: "global",
+      organizationId: 101,
+      organizationalUnitId: null,
+      teamId: null,
+    }], false)).toEqual({ allTenant: false, teamIds: [], unitIds: [] });
+  });
+
   it("concessão global válida continua limitada pelo tenant ativo na consulta", () => {
     expect(deriveTenantAuditVisibility(101, [grant("global", null)], false).allTenant).toBe(true);
     expect(deriveTenantAuditVisibility(202, [grant("global", null)], false).allTenant).toBe(true);
@@ -92,6 +101,8 @@ describe("AXED-F091: minimização, busca, paginação e autorização no servid
     expect(router).toContain('await assertPermission(ctx.user, "audit.view")');
     expect(router).toContain("const organizationId = await tenantFor(ctx)");
     expect(router).toContain("listTenantOperationLogs({");
+    expect(router).toContain("assertTenantIncidentAuditAccess({");
+    expect(router).toContain("assignedTeamId: incident.assignedTeamId");
     expect(router).not.toContain("listOperationLogs(input)");
   });
 });

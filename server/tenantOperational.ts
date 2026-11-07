@@ -5,6 +5,7 @@ import { incidents, organizations, teams, users, vehicles, type User } from "../
 import type { IncidentPriority, IncidentStatus } from "../shared/operations";
 import { ENV } from "./_core/env";
 import { getAccessSnapshot } from "./accessControl";
+import { isCanonicalGlobalScope } from "./accessPolicies";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import { incidentListOrder } from "./incidentListOrder";
 import { fetchIncidentStageSummary } from "./incidentStageSummary";
@@ -32,7 +33,7 @@ function parseTenantHeader(req: HeaderRequest) {
 export async function listAuthorizedTenants(user: CurrentUser) {
   const db = await requireDb();
   const snapshot = await getAccessSnapshot(user.id);
-  const globalAccess = user.role === "admin" || user.openId === ENV.ownerOpenId || snapshot.assignments.some(assignment => assignment.defaultScope === "global");
+  const globalAccess = user.role === "admin" || user.openId === ENV.ownerOpenId || snapshot.assignments.some(isCanonicalGlobalScope);
   if (globalAccess) {
     return db.select({ id: organizations.id, code: organizations.code, name: organizations.name }).from(organizations).where(eq(organizations.active, true)).orderBy(organizations.name);
   }

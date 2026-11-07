@@ -1,10 +1,12 @@
 import { and, count, desc, eq, exists, gt, inArray, isNull, like, or, type AnyColumn, type SQL } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import {
   accessPermissions, accessRoles, auditLogs, incidentAssignments, incidentEvidence, incidents,
   rolePermissions, teams, userRoleAssignments, vehicles,
 } from "../drizzle/schema";
 import { incidentTenantScopes, vehicleTenantScopes } from "../drizzle/tenantScopeSchema";
 import { getAccessSnapshot } from "./accessControl";
+import { isCanonicalGlobalScope } from "./accessPolicies";
 import { getDb } from "./db";
 
 /**
@@ -36,7 +38,7 @@ export function deriveTenantAuditVisibility(
   const unitIds = new Set<number>();
   for (const grant of grants) {
     if (grant.defaultScope === "global") {
-      allTenant = true;
+      if (isCanonicalGlobalScope(grant)) allTenant = true;
     } else if (grant.organizationId === organizationId) {
       if (grant.defaultScope === "organizacao") allTenant = true;
       else if (grant.defaultScope === "equipe" && grant.teamId && Number.isSafeInteger(grant.teamId) && grant.teamId > 0)
@@ -78,6 +80,63 @@ function scopedTeamCondition(
   if (scope.unitIds.length) rules.push(inArray(organizationalUnitId, scope.unitIds));
   // Empty scope is never interpreted as access to the entire tenant.
   return rules.length ? or(...rules)! : eq(teamId, -1);
+}
+
+export async function assertTenantIncidentAuditAccess(input: {
+  actorUserId: number;
+  organizationId: number;
+  assignedTeamId: number | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível para a auditoria.");
+
+  const snapshot = await getAccessSnapshot(input.actorUserId);
+  const auditGrants = snapshot.assignments.length === 0 ? [] :
+    await db.select({
+      defaultScope: accessRoles.defaultScope,
+      organizationId: userRoleAssignments.organizationId,
+      organizationalUnitId: userRoleAssignments.organizationalUnitId,
+      teamId: userRoleAssignments.teamId,
+    })
+      .from(userRoleAssignments)
+      .innerJoin(accessRoles, eq(userRoleAssignments.roleId, accessRoles.id))
+      .innerJoin(rolePermissions, eq(rolePermissions.roleId, accessRoles.id))
+      .innerJoin(accessPermissions, eq(accessPermissions.id, rolePermissions.permissionId))
+      .where(and(
+        eq(userRoleAssignments.userId, input.actorUserId),
+        eq(userRoleAssignments.active, true),
+        eq(accessRoles.active, true),
+        eq(accessPermissions.active, true),
+        or(eq(accessPermissions.code, "audit.view"), eq(accessPermissions.code, "*")),
+        or(isNull(userRoleAssignments.expiresAt), gt(userRoleAssignments.expiresAt, new Date())),
+      ));
+
+  const scope = deriveTenantAuditVisibility(
+    input.organizationId,
+    auditGrants,
+    snapshot.assignments.length === 0,
+  );
+  if (scope.allTenant) return;
+
+  if (!input.assignedTeamId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A auditoria desta ocorrência não está dentro do escopo autorizado." });
+  }
+
+  const team = (await db.select({
+    id: teams.id,
+    organizationId: teams.organizationId,
+    organizationalUnitId: teams.organizationalUnitId,
+  }).from(teams).where(eq(teams.id, input.assignedTeamId)).limit(1))[0];
+
+  if (!team || team.organizationId !== input.organizationId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A equipe da ocorrência não pertence ao tenant ativo." });
+  }
+
+  const allowedByTeam = scope.teamIds.includes(team.id);
+  const allowedByUnit = team.organizationalUnitId !== null && scope.unitIds.includes(team.organizationalUnitId);
+  if (allowedByTeam || allowedByUnit) return;
+
+  throw new TRPCError({ code: "FORBIDDEN", message: "A auditoria desta ocorrência não está dentro do escopo autorizado." });
 }
 
 /**
