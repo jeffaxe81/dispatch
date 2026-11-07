@@ -53,6 +53,10 @@ import type { IncidentPriority, IncidentStatus, OperationalRole } from "../share
 import type { WorkShiftAction } from "../shared/workShifts";
 import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
+import {
+  HOMOLOGATION_PROFILES, currentHomologationRuntimeEnabled,
+  isReservedHomologationCode, validateHomologationRoleAssignment,
+} from "../shared/homologationProfiles";
 import { parseOpenapiDocument } from "./openapi";
 import { storageGet, storagePut } from "./storage";
 import { executeOwnWorkShiftAction, type WorkShiftStore } from "./workShiftService";
@@ -1768,6 +1772,22 @@ export async function createManualUser(input: { displayName: string; email: stri
     }
     const role = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!role || !role.active) throw new Error("Perfil não encontrado ou inativo.");
+    if (isReservedHomologationCode(role.code)) {
+      const allowed = validateHomologationRoleAssignment({
+        code: role.code, stage: process.env.AXE_DEPLOYMENT_STAGE,
+        enabled: process.env.AXE_HOMOLOGATION_ENABLED,
+        userIsBaseAdmin: lockedUser.role === "admin" || lockedUser.openId === ENV.ownerOpenId,
+        organizationId: input.organizationId, teamId: input.teamId, expiresAt: input.expiresAt,
+      });
+      if (!allowed) throw new Error("Perfil de homologação exige ambiente isolado, empresa, usuário sem privilégio administrativo e validade máxima de 14 dias.");
+      if (input.teamId) {
+        const team = (await tx.select({ organizationId: teams.organizationId })
+          .from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
+        if (!team || team.organizationId !== input.organizationId) {
+          throw new Error("A equipe de homologação pertence a outra organização.");
+        }
+      }
+    }
     if (!isRoleScopeAssignmentValid({ defaultScope: role.defaultScope, organizationId: input.organizationId, organizationalUnitId: input.organizationalUnitId, teamId: input.roleTeamId })) throw new Error("O escopo informado não atende ao nível exigido pelo perfil.");
     const openId = createManualUserOpenId();
     const [created] = await tx.insert(users).values({ openId, username: input.username ?? null, passwordHash: input.passwordHash ?? null, name: input.displayName, email, loginMethod: input.passwordHash ? "local_password" : "preprovisioned", role: input.operationalRole === "administrador" ? "admin" : "user", operationalRole: input.operationalRole, teamId: input.teamId ?? null, active: input.active }).$returningId();
@@ -1798,7 +1818,63 @@ export async function setUserLocalCredentials(input: { userId: number; username:
   });
 }
 
+/**
+ * Install protected QA profiles ONLY on an explicitly opted-in isolated stack.
+ * Creates neither credentials nor user assignments. The DB transaction is
+ * atomic and idempotent for an unchanged protected catalogue.
+ */
+export async function installHomologationProfiles(input: { actorUserId: number }) {
+  if (!currentHomologationRuntimeEnabled()) throw new Error("Perfis de homologação disponíveis apenas no ambiente isolado autorizado.");
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const requiredCodes = [...new Set(HOMOLOGATION_PROFILES.flatMap(profile => [...profile.permissionCodes]))];
+    const permissions = await tx.select({ id: accessPermissions.id, code: accessPermissions.code })
+      .from(accessPermissions).where(and(inArray(accessPermissions.code, requiredCodes), eq(accessPermissions.active, true)));
+    const idsByCode = new Map(permissions.map(p => [p.code, p.id]));
+    const missing = requiredCodes.filter(code => !idsByCode.has(code));
+    // Never generate placeholder privileges or partially provision a profile.
+    if (missing.length) throw new Error("Catálogo de permissões incompleto para homologação: " + missing.join(", "));
+    const created: string[] = [];
+    const existing: string[] = [];
+    for (const profile of HOMOLOGATION_PROFILES) {
+      const role = (await tx.select({ id: accessRoles.id, isSystem: accessRoles.isSystem,
+        active: accessRoles.active, defaultScope: accessRoles.defaultScope })
+        .from(accessRoles).where(eq(accessRoles.code, profile.code)).limit(1))[0];
+      const intended = profile.permissionCodes.map(code => idsByCode.get(code)!).sort((a,b)=>a-b);
+      if (role) {
+        const assigned = await tx.select({ id: rolePermissions.permissionId })
+          .from(rolePermissions).where(eq(rolePermissions.roleId, role.id));
+        const actual = assigned.map(row => row.id).sort((a,b)=>a-b);
+        if (!role.isSystem || !role.active || role.defaultScope !== profile.defaultScope ||
+            JSON.stringify(actual) !== JSON.stringify(intended)) {
+          throw new Error("Perfil reservado de homologação divergente: " + profile.code);
+        }
+        existing.push(profile.code);
+        continue;
+      }
+      const [saved] = await tx.insert(accessRoles).values({
+        code: profile.code, name: profile.name, description: profile.description,
+        defaultScope: profile.defaultScope, isSystem: true, active: true,
+      }).$returningId();
+      await tx.insert(rolePermissions).values(intended.map(permissionId => ({
+        roleId: saved.id, permissionId,
+      })));
+      await tx.insert(auditLogs).values({
+        resourceType: "access_role", resourceId: saved.id, action: "homologation_profile_installed",
+        actorUserId: input.actorUserId, beforeData: null,
+        afterData: { code: profile.code, defaultScope: profile.defaultScope,
+          permissionCodes: [...profile.permissionCodes], assignedUsers: 0 },
+      });
+      created.push(profile.code);
+    }
+    return { created, existing, assignedUsers: 0, stage: "homologation" as const };
+  });
+}
+
 export async function createAccessRole(input: { code: string; name: string; description?: string; defaultScope: typeof accessRoles.$inferInsert.defaultScope; permissionIds: number[]; actorUserId: number }) {
+  if (isReservedHomologationCode(input.code)) {
+    throw new Error("Código reservado: utilize o catálogo protegido de homologação.");
+  }
   const db = await requireDb();
   return db.transaction(async tx => {
     const duplicate = (await tx.select({ id: accessRoles.id }).from(accessRoles).where(eq(accessRoles.code, input.code)).limit(1))[0];
@@ -1815,7 +1891,7 @@ export async function updateAccessRole(input: { roleId: number; name?: string; d
   await db.transaction(async tx => {
     const before = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!before) throw new Error("Perfil não encontrado.");
-    if (!canUpdateRoleDefinition({ isSystem: before.isSystem, permissionIdsProvided: input.permissionIds !== undefined, active: input.active })) throw new Error("Perfis padrão não permitem alteração de matriz ou ativação.");
+    if (!canUpdateRoleDefinition({ isSystem: before.isSystem, permissionIdsProvided: input.permissionIds !== undefined, defaultScopeProvided: input.defaultScope !== undefined, active: input.active })) throw new Error("Perfis padrão não permitem alteração de matriz ou ativação.");
     if (input.permissionIds !== undefined || input.defaultScope !== undefined || input.active !== undefined) {
       // Changing the shared definition can change effective permissions for
       // every current assignee. Serialize with session issuance, then revoke
@@ -1854,7 +1930,7 @@ export async function assignUserRole(input: { userId: number; roleId: number; or
   return db.transaction(async tx => {
     // Session registration uses this same user-row lock. A role change must
     // serialize against new logins, and it must reject unknown users.
-    const lockedUser = (await tx.select({ id: users.id }).from(users)
+    const lockedUser = (await tx.select({ id: users.id, role: users.role, openId: users.openId }).from(users)
       .where(eq(users.id, input.userId)).limit(1).for("update"))[0];
     if (!lockedUser) throw new Error("Usuário não encontrado.");
     const role = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
