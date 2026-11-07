@@ -1471,6 +1471,13 @@ export async function reconcileOperationalRoleWithAssignments(user: User): Promi
   const db = await getDb();
   if (!db) return user;
   const activeAssignments = await db.select({ id: userRoleAssignments.id, teamId: userRoleAssignments.teamId, roleCode: accessRoles.code }).from(userRoleAssignments).innerJoin(accessRoles, eq(accessRoles.id, userRoleAssignments.roleId)).where(and(eq(userRoleAssignments.userId, user.id), eq(userRoleAssignments.active, true), eq(accessRoles.active, true)));
+  // The context loader calls this on every authenticated request. A QA-only
+  // role is not a valid operational identity outside the isolated sandbox,
+  // even if a legacy operationalRole might otherwise allow a direct route.
+  if (!currentHomologationRuntimeEnabled() &&
+      activeAssignments.some(assignment => isReservedHomologationCode(assignment.roleCode))) {
+    throw new Error("Conta de homologação bloqueada fora do ambiente isolado.");
+  }
   const agentAssignments = activeAssignments.filter(assignment => assignment.roleCode === "agente_campo");
   const agentAssignment = agentAssignments.find(assignment => assignment.teamId === user.teamId) ?? agentAssignments[0];
   if (!agentAssignment) return user;
@@ -1919,12 +1926,16 @@ export async function assignUserRole(input: { userId: number; roleId: number; or
   return db.transaction(async tx => {
     // Session registration uses this same user-row lock. A role change must
     // serialize against new logins, and it must reject unknown users.
-    const lockedUser = (await tx.select({ id: users.id, role: users.role, openId: users.openId }).from(users)
+    const lockedUser = (await tx.select({ id: users.id, role: users.role, openId: users.openId, operationalRole: users.operationalRole }).from(users)
       .where(eq(users.id, input.userId)).limit(1).for("update"))[0];
     if (!lockedUser) throw new Error("Usuário não encontrado.");
     const role = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!role || !role.active) throw new Error("Perfil não encontrado ou inativo.");
     if (isReservedHomologationCode(role.code)) {
+      if (lockedUser.operationalRole === "administrador" ||
+          (role.code === "homolog_agente_campo" && lockedUser.operationalRole !== "agente")) {
+        throw new Error("A função operacional do usuário é incompatível com o perfil de homologação.");
+      }
       if (!validateHomologationRoleAssignment({
         code: role.code, stage: process.env.AXE_DEPLOYMENT_STAGE,
         enabled: process.env.AXE_HOMOLOGATION_ENABLED,
