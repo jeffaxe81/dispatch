@@ -4,6 +4,7 @@ import {fetchRequestHandler} from "@trpc/server/adapters/fetch";
 import {rootRouter} from "./rootRouter";
 import {getDb} from "./db";
 import {getAccessSnapshot} from "./accessControl";
+import {requireActiveTenant} from "./tenantOperational";
 import type {TrpcContext} from "./_core/context";
 
 vi.mock("./db",async importOriginal=>{
@@ -147,6 +148,17 @@ describe("AXE Dispatch — Mobile consumer HTTP tenant.selection contract",()=>{
       organizations:[],activeOrganizationId:null,requiresSelection:false
     });
     orgs.push(...original);
+  });
+
+  it("refuses unselected, malformed and forged tenants at the actual server scope gate",async()=>{
+    await expect(requireActiveTenant(agent as never,{headers:{}}))
+      .rejects.toMatchObject({code:"BAD_REQUEST"});
+    await expect(requireActiveTenant(agent as never,{headers:{"x-organization-id":"999"}}))
+      .rejects.toMatchObject({code:"FORBIDDEN"});
+    await expect(requireActiveTenant(agent as never,{headers:{"x-organization-id":"INVALID"}}))
+      .rejects.toMatchObject({code:"BAD_REQUEST"});
+    await expect(requireActiveTenant(agent as never,{headers:{"x-organization-id":"3"}}))
+      .resolves.toBe(3);
   });
 
   it("uses SuperJSON envelope expected by the Mobile tRPC client",async()=>{
