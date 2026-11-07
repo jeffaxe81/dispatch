@@ -123,6 +123,28 @@ instâncias reais do servidor HTTP, balanceador, cookies reais do navegador,
 conexões TLS, restart durante upload físico ou política de retenção do
 storage. Homologação operacional desses itens continua pendente.
 
+## Homologação HTTP com duas instâncias isoladas
+
+O workflow `local-auth-session-mysql.yml` agora também executa
+`scripts/security/session-http-dual-node-smoke.ts`. O teste usa dois
+processos Node.js independentes com Express, o `rootRouter` tRPC real e
+`createContext` real, unidos por um proxy HTTP round-robin que escuta
+**somente em 127.0.0.1**. Ambos compartilham o MySQL 8.4 descartável de CI
+e a mesma chave JWT gerada apenas para essa execução.
+
+O teste exercita endpoints HTTP reais: `auth.me` anônimo,
+`auth.login` com cookie, `auth.me` no outro nó,
+`settings.evidenceRecovery` com privilégio e resposta sem `storageKey`,
+`auth.logout` em um nó e revogação observada no outro, bloqueio da
+consulta após logout, novo login e reinício de um dos processos. Após
+o reinício, a sessão válida deve continuar acessível por ambos os nós.
+
+**Limite:** estes são adaptadores HTTP reais do projeto em subprocessos de
+CI, não duas instâncias da distribuição de produção atrás de um balanceador
+corporativo. Ainda não exercitam TLS, proxy externo, cookies `Secure`,
+storage real, arquivos volumosos, deploy, failover de infraestrutura ou
+retention/expurgo LGPD. Nenhum backend externo nem arquivo real é usado.
+
 ## Homologação ainda necessária
 - Queda do processo antes/depois do PUT e antes/depois do commit.
 - Duas instâncias de backend, mudança simultânea de sessão/perfil/tenant,
