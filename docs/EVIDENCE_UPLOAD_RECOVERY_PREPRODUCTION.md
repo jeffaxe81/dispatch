@@ -173,6 +173,19 @@ Regras de isolamento: somente `CI=true`, `NODE_ENV=test`, banco
 sintéticas do provider. Todos os registros são descartados após cada
 execução; nenhum blob remoto é alterado.
 
+O mesmo smoke também valida a **leitura assinada** (`presign/get` e
+`GET` de bytes), arquivo não encontrado (404), recusa de GET sem assinatura
+ou após expiração do token, e ausência de remoção por `DELETE` (405). Com o
+proxy privado real da aplicação montado em Express e uma sessão JWT válida,
+o documento confirmado retorna redirecionamento 307 com `Cache-Control:
+no-store`. A leitura por usuário anônimo, de outra equipe ou por sessão
+revogada é negada; evidências órfãs não chegam ao serviço de assinatura.
+O ambiente HTTP é local e descartável, não comprova a implementação Forge.
+
+O roteiro de aceite do provedor real, inclusive permissões, prazo de
+expiração, retenção e impedimento de exclusão não homologada, está em
+`docs/FORGE_STORAGE_HOMOLOGATION_CHECKLIST.md`.
+
 **Limite:** esse teste usa tráfego HTTP real, mas o provedor é uma
 implementação local de teste, não o Forge real. Portanto não comprova
 permissões do provedor, semântica de exclusão, retenção, autenticação
