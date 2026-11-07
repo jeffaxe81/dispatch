@@ -8,6 +8,8 @@ export type ReadinessResult = {
   manifest_valid: boolean;
   required_gates: 3;
   evidenced_gates: number;
+  /** Percentual somente dos três gates reais, nunca percentual global do produto. */
+  real_environment_progress_percent: number;
   pending_gate_ids: string[];
   findings: string[];
 };
@@ -98,6 +100,7 @@ export function evaluateDispatchReadiness(manifest: unknown, now = new Date()): 
     manifest_valid: manifestValid,
     required_gates: 3,
     evidenced_gates: evidenced,
+    real_environment_progress_percent: manifestValid ? Math.floor((evidenced * 100) / REQUIRED_REAL_GATES.length) : 0,
     pending_gate_ids: pending,
     findings: [...new Set(findings)],
   };
@@ -115,7 +118,7 @@ export function formatDispatchReadinessSummary(result: ReadinessResult): string 
     "",
     "**Status operacional: " + result.decision + "**",
     "",
-    "- Evidências mínimas registradas: **" + result.evidenced_gates + "/3**",
+    "- Homologação real: **" + result.real_environment_progress_percent + "% (" + result.evidenced_gates + "/3 gates)**",
     "- Autorização de produção: **NÃO**",
     "- CI técnica: **verificada em etapa independente**",
     "",

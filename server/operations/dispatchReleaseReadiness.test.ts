@@ -19,7 +19,7 @@ describe("Gate passivo de release AXE Dispatch", () => {
   it("mantém NO_GO para o manifesto atual com três pendências", () => {
     expect(evaluateDispatchReadiness(original(), now)).toMatchObject({
       decision: "NO_GO", production_approved: false, ci_not_assessed: true,
-      manifest_valid: true, evidenced_gates: 0, required_gates: 3,
+      manifest_valid: true, evidenced_gates: 0, real_environment_progress_percent: 0, required_gates: 3,
       pending_gate_ids: ["DISPATCH-REAL-01", "DISPATCH-REAL-02", "DISPATCH-REAL-03"],
     });
   });
@@ -27,7 +27,7 @@ describe("Gate passivo de release AXE Dispatch", () => {
     expect(evaluateDispatchReadiness(null, now).decision).toBe("NO_GO");
     const m = original();
     m.policy.manual_environment_tests_required_before_production_go = false;
-    expect(evaluateDispatchReadiness(m, now)).toMatchObject({decision:"NO_GO", manifest_valid:false});
+    expect(evaluateDispatchReadiness(m, now)).toMatchObject({decision:"NO_GO", manifest_valid:false, real_environment_progress_percent:0});
   });
   it("rejeita IDs desconhecidos, ausentes ou duplicados", () => {
     const m = original();
@@ -51,13 +51,26 @@ describe("Gate passivo de release AXE Dispatch", () => {
   it("não concede GO, mesmo com os três gates evidenciados", () => {
     expect(evaluateDispatchReadiness(withEvidence(original()), now)).toMatchObject({
       decision: "MANUAL_GO_REVIEW_REQUIRED", production_approved: false,
-      evidenced_gates: 3, ci_not_assessed: true,
+      evidenced_gates: 3, real_environment_progress_percent: 100, ci_not_assessed: true,
     });
+  });
+  it("mede evolução parcial 0/33/66/100% sem aprovar produção", () => {
+    const m = withEvidence(original());
+    m.external_environment_tests[0].status = "PENDING_REAL_ENVIRONMENT";
+    m.external_environment_tests[1].status = "PENDING_REAL_ENVIRONMENT";
+    expect(evaluateDispatchReadiness(m, now)).toMatchObject({
+      real_environment_progress_percent: 33, evidenced_gates: 1,
+      decision: "NO_GO", production_approved: false,
+    });
+    m.external_environment_tests[0].status = "PASSED_REAL_ENVIRONMENT";
+    expect(evaluateDispatchReadiness(m, now).real_environment_progress_percent).toBe(66);
+    m.external_environment_tests[1].status = "PASSED_REAL_ENVIRONMENT";
+    expect(evaluateDispatchReadiness(m, now).real_environment_progress_percent).toBe(100);
   });
   it("gera sumário seguro e impede GO automático visual", () => {
     const report = evaluateDispatchReadiness(original(), now);
     const summary = formatDispatchReadinessSummary(report);
-    expect(summary).toContain("0/3");
+    expect(summary).toContain("0% (0/3 gates)");
     expect(summary).toContain("NO_GO");
     expect(summary).toContain("NÃO");
     expect(summary).toContain("DISPATCH-REAL-01");
