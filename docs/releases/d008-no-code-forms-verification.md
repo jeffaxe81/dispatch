@@ -1,18 +1,17 @@
 # D-008 — Formulários Dinâmicos / No-Code — Relatório de Verificação
 
-**Estado:** CANDIDATO TÉCNICO — GATES GREEN; MERGE/DEPLOY NÃO AUTORIZADOS  
-**Base protegida:** `main` em `2ebdec3b8627bb2fbb09ad6422119f243756a790` (v2.16.0)  
-**Branch:** `feature/d008-no-code-forms`  
-**Head funcional GREEN:** `5748265d245a36d9ba7553d18f72eed29c95eefb`  
-**Último head documental registrado no relatório:** `522a2eb48b4f4c3becb95367122cc0723abac2b3`  
-**PR de homologação existente:** #44  
-**Data:** 2026-09-06
+**Estado:** INTEGRADO EM `main`; DEPLOY/MIGRATION/GRANTS NÃO INFERIDOS NEM EXECUTADOS POR ESTE RELATÓRIO  
+**PR de integração:** #44 — mesclado em 2026-09-06  
+**Head funcional final do PR:** `2570499204843f8a6b5cab5dd491cacad2be6177`  
+**Merge commit:** `c05d0fc23fee2c80ec6af5ea57b684e6300e1630`  
+**Auditoria pós-merge:** 2026-10-28  
+**Branch de auditoria:** `chore/d008-post-merge-audit-20261028`
 
-> Observação: o estado corrente do branch e os runs mais recentes devem ser consultados no PR #44. Este relatório não será alterado apenas para registrar novos SHAs, evitando criar ciclos de commits documentais após cada validação.
+> Observação pós-merge: a branch histórica D-008 não é mais a fonte de verdade. O código vigente deve ser lido em `main`. Este documento registra a entrega histórica e os gates administrativos que continuam independentes do merge.
 
 ## 1. Regra de aprovação e evidência de runtime
 
-Este documento registra evidência real de CI para a D-008, mas **não** autoriza merge em `main`, deploy, aplicação de migration real ou grants automáticos. Esses atos permanecem sujeitos à autorização explícita do responsável pelo projeto.
+Este documento registra evidência real de CI da entrega D-008. O **merge em `main` já ocorreu no PR #44**. Deploy, aplicação de migration real, grants automáticos e remoção de checkpoints continuam sendo atos separados e não são inferidos a partir do merge.
 
 No head documental GREEN `522a2eb48b4f4c3becb95367122cc0723abac2b3`, os quatro gates obrigatórios foram executados no workflow `Qualidade`, run `34045248061` (#593), contra o merge sintético do branch D-008 com a `main` atual.
 
@@ -115,11 +114,11 @@ No head documental `522a2eb48b4f4c3becb95367122cc0723abac2b3`:
 
 ## 4. Gates administrativos ainda bloqueados
 
-1. **Permissões dinâmicas `forms.*`:** o módulo respeita assignments dinâmicos como autoridade. Mapeamento/grant produtivo para perfis não será criado automaticamente e depende de autorização explícita.
-2. **Migration real:** `0006_d008_no_code_forms.sql` permanece somente como artefato versionado; aplicação em banco real depende de autorização explícita.
-3. **PR #44 / merge:** o PR existe como superfície de homologação, porém merge em `main` não está autorizado.
-4. **Deploy:** não autorizado nesta etapa.
-5. **Checkpoints:** o checkpoint `checkpoint/pre-d008-forms-20260905` permanece preservado e não deve ser removido automaticamente.
+1. **Permissões dinâmicas `forms.*`:** o módulo respeita assignments dinâmicos como autoridade. A auditoria do repositório não presume grants produtivos; qualquer concessão permanece uma ação administrativa explícita.
+2. **Migration real:** `0006_d008_no_code_forms.sql` está versionada e registrada no journal. O estado do repositório, por si só, não comprova aplicação em banco real.
+3. **PR #44 / merge:** concluído em 2026-09-06, merge commit `c05d0fc23fee2c80ec6af5ea57b684e6300e1630`.
+4. **Deploy:** não é inferido a partir do merge e continua dependente de processo operacional próprio.
+5. **Checkpoints:** checkpoints históricos devem permanecer preservados até decisão explícita de limpeza.
 
 ## 5. Backlog sem prazo desta entrega
 
@@ -141,14 +140,12 @@ Durante a depuração da suíte foi utilizado um workflow temporário de diagnó
 
 ## 7. Restrições de fechamento
 
-Este relatório **não autoriza**:
+O PR #44 já foi mesclado em `main`. Este relatório **não autoriza nem afirma execução de**:
 
-- merge do PR #44;
-- merge em `main`;
 - deploy;
 - aplicação de migration em banco real;
 - concessão automática de permissões;
 - remoção de checkpoints;
 - limpeza destrutiva de dados ou artefatos.
 
-O estado corrente do branch deve ser lido no PR #44 e nos workflows associados ao seu head atual.
+A fonte de verdade atual do código é a branch `main`; o PR #44 permanece como registro histórico da entrega D-008.
