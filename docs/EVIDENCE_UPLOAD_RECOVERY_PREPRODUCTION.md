@@ -145,6 +145,39 @@ corporativo. Ainda não exercitam TLS, proxy externo, cookies `Secure`,
 storage real, arquivos volumosos, deploy, failover de infraestrutura ou
 retention/expurgo LGPD. Nenhum backend externo nem arquivo real é usado.
 
+## HTTP real contra armazenamento local descartável (CI)
+
+O script `scripts/security/storage-http-mysql-smoke.ts` estabelece um serviço
+HTTP que escuta exclusivamente em `127.0.0.1:8765` e implementa os mesmos
+dois passos HTTP usados pelo cliente de storage atual: solicitação de URL
+pré-assinada e `PUT` de bytes. O serviço mantém os bytes somente na memória
+do processo de teste. Rejeita HTTP `DELETE` e não representa nem acessa o
+provedor Forge real.
+
+Os cenários incluem:
+- Presign HTTP válido, `PUT` com bytes e MIME de PDF e publicação atômica
+  da evidência, evento, auditoria e estado `committed`;
+- Erro HTTP 503 antes da URL de upload: o ledger preserva a tentativa
+  `cleanup_required` mesmo quando nenhum objeto foi recebido;
+- Erro HTTP 503 **após persistir os bytes**: o objeto pode existir sem
+  vínculo de evidência, por isso `cleanup_required` permanece até análise;
+- Revogação de sessão durante um `PUT` HTTP concluído: a publicação da
+  evidência deve ser bloqueada pela segunda verificação transacional;
+- Nova tentativa com JWT já revogado não deve chegar ao provedor nem
+  criar nova reserva;
+- O relatório administrativo exibe somente indicadores/IDs internos,
+  jamais a chave privada do objeto ou URL assinada.
+
+Regras de isolamento: somente `CI=true`, `NODE_ENV=test`, banco
+`dispatch_auth_ci` em `127.0.0.1`, segredo JWT de teste e credenciais
+sintéticas do provider. Todos os registros são descartados após cada
+execução; nenhum blob remoto é alterado.
+
+**Limite:** esse teste usa tráfego HTTP real, mas o provedor é uma
+implementação local de teste, não o Forge real. Portanto não comprova
+permissões do provedor, semântica de exclusão, retenção, autenticação
+contra o serviço externo ou expurgo de dados.
+
 ## Homologação ainda necessária
 - Queda do processo antes/depois do PUT e antes/depois do commit.
 - Duas instâncias de backend, mudança simultânea de sessão/perfil/tenant,
