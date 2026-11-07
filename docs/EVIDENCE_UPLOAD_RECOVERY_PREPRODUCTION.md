@@ -98,6 +98,31 @@ exclusão, URL de storage, chave privada, ação de correção ou suposta
 confirmação de remoção remota.** Indicadores são relativos ao filtro
 selecionado, não à quantidade total de objetos armazenados no provedor.
 
+## CI de concorrência entre processos e falha no PUT sintético
+
+A validação `Local auth session MySQL 8.4 smoke (isolated)` também executa
+`scripts/security/session-cross-process-probe.ts` em processos Node.js
+**separados**, cada um com seu próprio pool Drizzle, compartilhando apenas
+o banco MySQL descartável `dispatch_auth_ci`.
+
+O processo principal registra uma sessão, dois subprocessos verificam a
+autenticação em paralelo, a sessão é revogada no banco compartilhado e novos
+subprocessos confirmam que o mesmo JWT não é mais aceito. O JWT trafega
+somente pela entrada padrão privada dos subprocessos, nunca por argumento
+de linha de comando, URL, log nem artefato de testes.
+
+Em outro cenário, um subprocesso reserva uma chave de evidência no banco
+e simula uma interrupção abrupta **durante o PUT sintético**. O processo
+principal comprova que a reserva permanece como `reserved` sem referência
+publicada e que o relatório passa a apresentá-la como `stale_reserved`
+após vencer a janela de 15 minutos. Os dados sintéticos são descartados ao
+fim do teste. Não há chamadas a um provedor externo nem objeto real apagado.
+
+**Escopo e limite:** subprocessos independentes não substituem duas
+instâncias reais do servidor HTTP, balanceador, cookies reais do navegador,
+conexões TLS, restart durante upload físico ou política de retenção do
+storage. Homologação operacional desses itens continua pendente.
+
 ## Homologação ainda necessária
 - Queda do processo antes/depois do PUT e antes/depois do commit.
 - Duas instâncias de backend, mudança simultânea de sessão/perfil/tenant,
