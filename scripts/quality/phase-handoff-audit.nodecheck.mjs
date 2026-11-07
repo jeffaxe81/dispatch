@@ -51,3 +51,51 @@ test("summary is sanitized and never prints URLs or SHAs",()=>{
   assert.match(text,/NO-GO/);
   assert.doesNotMatch(text,/github\.com|NEVER_PRINT|80116d|ebfb8/);
 });
+
+test("rejects mismatched baseline SHA or a documentation URL pinned to another commit",()=>{
+  const badBaseline=original();
+  badBaseline.baseline_sha="not-a-sha";
+  assert.equal(evaluate(badBaseline).manifest_valid,false);
+  assert.equal(evaluate(badBaseline).phase_evidence_percent,0);
+  const badItem=original();
+  badItem.phases[2].evidence[0].sha="b".repeat(40);
+  assert.ok(evaluate(badItem).errors.includes("INVALID_EVIDENCE_F03"));
+  const badUrl=original();
+  badUrl.phases[0].evidence[0].url=badUrl.phases[0].evidence[0].url.replace(
+    badUrl.baseline_sha,"b".repeat(40));
+  assert.ok(evaluate(badUrl).errors.includes("INVALID_EVIDENCE_F01"));
+});
+test("rejects self-approval, missing review, and future review in F04",()=>{
+  const m=original();
+  m.phases[3].status="EVIDENCE_RECORDED";
+  m.phases[3].evidence=[{kind:"security_review",sha:m.baseline_sha,url:"https://github.com/"+repo+"/pull/42"}];
+  assert.ok(evaluate(m).errors.includes("INDEPENDENT_REVIEW_REQUIRED_F04"));
+  m.phases[3].review={independent_review:true,decision:"APPROVED",author:"lead",reviewer:"LEAD",
+    reviewed_at:"2025-01-02T00:00:00Z"};
+  assert.ok(evaluate(m).errors.includes("INDEPENDENT_REVIEW_REQUIRED_F04"));
+  m.phases[3].review.reviewer="independent";
+  m.phases[3].review.reviewed_at="2099-01-01T00:00:00Z";
+  assert.ok(evaluate(m).errors.includes("INDEPENDENT_REVIEW_REQUIRED_F04"));
+  m.phases[3].review.reviewed_at="2025-01-02T00:00:00Z";
+  const result=evaluate(m);
+  assert.equal(result.manifest_valid,true);
+  assert.equal(result.phase_evidence_percent,66);
+  assert.equal(result.decision,"NO_GO");
+  assert.equal(result.production_approved,false);
+});
+test("requires separate independent reviews for real environment and release",()=>{
+  const m=original();
+  const all=[
+    ["security_review","pull/42"],["real_environment_report","issues/43"],
+    ["release_approval","releases/tag/v1-preprod"]
+  ];
+  for(let i=3;i<6;i++){
+    m.phases[i].status="EVIDENCE_RECORDED";
+    m.phases[i].evidence=[{kind:all[i-3][0],sha:m.baseline_sha,
+      url:"https://github.com/"+repo+"/"+all[i-3][1]}];
+  }
+  assert.ok(evaluate(m).errors.includes("INDEPENDENT_REVIEW_REQUIRED_F04"));
+  assert.ok(evaluate(m).errors.includes("INDEPENDENT_REVIEW_REQUIRED_F05"));
+  assert.ok(evaluate(m).errors.includes("INDEPENDENT_REVIEW_REQUIRED_F06"));
+  assert.equal(evaluate(m).phase_evidence_percent,0);
+});
