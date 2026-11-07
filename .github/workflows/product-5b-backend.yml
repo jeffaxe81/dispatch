@@ -78,10 +78,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Backend security preflight
-        run: node scripts/security-regression-check.mjs
       - name: Install dependencies
         run: corepack enable && corepack pnpm install --frozen-lockfile
+      - name: Backend security preflight
+        run: node scripts/security-regression-check.mjs
       - name: Execute counted production policy checks
         run: corepack pnpm test:10b:shard
       - name: Retain reproducible evidence
