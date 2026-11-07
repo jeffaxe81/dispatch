@@ -4,10 +4,13 @@
  * Fail closed unless the exact loopback and disposable DB guardrails match.
  */
 import assert from "node:assert/strict";
+import express from "express";
 import { randomUUID } from "node:crypto";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import mysql, { type ResultSetHeader, type RowDataPacket } from "mysql2/promise";
 import { isReservedIncidentEvidenceKey, storageGetSignedUrl } from "../../server/storage";
+import { registerStorageProxy } from "../../server/_core/storageProxy";
+import { COOKIE_NAME } from "../../shared/const";
 
 type Mode = "success" | "presign_503" | "put_503_after_store" | "revoke_during_put";
 const STORE_ORIGIN = "http://127.0.0.1:8765";
@@ -45,6 +48,8 @@ async function main() {
   ]);
   const conn = await mysql.createConnection(databaseUrl);
   let serverStarted = false;
+  let proxyServer: Server | null = null;
+  let proxyOrigin = "";
   let userId: number | null = null;
   let teamId: number | null = null;
   let incidentId: number | null = null;
@@ -176,6 +181,19 @@ async function main() {
     const token = await createLocalSessionToken(userId, passwordHash);
     const identity = await verifyLocalSessionToken(token);
     assert.ok(identity);
+    const app = express();
+    registerStorageProxy(app);
+    proxyServer = await new Promise<Server>((resolve, reject) => {
+      const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+      listener.once("error", reject);
+    });
+    const proxyAddress = proxyServer.address();
+    if (!proxyAddress || typeof proxyAddress === "string")
+      throw new Error("Invalid isolated storage proxy address.");
+    proxyOrigin = `http://127.0.0.1:${proxyAddress.port}`;
+    const sessionCookie = `${COOKIE_NAME}=${token}`;
+    const proxyPath = (key: string) =>
+      proxyOrigin + "/manus-storage/" + key;
 
     const input = {
       incidentId, actorUserId: userId, teamId,
@@ -220,6 +238,27 @@ async function main() {
     assert.equal(readResponse.status, 200);
     assert.equal(readResponse.headers.get("content-type"), "application/pdf");
     assert.deepEqual(Buffer.from(await readResponse.arrayBuffer()), saved.bytes);
+
+    // The actual application's private redirect proxy must authorize a
+    // committed reference BEFORE signing/redirecting to the object.
+    const referenceKey = String(afterSuccess[0].storage_key);
+    const unsignedBeforeProxy = readPresignRequests;
+    const anonymousProxy = await fetch(proxyPath(referenceKey), { redirect: "manual" });
+    assert.equal(anonymousProxy.status, 401);
+    assert.equal(readPresignRequests, unsignedBeforeProxy);
+    const authorizedProxy = await fetch(proxyPath(referenceKey), {
+      headers: { cookie: sessionCookie },
+      redirect: "manual",
+    });
+    assert.equal(authorizedProxy.status, 307);
+    assert.equal(authorizedProxy.headers.get("cache-control"), "no-store");
+    const redirect = authorizedProxy.headers.get("location");
+    assert.ok(redirect);
+    assert.equal(new URL(redirect).origin, STORE_ORIGIN);
+    const proxiedObject = await fetch(redirect, { redirect: "manual" });
+    assert.equal(proxiedObject.status, 200);
+    assert.deepEqual(Buffer.from(await proxiedObject.arrayBuffer()), saved.bytes);
+
     const deniedPresign = await fetch(
       STORE_ORIGIN + "/v1/storage/presign/get?path=" +
       encodeURIComponent(String(afterSuccess[0].storage_key)),
@@ -244,6 +283,13 @@ async function main() {
     assert.equal((await fetch(signedMissing)).status, 404,
       "presigned URL is not proof that remote object exists");
     assert.equal(putRequests, 1);
+    const signBeforeOrphan = readPresignRequests;
+    const orphanProxy = await fetch(proxyPath(String(presignFailure!.storage_key)), {
+      headers: { cookie: sessionCookie }, redirect: "manual",
+    });
+    assert.equal(orphanProxy.status, 404);
+    assert.equal(readPresignRequests, signBeforeOrphan,
+      "uncommitted reservations must never yield signed redirect URLs");
     await checkNoExtraEvidence(1);
 
     mode = "put_503_after_store";
@@ -263,6 +309,13 @@ async function main() {
     assert.equal(orphanGet.status, 200, "a failed PUT can leave retrievable bytes");
     assert.deepEqual(Buffer.from(await orphanGet.arrayBuffer()),
       Buffer.from(input.dataBase64, "base64"));
+    const afterFailedPutSignCount = readPresignRequests;
+    const failedPutProxy = await fetch(proxyPath(String(persistedOrphan!.storage_key)), {
+      headers: { cookie: sessionCookie }, redirect: "manual",
+    });
+    assert.equal(failedPutProxy.status, 404);
+    assert.equal(readPresignRequests, afterFailedPutSignCount,
+      "a remotely stored orphan must not bypass the DB evidence reference");
     await checkNoExtraEvidence(1);
 
     mode = "revoke_during_put";
@@ -284,6 +337,13 @@ async function main() {
     assert.equal(presignRequests, presignBeforeRejected,
       "revoked JWT must be rejected before contacting provider");
     assert.equal((await rows()).length, 4, "revoked request cannot create a new reservation");
+    const signBeforeRevoked = readPresignRequests;
+    const revokedProxy = await fetch(proxyPath(referenceKey), {
+      headers: { cookie: sessionCookie }, redirect: "manual",
+    });
+    assert.equal(revokedProxy.status, 401);
+    assert.equal(readPresignRequests, signBeforeRevoked,
+      "revoked JWT must not cause the storage proxy to sign a download URL");
 
     const report = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 100 });
     const own = report.rows.filter(row => row.actorUserId === userId);
@@ -310,6 +370,7 @@ async function main() {
     assert.ok(readObjectRequests >= 4);
     console.log("PASS: loopback HTTP presign/PUT/GET, denied anonymous reads, missing objects, 503 before/after PUT, concurrent revocation, durable cleanup and no deletion.");
   } finally {
+    if (proxyServer) await new Promise<void>(resolve => proxyServer!.close(() => resolve()));
     if (serverStarted) await new Promise<void>(resolve => server.close(() => resolve()));
     if (userId) await conn.execute("DELETE FROM incident_evidence_upload_attempts WHERE actor_user_id = ?", [userId]).catch(() => {});
     if (incidentId) await conn.execute("DELETE FROM incidents WHERE id = ?", [incidentId]).catch(() => {});
