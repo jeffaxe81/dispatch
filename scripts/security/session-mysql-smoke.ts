@@ -89,7 +89,7 @@ function runSubprocessProbe(input: SubprocessProbe): Promise<{
         if (!result || typeof result !== "object" ||
             !("authenticated" in result) || typeof result.authenticated !== "boolean" ||
             !("userId" in result) ||
-            !(result.userId === null || Number.isSafeInteger(result.userId)))
+            !(result.userId === null || (typeof result.userId === "number" && Number.isSafeInteger(result.userId))))
           throw new Error("Invalid child authentication probe result.");
         resolve({
           authenticated: result.authenticated,
