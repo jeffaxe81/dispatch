@@ -9,6 +9,7 @@ on:
       - 'drizzle/**'
       - 'drizzle.config.ts'
       - 'scripts/security/session-mysql-smoke.ts'
+      - 'scripts/security/session-cross-process-probe.ts'
       - '.github/workflows/local-auth-session-mysql.yml'
   workflow_dispatch: {}
 
