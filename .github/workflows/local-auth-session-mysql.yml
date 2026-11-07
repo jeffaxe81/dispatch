@@ -9,6 +9,10 @@ on:
       - 'drizzle/**'
       - 'drizzle.config.ts'
       - 'scripts/security/session-mysql-smoke.ts'
+      - 'scripts/security/session-cross-process-probe.ts'
+      - 'scripts/security/session-http-node.ts'
+      - 'scripts/security/session-http-dual-node-smoke.ts'
+      - 'scripts/security/storage-http-mysql-smoke.ts'
       - '.github/workflows/local-auth-session-mysql.yml'
   workflow_dispatch: {}
 
@@ -63,5 +67,21 @@ jobs:
         run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Apply complete migrations to isolated MySQL 8.4
         run: corepack pnpm db:migrate
-      - name: Exercise real sessions, replay, password reset, race and DB outage
+      - name: Exercise real sessions, evidence ledger, replay and concurrent revocation
+        env:
+          # Only a synthetic host intercepted by the test process; never a
+          # real Forge endpoint or real provider credential.
+          BUILT_IN_FORGE_API_URL: http://127.0.0.1:8765
+          BUILT_IN_FORGE_API_KEY: ci-synthetic-storage-only
         run: corepack pnpm exec tsx scripts/security/session-mysql-smoke.ts
+      - name: Exercise real HTTP/tRPC adapters behind local round-robin proxy
+        env:
+          BUILT_IN_FORGE_API_URL: http://127.0.0.1:8765
+          BUILT_IN_FORGE_API_KEY: ci-synthetic-storage-only
+        run: corepack pnpm exec tsx scripts/security/session-http-dual-node-smoke.ts
+      - name: Exercise real loopback storage HTTP PUT and recovery with MySQL
+        env:
+          # Strictly disposable local provider; no production Forge credential.
+          BUILT_IN_FORGE_API_URL: http://127.0.0.1:8765
+          BUILT_IN_FORGE_API_KEY: ci-synthetic-storage-only
+        run: corepack pnpm exec tsx scripts/security/storage-http-mysql-smoke.ts

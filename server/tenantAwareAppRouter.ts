@@ -151,7 +151,7 @@ const tenantOverrides = router({
       .mutation(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "occurrences.create");
         const tenantId = await tenantFor(ctx);
-        return createIncidentForTenant(tenantId, { ...input, actorUserId: ctx.user.id });
+        return createIncidentForTenant(tenantId, { ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     update: operationalProcedure
       .input(z.object({
@@ -170,7 +170,7 @@ const tenantOverrides = router({
         await assertPermission(ctx.user, "occurrences.edit");
         const tenantId = await tenantFor(ctx);
         assertCanEditIncident(ctx.user, requireIncident(await getIncidentForTenant(tenantId, input.incidentId)));
-        return updateIncident({ ...input, actorUserId: ctx.user.id });
+        return updateIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     permanentlyDelete: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), reason: z.string().trim().min(10).max(1000) }))
@@ -178,7 +178,7 @@ const tenantOverrides = router({
         await assertSuperAdministrator(ctx.user);
         const tenantId = await tenantFor(ctx);
         requireIncident(await getIncidentForTenant(tenantId, input.incidentId));
-        return permanentlyDeleteIncident({ ...input, actorUserId: ctx.user.id });
+        return permanentlyDeleteIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     transition: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), nextStatus: statusEnum, expectedStatus: statusEnum.optional(), expectedStatusRevision: z.number().int().positive().optional(), note: z.string().trim().min(3).max(1000) }))
@@ -232,7 +232,7 @@ const tenantOverrides = router({
         await assertTeamTenant(tenantId, ctx.user.teamId);
         await assertTeamScope(ctx.user, ctx.user.teamId, "occurrences.view", tenantId);
         assertCanAddIncidentEvidence(ctx.user, incident);
-        return addIncidentEvidence({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id });
+        return addIncidentEvidence({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id, expectedTenantId: tenantId, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     }),
     timeline: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {

@@ -30,9 +30,42 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = appendHashSuffix(normalizeKey(relKey));
+  return putAtKnownKey(appendHashSuffix(normalizeKey(relKey)), data, contentType);
+}
 
+/**
+ * Persist the exact key BEFORE uploading any bytes. Only caller-generated,
+ * collision-resistant incident evidence keys are accepted. Does not allow
+ * arbitrary storage overwrites.
+ */
+export function isReservedIncidentEvidenceKey(key: string): boolean {
+  return /^incident-evidence\/\d+\/\d+\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[A-Za-z0-9_-]{1,100}\.(jpg|png|webp|pdf)$/.test(key);
+}
+
+export async function storagePutReservedIncidentEvidence(
+  key: string,
+  data: Buffer | Uint8Array,
+  contentType: string,
+): Promise<{ key: string; url: string }> {
+  if (!isReservedIncidentEvidenceKey(key))
+    throw new Error("Invalid reserved incident evidence storage key.");
+  const extensionByType: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "application/pdf": "pdf",
+  };
+  if (!extensionByType[contentType] || !key.endsWith(`.${extensionByType[contentType]}`))
+    throw new Error("Reserved evidence extension does not match its content type.");
+  return putAtKnownKey(key, data, contentType);
+}
+
+async function putAtKnownKey(
+  key: string,
+  data: Buffer | Uint8Array | string,
+  contentType: string,
+): Promise<{ key: string; url: string }> {
+  const { forgeUrl, forgeKey } = getForgeConfig();
   const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
   presignUrl.searchParams.set("path", key);
   const presignResp = await fetch(presignUrl, {

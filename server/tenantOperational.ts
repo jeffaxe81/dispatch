@@ -124,11 +124,12 @@ export async function getIncidentForTenant(tenantId: number, incidentId: number)
     .limit(1))[0];
 }
 
-export async function createIncidentForTenant(tenantId: number, input: Parameters<typeof createIncident>[0]) {
-  const created = await createIncident(input);
-  const db = await requireDb();
-  await db.insert(incidentTenantScopes).values({ incidentId: created.id, organizationId: tenantId });
-  return created;
+export async function createIncidentForTenant(tenantId: number, input: Omit<Parameters<typeof createIncident>[0], "organizationId">) {
+  if (!Number.isSafeInteger(tenantId) || tenantId <= 0)
+    throw new TRPCError({ code: "FORBIDDEN", message: "Tenant operacional inválido." });
+  // createIncident persists the incident, its tenant scope, and audit events
+  // in one DB transaction. A failed scope write rolls back the incident.
+  return createIncident({ ...input, organizationId: tenantId });
 }
 
 export async function listTeamsForTenant(tenantId: number, teamId?: number) {

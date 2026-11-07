@@ -7,6 +7,17 @@ const mocks = vi.hoisted(() => ({ assertPermission: vi.fn(), assertTeamScope: vi
 vi.mock("./accessControl", async importOriginal => ({ ...(await importOriginal<typeof import("./accessControl")>()), assertPermission: mocks.assertPermission, assertTeamScope: mocks.assertTeamScope }));
 vi.mock("./db", async importOriginal => ({ ...(await importOriginal<typeof import("./db")>()), getIncidentById: mocks.getIncidentById, listIncidentEvidence: mocks.listIncidentEvidence, addIncidentEvidence: mocks.addIncidentEvidence }));
 
+// Simulated router-only caller: JWT cryptography and MySQL locks are verified
+// in the isolated session/evidence integration smoke, not bypassed in runtime.
+vi.mock("./localAuth", async importOriginal => ({
+  ...(await importOriginal<typeof import("./localAuth")>()),
+  requireOperationalSessionIdentity: vi.fn(async (_req: unknown, actorUserId: number) => ({
+    userId: actorUserId,
+    jti: "b".repeat(64),
+    expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+  })),
+}));
+
 import { appRouter } from "./routers";
 
 function context(teamId: number | null = 3): TrpcContext {

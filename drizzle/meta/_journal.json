@@ -183,6 +183,13 @@
       "when": 1793980800000,
       "tag": "0025_mobile_auth_registry",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1793984400000,
+      "tag": "0026_evidence_upload_reservations",
+      "breakpoints": true
     }
   ]
 }

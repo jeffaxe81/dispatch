@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, DatabaseZap, LockKeyhole, MapPinned, Save, Settings2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, DatabaseZap, FileWarning, LockKeyhole, MapPinned, Save, Settings2, ShieldCheck } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -183,6 +183,21 @@ function GeneralSettingsContent() {
         {save.error && <p role="alert" className="text-sm text-rose-700">{save.error.message}</p>}
         <div className="flex justify-end"><Button type="submit" disabled={settings.isLoading || save.isPending}><Save className="mr-2 h-4 w-4" />{save.isPending ? "Salvando..." : "Salvar configurações"}</Button></div>
       </form>
+
+      <Card className="border-sky-200 shadow-sm">
+        <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700"><FileWarning className="h-5 w-5" /></div>
+            <div>
+              <p className="font-medium text-slate-900">Conciliação de evidências</p>
+              <p className="mt-1 max-w-xl text-sm leading-5 text-slate-600">Analise uploads interrompidos e referências pendentes sem expor chaves de armazenamento ou excluir arquivos.</p>
+            </div>
+          </div>
+          <Button type="button" variant="outline" onClick={() => setLocation("/administracao/conciliacao-evidencias")}>
+            Abrir conciliação
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card className="border-rose-200 bg-rose-50/40 shadow-sm">
         <CardHeader>

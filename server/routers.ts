@@ -84,6 +84,7 @@ import {
   getIncidentTimeline,
   listIncidents,
   listIncidentEvidence,
+  listEvidenceReconciliationCandidates,
   listAccessPermissions,
   listAccessRoles,
   listIntegrationEventCatalog,
@@ -463,7 +464,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "occurrences.create");
-        return createIncident({ ...input, actorUserId: ctx.user.id });
+        return createIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     update: operationalProcedure
       .input(z.object({
@@ -481,13 +482,13 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         await assertPermission(ctx.user, "occurrences.edit");
         assertCanEditIncident(ctx.user, requireIncident(await getIncidentById(input.incidentId)));
-        return updateIncident({ ...input, actorUserId: ctx.user.id });
+        return updateIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     permanentlyDelete: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), reason: z.string().trim().min(10).max(1000) }))
       .mutation(async ({ ctx, input }) => {
         await assertSuperAdministrator(ctx.user);
-        return permanentlyDeleteIncident({ ...input, actorUserId: ctx.user.id });
+        return permanentlyDeleteIncident({ ...input, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     transition: operationalProcedure
       .input(z.object({ incidentId: z.number().int().positive(), nextStatus: statusEnum, expectedStatus: statusEnum.optional(), expectedStatusRevision: z.number().int().positive().optional(), note: z.string().trim().min(3).max(1000) }))
@@ -535,7 +536,7 @@ export const appRouter = router({
         const incident = requireIncident(await getIncidentById(input.incidentId));
         await assertTeamScope(ctx.user, ctx.user.teamId, "occurrences.view");
         assertCanAddIncidentEvidence(ctx.user, incident);
-        return addIncidentEvidence({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id });
+        return addIncidentEvidence({ ...input, teamId: ctx.user.teamId, actorUserId: ctx.user.id, session: await requireOperationalSessionIdentity(ctx.req, ctx.user.id) });
       }),
     }),
     timeline: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
@@ -816,6 +817,16 @@ export const appRouter = router({
       await assertSuperAdministrator(ctx.user);
       return listFutureGeneralSettingEntries();
     }),
+    evidenceRecovery: operationalProcedure
+      .input(z.object({
+        page: z.number().int().min(1).max(10000).default(1),
+        pageSize: z.number().int().min(1).max(100).default(25),
+        state: z.enum(["all", "cleanup_required", "stale_reserved", "missing_reference"]).default("all"),
+      }))
+      .query(async ({ ctx, input }) => {
+        await assertSuperAdministrator(ctx.user);
+        return listEvidenceReconciliationCandidates(input);
+      }),
     resetPreview: operationalProcedure.input(z.object({ scope: z.enum(["operational", "total"]).default("operational") })).query(async ({ ctx, input }) => {
       await assertSuperAdministrator(ctx.user);
       return getSolutionResetPreview({ ...input, actorUserId: ctx.user.id });

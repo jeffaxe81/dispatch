@@ -171,7 +171,11 @@ export const incidentEvidence = mysqlTable(
     uploadedByUserId: int("uploaded_by_user_id").notNull().references(() => users.id),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  table => [index("incident_evidence_incident_created_idx").on(table.incidentId, table.createdAt), index("incident_evidence_uploader_idx").on(table.uploadedByUserId)],
+  table => [
+    index("incident_evidence_incident_created_idx").on(table.incidentId, table.createdAt),
+    index("incident_evidence_uploader_idx").on(table.uploadedByUserId),
+    index("incident_evidence_storage_key_idx").on(table.storageKey),
+  ],
 );
 
 export const teamLocations = mysqlTable(

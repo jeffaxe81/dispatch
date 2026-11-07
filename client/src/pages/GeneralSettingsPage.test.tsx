@@ -69,6 +69,14 @@ describe("GeneralSettingsPage — reinicialização controlada", () => {
     expect(mocks.resetMutation).toHaveBeenCalledWith({ scope: "operational", confirmation: "ZERAR DADOS OPERACIONAIS", reason: "Preparar o ambiente para um novo ciclo." });
   });
 
+  it("abre a consulta de evidências sem executar ações destrutivas", async () => {
+    const user = userEvent.setup();
+    render(<GeneralSettingsPage />);
+    await user.click(screen.getByRole("button", { name: "Abrir conciliação" }));
+    expect(mocks.setLocation).toHaveBeenCalledWith("/administracao/conciliacao-evidencias");
+    expect(mocks.resetMutation).not.toHaveBeenCalled();
+  });
+
   it("altera o aviso e a confirmação exigida quando o escopo total é escolhido", async () => {
     const user = userEvent.setup();
     render(<GeneralSettingsPage />);

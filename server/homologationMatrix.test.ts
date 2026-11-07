@@ -47,6 +47,17 @@ vi.mock("./db", async importOriginal => ({
   confirmExternalIncidentReview: mocks.confirmExternalIncidentReview,
 }));
 
+// Router-only test: supply a synthetic verified identity at the mocked
+// authentication boundary. Real JWT and session-row checks run in MySQL CI.
+vi.mock("./localAuth", async importOriginal => ({
+  ...(await importOriginal<typeof import("./localAuth")>()),
+  requireOperationalSessionIdentity: vi.fn(async (_req: unknown, actorUserId: number) => ({
+    userId: actorUserId,
+    jti: "e".repeat(64),
+    expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+  })),
+}));
+
 import { appRouter } from "./routers";
 
 function context(active = true): TrpcContext {

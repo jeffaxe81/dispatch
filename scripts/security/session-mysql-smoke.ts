@@ -3,6 +3,7 @@
  * Guard rails prevent accidental execution against any real client database.
  */
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Request } from "express";
 import mysql, { type Connection, type RowDataPacket, type ResultSetHeader } from "mysql2/promise";
@@ -20,7 +21,7 @@ import {
   isLocalAuthSessionActive,
   revokeAllLocalAuthSessions,
 } from "../../server/localAuthSessions";
-import { assignTeamToIncident, assignUserRole, createAccessRole, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole } from "../../server/db";
+import { addIncidentEvidence, assignTeamToIncident, assignUserRole, createAccessRole, createIncident, listEvidenceReconciliationCandidates, permanentlyDeleteIncident, respondToAssignment, setUserLocalCredentials, transitionIncident, updateAccessRole, updateIncident } from "../../server/db";
 
 function guardedTestDatabaseUrl(): string {
   const url = process.env.DATABASE_URL ?? "";
@@ -38,13 +39,105 @@ function guardedTestDatabaseUrl(): string {
   return url;
 }
 
+type SubprocessProbe =
+  | { kind: "auth"; token: string }
+  | { kind: "upload-crash"; token: string; incidentId: number; actorUserId: number; teamId: number };
+
+/**
+ * Each invocation is a completely new Node.js process with its own Drizzle
+ * pool and crypto state. JWT only crosses a private stdin pipe.
+ */
+function runSubprocessProbe(input: SubprocessProbe): Promise<{
+  authenticated: boolean;
+  userId: number | null;
+} | null> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath,
+      ["--import", "tsx", "scripts/security/session-cross-process-probe.ts"],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, SESSION_AUTH_SUBPROCESS_PROBE: "1" },
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 30000,
+      });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", data => {
+      stdout += String(data);
+      if (stdout.length > 8192) child.kill();
+    });
+    child.stderr.on("data", data => {
+      stderr += String(data);
+      if (stderr.length > 8192) child.kill();
+    });
+    child.on("error", reject);
+    child.stdin.on("error", reject);
+    child.on("close", (code, signal) => {
+      const expectedCode = input.kind === "upload-crash" ? 77 : 0;
+      if (code !== expectedCode || signal) {
+        reject(new Error(`Isolated subprocess failed (${String(code)}, ${String(signal)}): ${stderr.slice(0, 1000)}`));
+        return;
+      }
+      if (input.kind === "upload-crash") {
+        if (stdout.trim() !== "SIMULATED_PUT_ACK")
+          reject(new Error("Crash simulation did not reach the synthetic PUT."));
+        else resolve(null);
+        return;
+      }
+      try {
+        const result: unknown = JSON.parse(stdout.trim());
+        if (!result || typeof result !== "object" ||
+            !("authenticated" in result) || typeof result.authenticated !== "boolean" ||
+            !("userId" in result) ||
+            !(result.userId === null || (typeof result.userId === "number" && Number.isSafeInteger(result.userId))))
+          throw new Error("Invalid child authentication probe result.");
+        resolve({
+          authenticated: result.authenticated,
+          userId: result.userId as number | null,
+        });
+      } catch {
+        reject(new Error("Cross-process authentication probe returned invalid data."));
+      }
+    });
+    child.stdin.end(JSON.stringify(input));
+  });
+}
+
 async function main(): Promise<void> {
   const url = guardedTestDatabaseUrl();
+  if (process.env.BUILT_IN_FORGE_API_URL !== "http://127.0.0.1:8765" ||
+      process.env.BUILT_IN_FORGE_API_KEY !== "ci-synthetic-storage-only")
+    throw new Error("Synthetic Forge tests must use the loopback-only CI configuration.");
+  const previousFetch = globalThis.fetch;
+  const uploads: string[] = [];
+  let revokeDuringNextUpload: (() => Promise<void>) | null = null;
+  // Never contact a provider: this test intercepts the synthetic loopback host.
+  globalThis.fetch = async (resource, options) => {
+    const target = new URL(typeof resource === "string" ? resource : resource instanceof URL ? resource.href : resource.url);
+    if (target.origin !== "http://127.0.0.1:8765")
+      throw new Error("Evidence smoke blocked non-synthetic storage network request.");
+    if (target.pathname === "/v1/storage/presign/put") {
+      const key = target.searchParams.get("path");
+      assert.ok(key?.startsWith("incident-evidence/"));
+      return new Response(JSON.stringify({
+        url: "http://127.0.0.1:8765/synthetic-put/" + encodeURIComponent(key),
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (target.pathname.startsWith("/synthetic-put/") && options?.method === "PUT") {
+      uploads.push(decodeURIComponent(target.pathname.slice("/synthetic-put/".length)));
+      const action = revokeDuringNextUpload;
+      revokeDuringNextUpload = null;
+      if (action) await action();
+      return new Response(null, { status: 200 });
+    }
+    throw new Error("Unrecognized synthetic storage operation.");
+  };
   // Independent connection simulates a second node observing the shared registry.
   const independent = await mysql.createConnection(url);
   let userId: number | null = null;
   let unrelatedUserId: number | null = null;
   let incidentId: number | null = null;
+  let newIncidentId: number | null = null;
   let teamId: number | null = null;
   let lockConnection: Connection | undefined;
   let sessionTableTemporarilyRenamed = false;
@@ -94,6 +187,24 @@ async function main(): Promise<void> {
     const token2 = await createLocalSessionToken(userId, initialHash);
     const token3 = await createLocalSessionToken(userId, initialHash);
 
+    // Two separate Node.js processes, each with its own DB pool, must agree
+    // on an active registry session and observe a shared MySQL revocation.
+    const crossProcessToken = await createLocalSessionToken(userId, initialHash);
+    const beforeRemoteRevoke = await Promise.all([
+      runSubprocessProbe({ kind: "auth", token: crossProcessToken }),
+      runSubprocessProbe({ kind: "auth", token: crossProcessToken }),
+    ]);
+    assert.ok(beforeRemoteRevoke.every(result => result?.authenticated === true && result.userId === userId));
+    await revokeLocalSessionFromRequest({
+      headers: { cookie: COOKIE_NAME + "=" + crossProcessToken },
+    } as Request);
+    const afterRemoteRevoke = await Promise.all([
+      runSubprocessProbe({ kind: "auth", token: crossProcessToken }),
+      runSubprocessProbe({ kind: "auth", token: crossProcessToken }),
+    ]);
+    assert.ok(afterRemoteRevoke.every(result => result?.authenticated === false && result.userId === null),
+      "independent Node.js processes must reject a session revoked in shared MySQL");
+
     // Critical operational mutation smoke: the transaction must still own a
     // live, non-revoked session at the exact write boundary.
     const teamCode = "CI" + randomUUID().replaceAll("-", "").slice(0, 20);
@@ -110,6 +221,54 @@ async function main(): Promise<void> {
     incidentId = incidentInsert.insertId;
     const liveOperationalSession = await verifyLocalSessionToken(token2);
     assert.ok(liveOperationalSession);
+    // Create, update and delete must share the live-session write boundary.
+    const creationInput = {
+      actorUserId: userId,
+      category: "Protected creation",
+      priority: "media" as const,
+      origin: "central" as const,
+      description: "Generated inside disposable MySQL session smoke",
+      address: "Isolated CI address",
+      latitude: -27.1,
+      longitude: -48.9,
+      session: liveOperationalSession,
+    };
+    const created = await createIncident(creationInput);
+    newIncidentId = created.id;
+    assert.equal(created.status, "triagem");
+    const edited = await updateIncident({
+      incidentId: created.id, actorUserId: userId,
+      description: "Edited with valid durable JWT session",
+      session: liveOperationalSession,
+    });
+    assert.equal(edited.description, "Edited with valid durable JWT session");
+
+    // A failed tenant reference must roll back the incident and its audit.
+    const [countBeforeInvalidTenant] = await independent.execute<RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM incidents",
+    );
+    await assert.rejects(createIncident({
+      ...creationInput,
+      organizationId: 2147483647, // Missing FK in the disposable CI database.
+    }));
+    const [countAfterInvalidTenant] = await independent.execute<RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM incidents",
+    );
+    assert.equal(countAfterInvalidTenant[0]?.n, countBeforeInvalidTenant[0]?.n,
+      "failed tenant FK cannot leave an unscoped incident behind");
+
+    const deleted = await permanentlyDeleteIncident({
+      incidentId: created.id, actorUserId: userId,
+      reason: "Test-only irreversible deletion with audit",
+      session: liveOperationalSession,
+    });
+    assert.equal(deleted.auditPreserved, true);
+    newIncidentId = null;
+    const [afterDeletion] = await independent.execute<RowDataPacket[]>(
+      "SELECT id FROM incidents WHERE id = ?", [created.id],
+    );
+    assert.equal(afterDeletion.length, 0);
+
     const queued = await transitionIncident({
       incidentId, actorUserId: userId, nextStatus: "aguardando_despacho",
       note: "Isolated session validation before transition",
@@ -151,6 +310,212 @@ async function main(): Promise<void> {
       "SELECT incident_status AS status FROM incidents WHERE id = ?", [incidentId],
     );
     assert.equal(stillAccepted[0]?.status, "aceita");
+
+    // All three new write paths must reject the revoked token as well.
+    await assert.rejects(createIncident({ ...creationInput, session: conflictingSession }));
+    await assert.rejects(updateIncident({
+      incidentId, actorUserId: userId,
+      description: "This unauthorized update must not commit",
+      session: conflictingSession,
+    }));
+    await assert.rejects(permanentlyDeleteIncident({
+      incidentId, actorUserId: userId,
+      reason: "This unauthorized delete must not commit",
+      session: conflictingSession,
+    }));
+    const [untouched] = await independent.execute<RowDataPacket[]>(
+      "SELECT incident_status AS status, description FROM incidents WHERE id = ?", [incidentId],
+    );
+    assert.equal(untouched[0]?.status, "aceita");
+    assert.equal(untouched[0]?.description, "Isolated session write boundary scenario");
+
+    // File upload writes a DURABLE reservation before the (fake) remote PUT.
+    // It is only published after a second authorization check at commit.
+    await independent.execute(
+      "UPDATE users SET operational_role = 'agente', teamId = ? WHERE id = ?",
+      [teamId, userId],
+    );
+    const syntheticPdf = Buffer.from("%PDF-1.4\\n%%EOF\\n").toString("base64");
+    const evidenceInput = {
+      incidentId, actorUserId: userId, teamId,
+      fileName: "isolated-evidence.pdf",
+      contentType: "application/pdf",
+      dataBase64: syntheticPdf,
+      session: liveOperationalSession,
+    };
+    // An incident without the selected tenant scope cannot upload at all.
+    const beforeTenantRejection = uploads.length;
+    await assert.rejects(addIncidentEvidence({
+      ...evidenceInput, expectedTenantId: 2147483647,
+    }));
+    assert.equal(uploads.length, beforeTenantRejection,
+      "tenant scope mismatch must be rejected before an external PUT");
+
+    const successfulEvidence = await addIncidentEvidence(evidenceInput);
+    assert.ok(successfulEvidence.id > 0);
+    const [committed] = await independent.execute<RowDataPacket[]>(
+      "SELECT state, evidence_id, storage_key FROM incident_evidence_upload_attempts WHERE actor_user_id = ? AND state = 'committed'",
+      [userId],
+    );
+    assert.equal(committed.length, 1);
+    assert.equal(committed[0]?.evidence_id, successfulEvidence.id);
+    assert.equal(committed[0]?.storage_key, uploads.at(-1));
+
+    // Simulate a SEPARATE Node.js process stopping during synthetic PUT,
+    // after a reservation committed but before publishing evidence metadata.
+    const beforeCrashUploadCount = uploads.length;
+    await runSubprocessProbe({
+      kind: "upload-crash", token: token2,
+      incidentId, actorUserId: userId, teamId,
+    });
+    assert.equal(uploads.length, beforeCrashUploadCount,
+      "child process uses its own synthetic fetch; no real remote PUT occurs");
+    const [crashedRows] = await independent.execute<RowDataPacket[]>(
+      "SELECT attempt_id, state, storage_key FROM incident_evidence_upload_attempts WHERE actor_user_id = ? AND storage_key LIKE '%-crash-probe.pdf'",
+      [userId],
+    );
+    assert.equal(crashedRows.length, 1);
+    assert.equal(crashedRows[0].state, "reserved",
+      "abrupt process exit must preserve the pre-upload reservation");
+    const crashAttemptId = String(crashedRows[0].attempt_id);
+    const freshProbe = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "stale_reserved",
+    });
+    assert.ok(!freshProbe.rows.some(row => row.attemptId === crashAttemptId),
+      "recent reservations should not be scheduled for review");
+    await independent.execute(
+      "UPDATE incident_evidence_upload_attempts SET updated_at = DATE_SUB(NOW(), INTERVAL 16 MINUTE) WHERE attempt_id = ?",
+      [crashAttemptId],
+    );
+    const staleProbe = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "stale_reserved",
+    });
+    assert.ok(staleProbe.rows.some(row =>
+      row.attemptId === crashAttemptId && row.reason === "stale_upload_reservation"));
+    assert.ok(staleProbe.rows.every(row => !Object.hasOwn(row, "storageKey")));
+    // Only the disposable CI record is removed here, after its assertions.
+    await independent.execute(
+      "DELETE FROM incident_evidence_upload_attempts WHERE attempt_id = ?",
+      [crashAttemptId],
+    );
+
+    // A revoked session must not reach the synthetic storage service at all.
+    const uploadCount = uploads.length;
+    await assert.rejects(addIncidentEvidence({ ...evidenceInput, session: conflictingSession }));
+    assert.equal(uploads.length, uploadCount);
+
+    // Simulate logout while the external upload is in flight. The file has
+    // been uploaded but the DB must NOT publish its evidence metadata.
+    revokeDuringNextUpload = async () => { await revokeAllLocalAuthSessions(userId); };
+    await assert.rejects(addIncidentEvidence({ ...evidenceInput, fileName: "revoked-in-flight.pdf" }));
+    const [cleanupNeeded] = await independent.execute<RowDataPacket[]>(
+      "SELECT state, storage_key FROM incident_evidence_upload_attempts WHERE actor_user_id = ? AND state = 'cleanup_required'",
+      [userId],
+    );
+    assert.equal(cleanupNeeded.length, 1);
+    assert.ok(uploads.includes(cleanupNeeded[0].storage_key));
+    const [evidenceRows] = await independent.execute<RowDataPacket[]>(
+      "SELECT id FROM incident_evidence WHERE incident_id = ?", [incidentId],
+    );
+    assert.equal(evidenceRows.length, 1, "revoked in-flight upload must not publish evidence");
+    const pendingReview = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 10 });
+    assert.equal(pendingReview.total, 1);
+    assert.equal(pendingReview.rows[0]?.reason, "cleanup_pending_review");
+    assert.equal(pendingReview.rows[0]?.hasEvidenceReference, false);
+    assert.equal(pendingReview.rows[0]?.incidentExists, true);
+    assert.ok(!Object.hasOwn(pendingReview.rows[0], "storageKey"),
+      "admin reconciliation must never return private blob keys");
+
+    // Permanent deletion must preserve reconciliation for BOTH ledger-backed
+    // uploads and an older evidence file with no upload reservation.
+    const deletionIncidentId = incidentId;
+    const legacyStorageKey = `incident-evidence/${incidentId}/${userId}/pre-ledger-${randomUUID()}.pdf`;
+    await independent.execute(
+      "INSERT INTO incident_evidence (incident_id, storage_key, file_name, content_type, byte_size, uploaded_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+      [incidentId, legacyStorageKey, "pre-ledger.pdf", "application/pdf", 11, userId],
+    );
+    // Legacy imports may point multiple evidence rows to one physical blob.
+    // A delete must retain only ONE cleanup reservation for that object.
+    await independent.execute(
+      "INSERT INTO incident_evidence (incident_id, storage_key, file_name, content_type, byte_size, uploaded_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+      [incidentId, legacyStorageKey, "duplicate-pre-ledger.pdf", "application/pdf", 11, userId],
+    );
+    const cleanupSession = await verifyLocalSessionToken(
+      await createLocalSessionToken(userId, initialHash),
+    );
+    assert.ok(cleanupSession);
+    const deletedWithEvidence = await permanentlyDeleteIncident({
+      incidentId, actorUserId: userId,
+      reason: "Remove disposable incident and preserve object cleanup queue",
+      session: cleanupSession,
+    });
+    assert.equal(deletedWithEvidence.auditPreserved, true);
+    incidentId = null;
+    const [reconciliation] = await independent.execute<RowDataPacket[]>(
+      "SELECT state, storage_key FROM incident_evidence_upload_attempts WHERE incident_id = ?",
+      [deletionIncidentId],
+    );
+    assert.equal(reconciliation.length, 3);
+    assert.ok(reconciliation.every(row => row.state === "cleanup_required"));
+    assert.ok(reconciliation.some(row => row.storage_key === legacyStorageKey));
+    const [deletedRows] = await independent.execute<RowDataPacket[]>(
+      "SELECT id FROM incident_evidence WHERE incident_id = ?", [deletionIncidentId],
+    );
+    assert.equal(deletedRows.length, 0, "incident deletion cascades DB evidence while retaining cleanup ledger");
+
+    // A stale reservation is reviewable, but a recent upload is not.
+    const staleAttemptId = randomUUID();
+    const recentAttemptId = randomUUID();
+    for (const [attemptId, stale] of [[staleAttemptId, true], [recentAttemptId, false]] as const) {
+      const key = `incident-evidence/${deletionIncidentId}/${userId}/${attemptId}-recovery.pdf`;
+      await independent.execute(
+        "INSERT INTO incident_evidence_upload_attempts (attempt_id, storage_key, incident_id, actor_user_id, team_id, state, updated_at) VALUES (?, ?, ?, ?, ?, 'reserved', ?)",
+        [attemptId, key, deletionIncidentId, userId, teamId,
+          stale ? new Date(Date.now() - 31 * 60_000) : new Date()],
+      );
+    }
+    const missingCommittedId = randomUUID();
+    const missingKey = `incident-evidence/${deletionIncidentId}/${userId}/${missingCommittedId}-missing.pdf`;
+    await independent.execute(
+      "INSERT INTO incident_evidence_upload_attempts (attempt_id, storage_key, incident_id, actor_user_id, team_id, state) VALUES (?, ?, ?, ?, ?, 'committed')",
+      [missingCommittedId, missingKey, deletionIncidentId, userId, teamId],
+    );
+    const report = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 100 });
+    assert.equal(report.total, 5, "review must include missing committed references and stale reservations");
+    const cleanupFilter = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "cleanup_required",
+    });
+    const staleFilter = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "stale_reserved",
+    });
+    const missingFilter = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "missing_reference",
+    });
+    assert.equal(cleanupFilter.total, 3, "review filter must cover all cleanup entries");
+    assert.ok(cleanupFilter.rows.every(row => row.reason === "cleanup_pending_review"));
+    assert.equal(staleFilter.total, 1);
+    assert.equal(staleFilter.rows[0]?.attemptId, staleAttemptId);
+    assert.equal(missingFilter.total, 1);
+    assert.equal(missingFilter.rows[0]?.attemptId, missingCommittedId);
+    assert.ok(report.rows.every(row => row.incidentExists === false));
+    assert.ok(report.rows.every(row => !Object.hasOwn(row, "storageKey")));
+    assert.ok(report.rows.some(row =>
+      row.attemptId === staleAttemptId && row.reason === "stale_upload_reservation"));
+    assert.ok(report.rows.some(row =>
+      row.attemptId === missingCommittedId && row.reason === "missing_evidence_reference"));
+    assert.ok(!report.rows.some(row => row.attemptId === recentAttemptId),
+      "recent reservations must not be queued while the upload may still be active");
+    const page1 = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 2 });
+    const page2 = await listEvidenceReconciliationCandidates({ page: 2, pageSize: 2 });
+    const page3 = await listEvidenceReconciliationCandidates({ page: 3, pageSize: 2 });
+    assert.equal(page1.total, report.total);
+    assert.equal(page1.rows.length, 2);
+    assert.equal(page2.rows.length, 2);
+    assert.equal(page3.rows.length, 1);
+    assert.ok(!page1.rows.some(row => page3.rows.some(other => other.attemptId === row.attemptId)));
+    assert.ok(!page2.rows.some(row => page3.rows.some(other => other.attemptId === row.attemptId)));
+    assert.ok(!page1.rows.some(row => page2.rows.some(other => other.attemptId === row.attemptId)),
+      "bounded pagination must not return duplicate review records");
 
     const newPassword = "ci-replacement-" + randomUUID();
     const newHash = await hashLocalPassword(newPassword);
@@ -257,7 +622,7 @@ async function main(): Promise<void> {
 
     await revokeAllLocalAuthSessions(userId);
     assert.equal(await authenticateLocalRequest(newestReq), null);
-    console.log("PASS: MySQL 8.4 sessions, dispatch transitions/assignment/acceptance, concurrent revocation, replay, RBAC changes, reset, fail-closed.");
+    console.log("PASS: MySQL 8.4 sessions, two isolated Node processes, crash-during-PUT recovery, incident writes, durable evidence, reconciliation, RBAC and fail-closed.");
   } finally {
     if (lockConnection) {
       await lockConnection.rollback().catch(() => {});
@@ -265,6 +630,10 @@ async function main(): Promise<void> {
     }
     if (sessionTableTemporarilyRenamed)
       await independent.query("RENAME TABLE local_auth_sessions_smoke_unavailable TO local_auth_sessions").catch(() => {});
+    if (userId !== null)
+      await independent.execute("DELETE FROM incident_evidence_upload_attempts WHERE actor_user_id = ?", [userId]).catch(() => {});
+    if (newIncidentId !== null)
+      await independent.execute("DELETE FROM incidents WHERE id = ?", [newIncidentId]).catch(() => {});
     if (incidentId !== null)
       await independent.execute("DELETE FROM incidents WHERE id = ?", [incidentId]).catch(() => {});
     if (teamId !== null)
@@ -274,6 +643,7 @@ async function main(): Promise<void> {
     if (userId !== null)
       await independent.execute("DELETE FROM users WHERE id = ?", [userId]).catch(() => {});
     await independent.end();
+    globalThis.fetch = previousFetch;
   }
 }
 

@@ -10,6 +10,7 @@ export default defineConfig({
     "./drizzle/schema.ts",
     "./drizzle/tenantScopeSchema.ts",
     "./drizzle/localAuthSessionsSchema.ts",
+    "./drizzle/incidentEvidenceUploadSchema.ts",
     "./drizzle/workShiftSchema.ts",
     "./server/mobileAuthorizationCodeSchema.ts",
     "./server/mobileSessionSchema.ts",
