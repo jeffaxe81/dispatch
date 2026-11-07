@@ -26,16 +26,19 @@ const EVIDENCE_KINDS = {
 const isObject = x => x !== null && typeof x === "object" && !Array.isArray(x);
 const SHA_RE = /^[a-f0-9]{40}$/;
 
-function validEvidence(item, repository, phaseId) {
+function validEvidence(item, repository, phaseId, baselineSha) {
   if (!isObject(item) || !EVIDENCE_KINDS[phaseId]?.has(item.kind) ||
-      !SHA_RE.test(item.sha || "")) return false;
+      !SHA_RE.test(item.sha || "") || item.sha !== baselineSha) return false;
   try {
     const u = new URL(item.url);
     if (u.protocol !== "https:" || u.hostname !== "github.com" ||
         u.username || u.password || u.search || u.hash ||
         !u.pathname.startsWith("/" + repository + "/")) return false;
     const tail = u.pathname.slice(repository.length + 2);
-    if (item.kind === "documentation") return /^blob\/[a-f0-9]{40}\/[a-zA-Z0-9/_.-]+\.md$/.test(tail);
+    if (item.kind === "documentation") {
+      const match = /^blob\/([a-f0-9]{40})\/[a-zA-Z0-9/_.-]+\.md$/.exec(tail);
+      return Boolean(match && match[1] === baselineSha);
+    }
     if (item.kind === "merged_pull_request") return /^pull\/[1-9]\d*$/.test(tail);
     if (item.kind === "github_actions_run") return /^actions\/runs\/[1-9]\d*$/.test(tail);
     if (item.kind === "security_review") return /^pull\/[1-9]\d*$/.test(tail);
@@ -45,7 +48,27 @@ function validEvidence(item, repository, phaseId) {
   } catch { return false; }
 }
 
-export function evaluatePhaseHandoffs(manifest, expectedProject, expectedRepo) {
+/**
+ * Independent human review is required to register F04–F06.
+ * Metadata integrity is verified here, NOT GitHub review authenticity.
+ */
+function validIndependentReview(review, now) {
+  if (!isObject(review) || review.independent_review !== true ||
+      review.decision !== "APPROVED" ||
+      typeof review.author !== "string" || !review.author.trim() ||
+      typeof review.reviewer !== "string" || !review.reviewer.trim() ||
+      ["to_be_assigned", "unknown"].includes(review.reviewer.trim().toLowerCase()) ||
+      review.reviewer.trim().toLowerCase() === review.author.trim().toLowerCase() ||
+      typeof review.reviewed_at !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(review.reviewed_at)) return false;
+  const reviewed = new Date(review.reviewed_at);
+  return Number.isFinite(reviewed.getTime()) &&
+    reviewed.getTime() <= now.getTime() &&
+    reviewed.toISOString() === (review.reviewed_at.includes(".") ?
+      review.reviewed_at : review.reviewed_at.replace("Z", ".000Z"));
+}
+
+export function evaluatePhaseHandoffs(manifest, expectedProject, expectedRepo, now = new Date()) {
   const errors = [], missing = [], stages = [];
   const rows = Array.isArray(manifest?.phases) ? manifest.phases : [];
   if (!isObject(manifest) || manifest.schema_version !== 1 ||
@@ -53,6 +76,7 @@ export function evaluatePhaseHandoffs(manifest, expectedProject, expectedRepo) {
       manifest.production_approved !== false ||
       manifest.manual_release_required !== true ||
       manifest.evidence_urls_are_not_automatically_verified !== true ||
+      !SHA_RE.test(manifest.baseline_sha || "") ||
       rows.length !== PHASE_IDS.length) errors.push("INVALID_PHASE_MANIFEST");
 
   let recorded = 0, pendingSeen = false;
@@ -67,11 +91,14 @@ export function evaluatePhaseHandoffs(manifest, expectedProject, expectedRepo) {
       continue;
     }
     const evidence = Array.isArray(row.evidence) ? row.evidence : [];
-    if (!evidence.every(item => validEvidence(item, expectedRepo, id))) {
+    if (!evidence.every(item => validEvidence(item, expectedRepo, id, manifest?.baseline_sha))) {
       errors.push("INVALID_EVIDENCE_" + id);
     }
     if (row.status === "EVIDENCE_RECORDED") {
       if (!evidence.length || pendingSeen) errors.push("UNSUPPORTED_PASSAGE_" + id);
+      if (i >= 3 && !validIndependentReview(row.review, now)) {
+        errors.push("INDEPENDENT_REVIEW_REQUIRED_" + id);
+      }
       recorded++;
     } else {
       pendingSeen = true;
