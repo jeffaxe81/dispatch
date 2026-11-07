@@ -7,7 +7,7 @@ const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.ur
 const [project,repo] = ({
   "dispatch-brusque-live":["AXE Despacho Web","jeffaxe81/dispatch"],
   "axe-despacho-mobile":["AXE Despacho Mobile","jeffaxe81/axe-despacho-mobile"],
-})[pkg.name]);
+})[pkg.name];
 const original = () => JSON.parse(readFileSync(new URL("../../docs/quality/phase-handoff-evidence.json", import.meta.url),"utf8"));
 const evaluate = data => evaluatePhaseHandoffs(data,project,repo);
 test("only three development evidence stages are currently recorded",()=>{
