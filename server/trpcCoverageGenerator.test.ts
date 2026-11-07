@@ -39,7 +39,8 @@ describe("inventário de contratos tRPC", () => {
       expect(coverage).toContain("`workspace.resetOwn`");
       expect(coverage).toContain("`access.bootstrapState`");
       expect(coverage).toContain("`access.initializeOrganization`");
-      expect(coverage).toContain("| Procedimentos inventariados | 122 |");
+      expect(coverage).toContain("`access.installHomologationProfiles`");
+      expect(coverage).toContain("| Procedimentos inventariados | 123 |");
       expect(coverage).toContain("D-010");
     } finally {
       fs.writeFileSync(coveragePath, originalCoverage);
