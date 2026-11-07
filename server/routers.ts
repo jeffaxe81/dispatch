@@ -821,6 +821,7 @@ export const appRouter = router({
       .input(z.object({
         page: z.number().int().min(1).max(10000).default(1),
         pageSize: z.number().int().min(1).max(100).default(25),
+        state: z.enum(["all", "cleanup_required", "stale_reserved", "missing_reference"]).default("all"),
       }))
       .query(async ({ ctx, input }) => {
         await assertSuperAdministrator(ctx.user);
