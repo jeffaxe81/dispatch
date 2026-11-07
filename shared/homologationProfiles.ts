@@ -79,3 +79,15 @@ export function validateHomologationRoleAssignment(input: {
       (!Number.isSafeInteger(input.teamId) || (input.teamId ?? 0) <= 0)) return false;
   return true;
 }
+
+/**
+ * Keep reserved assignments present even with no effective privileges. The
+ * caller must not restore legacy permissions after filtering.
+ */
+export function filterRolePermissionCodes(
+  rows: readonly { code: string; roleCode: string }[],
+  stage: unknown, enabled: unknown,
+): string[] {
+  const sandbox = homologationRuntimeEnabled(stage, enabled);
+  return [...new Set(rows.filter(row => sandbox || !isReservedHomologationCode(row.roleCode)).map(row => row.code))];
+}
