@@ -361,6 +361,21 @@ async function main(): Promise<void> {
     );
     const report = await listEvidenceReconciliationCandidates({ page: 1, pageSize: 100 });
     assert.equal(report.total, 5, "review must include missing committed references and stale reservations");
+    const cleanupFilter = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "cleanup_required",
+    });
+    const staleFilter = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "stale_reserved",
+    });
+    const missingFilter = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "missing_reference",
+    });
+    assert.equal(cleanupFilter.total, 3, "review filter must cover all cleanup entries");
+    assert.ok(cleanupFilter.rows.every(row => row.reason === "cleanup_pending_review"));
+    assert.equal(staleFilter.total, 1);
+    assert.equal(staleFilter.rows[0]?.attemptId, staleAttemptId);
+    assert.equal(missingFilter.total, 1);
+    assert.equal(missingFilter.rows[0]?.attemptId, missingCommittedId);
     assert.ok(report.rows.every(row => row.incidentExists === false));
     assert.ok(report.rows.every(row => !Object.hasOwn(row, "storageKey")));
     assert.ok(report.rows.some(row =>
