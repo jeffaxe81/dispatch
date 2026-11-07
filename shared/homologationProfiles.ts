@@ -91,3 +91,44 @@ export function filterRolePermissionCodes(
   const sandbox = homologationRuntimeEnabled(stage, enabled);
   return [...new Set(rows.filter(row => sandbox || !isReservedHomologationCode(row.roleCode)).map(row => row.code))];
 }
+
+// Strict allowlist: a dynamic permission alone does not bypass operational
+// policies, tenant selection or the server's incident transition rules.
+export const HOMOLOGATION_ROUTE_PERMISSIONS = {
+  "access.me": null,
+  "access.myDeniedPermissions": null,
+  "tenant.selection": null,
+  "dashboard.summary": "occurrences.view",
+  "incidents.list": "occurrences.view",
+  "incidents.get": "occurrences.view",
+  "incidents.timeline": "occurrences.view",
+  "incidents.evidence.list": "occurrences.view",
+  "incidents.create": "occurrences.create",
+  "incidents.update": "occurrences.edit",
+  "incidents.transition": "occurrences.transition",
+  "incidents.respondToAssignment": "occurrences.transition",
+  "teams.list": "teams.view",
+  "vehicles.list": "vehicles.view",
+  "gis.route": "occurrences.view",
+  "audit.operations": "audit.view",
+  "reports.overview": "reports.view",
+} as const;
+
+export function isHomologationRouteAllowed(
+  roleCode: unknown, route: unknown, dynamicPermissions: Iterable<string>,
+): boolean {
+  if (!isHomologationProfileCode(roleCode) || typeof route !== "string") return false;
+  if (!Object.prototype.hasOwnProperty.call(HOMOLOGATION_ROUTE_PERMISSIONS, route)) return false;
+  const needed = HOMOLOGATION_ROUTE_PERMISSIONS[route as keyof typeof HOMOLOGATION_ROUTE_PERMISSIONS];
+  const role = HOMOLOGATION_PROFILES.find(x => x.code === roleCode);
+  // Must be both part of the versioned role template AND granted in the DB;
+  // an injected permission cannot open an unreviewed route.
+  return needed === null || (role!.permissionCodes as readonly string[]).includes(needed) &&
+    new Set(dynamicPermissions).has(needed);
+}
+
+export function mustUseDynamicAuthorization(
+  validAssignmentCount: number, hasHistoricQaRole: boolean,
+): boolean {
+  return validAssignmentCount > 0 || hasHistoricQaRole;
+}
