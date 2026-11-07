@@ -3,6 +3,7 @@
  * Guard rails prevent accidental execution against any real client database.
  */
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Request } from "express";
 import mysql, { type Connection, type RowDataPacket, type ResultSetHeader } from "mysql2/promise";
@@ -36,6 +37,70 @@ function guardedTestDatabaseUrl(): string {
   if (!process.env.JWT_SECRET || Buffer.byteLength(process.env.JWT_SECRET, "utf8") < 32)
     throw new Error("CI needs a random JWT_SECRET (>=32 bytes).");
   return url;
+}
+
+type SubprocessProbe =
+  | { kind: "auth"; token: string }
+  | { kind: "upload-crash"; token: string; incidentId: number; actorUserId: number; teamId: number };
+
+/**
+ * Each invocation is a completely new Node.js process with its own Drizzle
+ * pool and crypto state. JWT only crosses a private stdin pipe.
+ */
+function runSubprocessProbe(input: SubprocessProbe): Promise<{
+  authenticated: boolean;
+  userId: number | null;
+} | null> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath,
+      ["--import", "tsx", "scripts/security/session-cross-process-probe.ts"],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, SESSION_AUTH_SUBPROCESS_PROBE: "1" },
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 30000,
+      });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", data => {
+      stdout += String(data);
+      if (stdout.length > 8192) child.kill();
+    });
+    child.stderr.on("data", data => {
+      stderr += String(data);
+      if (stderr.length > 8192) child.kill();
+    });
+    child.on("error", reject);
+    child.stdin.on("error", reject);
+    child.on("close", (code, signal) => {
+      const expectedCode = input.kind === "upload-crash" ? 77 : 0;
+      if (code !== expectedCode || signal) {
+        reject(new Error(`Isolated subprocess failed (${String(code)}, ${String(signal)}): ${stderr.slice(0, 1000)}`));
+        return;
+      }
+      if (input.kind === "upload-crash") {
+        if (stdout.trim() !== "SIMULATED_PUT_ACK")
+          reject(new Error("Crash simulation did not reach the synthetic PUT."));
+        else resolve(null);
+        return;
+      }
+      try {
+        const result: unknown = JSON.parse(stdout.trim());
+        if (!result || typeof result !== "object" ||
+            !("authenticated" in result) || typeof result.authenticated !== "boolean" ||
+            !("userId" in result) ||
+            !(result.userId === null || Number.isSafeInteger(result.userId)))
+          throw new Error("Invalid child authentication probe result.");
+        resolve({
+          authenticated: result.authenticated,
+          userId: result.userId as number | null,
+        });
+      } catch {
+        reject(new Error("Cross-process authentication probe returned invalid data."));
+      }
+    });
+    child.stdin.end(JSON.stringify(input));
+  });
 }
 
 async function main(): Promise<void> {
@@ -121,6 +186,24 @@ async function main(): Promise<void> {
     // A password change revokes all sessions in the SAME transaction.
     const token2 = await createLocalSessionToken(userId, initialHash);
     const token3 = await createLocalSessionToken(userId, initialHash);
+
+    // Two separate Node.js processes, each with its own DB pool, must agree
+    // on an active registry session and observe a shared MySQL revocation.
+    const crossProcessToken = await createLocalSessionToken(userId, initialHash);
+    const beforeRemoteRevoke = await Promise.all([
+      runSubprocessProbe({ kind: "auth", token: crossProcessToken }),
+      runSubprocessProbe({ kind: "auth", token: crossProcessToken }),
+    ]);
+    assert.ok(beforeRemoteRevoke.every(result => result?.authenticated === true && result.userId === userId));
+    await revokeLocalSessionFromRequest({
+      headers: { cookie: COOKIE_NAME + "=" + crossProcessToken },
+    } as Request);
+    const afterRemoteRevoke = await Promise.all([
+      runSubprocessProbe({ kind: "auth", token: crossProcessToken }),
+      runSubprocessProbe({ kind: "auth", token: crossProcessToken }),
+    ]);
+    assert.ok(afterRemoteRevoke.every(result => result?.authenticated === false && result.userId === null),
+      "independent Node.js processes must reject a session revoked in shared MySQL");
 
     // Critical operational mutation smoke: the transaction must still own a
     // live, non-revoked session at the exact write boundary.
@@ -277,6 +360,44 @@ async function main(): Promise<void> {
     assert.equal(committed.length, 1);
     assert.equal(committed[0]?.evidence_id, successfulEvidence.id);
     assert.equal(committed[0]?.storage_key, uploads.at(-1));
+
+    // Simulate a SEPARATE Node.js process stopping during synthetic PUT,
+    // after a reservation committed but before publishing evidence metadata.
+    const beforeCrashUploadCount = uploads.length;
+    await runSubprocessProbe({
+      kind: "upload-crash", token: token2,
+      incidentId, actorUserId: userId, teamId,
+    });
+    assert.equal(uploads.length, beforeCrashUploadCount,
+      "child process uses its own synthetic fetch; no real remote PUT occurs");
+    const [crashedRows] = await independent.execute<RowDataPacket[]>(
+      "SELECT attempt_id, state, storage_key FROM incident_evidence_upload_attempts WHERE actor_user_id = ? AND storage_key LIKE '%-crash-probe.pdf'",
+      [userId],
+    );
+    assert.equal(crashedRows.length, 1);
+    assert.equal(crashedRows[0].state, "reserved",
+      "abrupt process exit must preserve the pre-upload reservation");
+    const crashAttemptId = String(crashedRows[0].attempt_id);
+    const freshProbe = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "stale_reserved",
+    });
+    assert.ok(!freshProbe.rows.some(row => row.attemptId === crashAttemptId),
+      "recent reservations should not be scheduled for review");
+    await independent.execute(
+      "UPDATE incident_evidence_upload_attempts SET updated_at = DATE_SUB(NOW(), INTERVAL 16 MINUTE) WHERE attempt_id = ?",
+      [crashAttemptId],
+    );
+    const staleProbe = await listEvidenceReconciliationCandidates({
+      page: 1, pageSize: 100, state: "stale_reserved",
+    });
+    assert.ok(staleProbe.rows.some(row =>
+      row.attemptId === crashAttemptId && row.reason === "stale_upload_reservation"));
+    assert.ok(staleProbe.rows.every(row => !Object.hasOwn(row, "storageKey")));
+    // Only the disposable CI record is removed here, after its assertions.
+    await independent.execute(
+      "DELETE FROM incident_evidence_upload_attempts WHERE attempt_id = ?",
+      [crashAttemptId],
+    );
 
     // A revoked session must not reach the synthetic storage service at all.
     const uploadCount = uploads.length;
@@ -501,7 +622,7 @@ async function main(): Promise<void> {
 
     await revokeAllLocalAuthSessions(userId);
     assert.equal(await authenticateLocalRequest(newestReq), null);
-    console.log("PASS: MySQL 8.4 sessions, incident writes, durable evidence, read-only reconciliation, pagination, recovery after deletion, RBAC and fail-closed.");
+    console.log("PASS: MySQL 8.4 sessions, two isolated Node processes, crash-during-PUT recovery, incident writes, durable evidence, reconciliation, RBAC and fail-closed.");
   } finally {
     if (lockConnection) {
       await lockConnection.rollback().catch(() => {});
