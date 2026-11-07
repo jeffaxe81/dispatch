@@ -1772,21 +1772,10 @@ export async function createManualUser(input: { displayName: string; email: stri
     }
     const role = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!role || !role.active) throw new Error("Perfil não encontrado ou inativo.");
+    // The pre-registration form cannot set an expiry; use a separate
+    // audited assignment to prevent indefinite QA access.
     if (isReservedHomologationCode(role.code)) {
-      const allowed = validateHomologationRoleAssignment({
-        code: role.code, stage: process.env.AXE_DEPLOYMENT_STAGE,
-        enabled: process.env.AXE_HOMOLOGATION_ENABLED,
-        userIsBaseAdmin: lockedUser.role === "admin" || lockedUser.openId === ENV.ownerOpenId,
-        organizationId: input.organizationId, teamId: input.teamId, expiresAt: input.expiresAt,
-      });
-      if (!allowed) throw new Error("Perfil de homologação exige ambiente isolado, empresa, usuário sem privilégio administrativo e validade máxima de 14 dias.");
-      if (input.teamId) {
-        const team = (await tx.select({ organizationId: teams.organizationId })
-          .from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
-        if (!team || team.organizationId !== input.organizationId) {
-          throw new Error("A equipe de homologação pertence a outra organização.");
-        }
-      }
+      throw new Error("Pré-cadastro de homologação: crie o usuário com perfil comum e atribua depois o perfil temporário com validade.");
     }
     if (!isRoleScopeAssignmentValid({ defaultScope: role.defaultScope, organizationId: input.organizationId, organizationalUnitId: input.organizationalUnitId, teamId: input.roleTeamId })) throw new Error("O escopo informado não atende ao nível exigido pelo perfil.");
     const openId = createManualUserOpenId();
@@ -1935,6 +1924,21 @@ export async function assignUserRole(input: { userId: number; roleId: number; or
     if (!lockedUser) throw new Error("Usuário não encontrado.");
     const role = (await tx.select().from(accessRoles).where(eq(accessRoles.id, input.roleId)).limit(1))[0];
     if (!role || !role.active) throw new Error("Perfil não encontrado ou inativo.");
+    if (isReservedHomologationCode(role.code)) {
+      if (!validateHomologationRoleAssignment({
+        code: role.code, stage: process.env.AXE_DEPLOYMENT_STAGE,
+        enabled: process.env.AXE_HOMOLOGATION_ENABLED,
+        userIsBaseAdmin: lockedUser.role === "admin" || lockedUser.openId === ENV.ownerOpenId,
+        organizationId: input.organizationId, teamId: input.teamId, expiresAt: input.expiresAt,
+      })) throw new Error("Perfil de homologação exige ambiente isolado, empresa, usuário comum e validade máxima de 14 dias.");
+      if (input.teamId) {
+        const team = (await tx.select({ organizationId: teams.organizationId })
+          .from(teams).where(eq(teams.id, input.teamId)).limit(1))[0];
+        if (!team || team.organizationId !== input.organizationId) {
+          throw new Error("A equipe de homologação pertence a outra organização.");
+        }
+      }
+    }
     if (!isRoleScopeAssignmentValid({ defaultScope: role.defaultScope, organizationId: input.organizationId, organizationalUnitId: input.organizationalUnitId, teamId: input.teamId })) throw new Error("O escopo informado não atende ao nível exigido pelo perfil.");
     const previous = await tx.select({ id: userRoleAssignments.id, roleId: userRoleAssignments.roleId }).from(userRoleAssignments).where(and(eq(userRoleAssignments.userId, input.userId), eq(userRoleAssignments.active, true)));
     if (previous.length) await tx.update(userRoleAssignments).set({ active: false, activeUserId: null }).where(and(eq(userRoleAssignments.userId, input.userId), eq(userRoleAssignments.active, true)));
