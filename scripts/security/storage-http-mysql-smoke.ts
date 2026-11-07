@@ -51,7 +51,9 @@ async function main() {
   let proxyServer: Server | null = null;
   let proxyOrigin = "";
   let userId: number | null = null;
+  let unrelatedUserId: number | null = null;
   let teamId: number | null = null;
+  let unrelatedTeamId: number | null = null;
   let incidentId: number | null = null;
   let mode: Mode = "success";
   let presignRequests = 0;
@@ -192,6 +194,20 @@ async function main() {
       throw new Error("Invalid isolated storage proxy address.");
     proxyOrigin = `http://127.0.0.1:${proxyAddress.port}`;
     const sessionCookie = `${COOKIE_NAME}=${token}`;
+    // A second, valid session in a different team must not read the object.
+    const [unrelatedTeam] = await conn.execute<ResultSetHeader>(
+      "INSERT INTO teams (code, name, agency) VALUES (?, 'Unrelated CI team', 'CI')",
+      ["ST" + randomUUID().replaceAll("-", "").slice(0, 20)],
+    );
+    unrelatedTeamId = unrelatedTeam.insertId;
+    const outsiderLogin = "store_ci_" + randomUUID().replaceAll("-", "").slice(0, 16);
+    const [outsider] = await conn.execute<ResultSetHeader>(
+      "INSERT INTO users (openId, username, password_hash, loginMethod, operational_role, teamId) VALUES (?, ?, ?, 'local_password', 'agente', ?)",
+      ["local:" + outsiderLogin, outsiderLogin, passwordHash, unrelatedTeamId],
+    );
+    unrelatedUserId = outsider.insertId;
+    const otherToken = await createLocalSessionToken(unrelatedUserId, passwordHash);
+    const unrelatedCookie = `${COOKIE_NAME}=${otherToken}`;
     const proxyPath = (key: string) =>
       proxyOrigin + "/manus-storage/" + key;
 
@@ -258,6 +274,24 @@ async function main() {
     const proxiedObject = await fetch(redirect, { redirect: "manual" });
     assert.equal(proxiedObject.status, 200);
     assert.deepEqual(Buffer.from(await proxiedObject.arrayBuffer()), saved.bytes);
+
+    const signBeforeWrongTeam = readPresignRequests;
+    const outsideScope = await fetch(proxyPath(referenceKey), {
+      headers: { cookie: unrelatedCookie }, redirect: "manual",
+    });
+    assert.equal(outsideScope.status, 403,
+      "a live session from another team must be denied by the real proxy");
+    assert.equal(readPresignRequests, signBeforeWrongTeam,
+      "out-of-scope access must be denied before generating a signed URL");
+
+    // Test signature expiration behavior of the CI fake provider without
+    // waiting for the TTL; this does not assert Forge's real expiration.
+    const issuedToken = new URL(signedRead).pathname.slice("/ci-download/".length);
+    const issued = signedGetTokens.get(issuedToken);
+    assert.ok(issued);
+    issued.expiresAt = Date.now() - 1000;
+    assert.equal((await fetch(signedRead)).status, 403,
+      "the disposable signed GET token must not remain valid after expiry");
 
     const deniedPresign = await fetch(
       STORE_ORIGIN + "/v1/storage/presign/get?path=" +
@@ -374,6 +408,9 @@ async function main() {
     if (serverStarted) await new Promise<void>(resolve => server.close(() => resolve()));
     if (userId) await conn.execute("DELETE FROM incident_evidence_upload_attempts WHERE actor_user_id = ?", [userId]).catch(() => {});
     if (incidentId) await conn.execute("DELETE FROM incidents WHERE id = ?", [incidentId]).catch(() => {});
+    if (unrelatedUserId) await conn.execute("DELETE FROM local_auth_sessions WHERE user_id = ?", [unrelatedUserId]).catch(() => {});
+    if (unrelatedUserId) await conn.execute("DELETE FROM users WHERE id = ?", [unrelatedUserId]).catch(() => {});
+    if (unrelatedTeamId) await conn.execute("DELETE FROM teams WHERE id = ?", [unrelatedTeamId]).catch(() => {});
     if (teamId) await conn.execute("DELETE FROM teams WHERE id = ?", [teamId]).catch(() => {});
     if (userId) await conn.execute("DELETE FROM local_auth_sessions WHERE user_id = ?", [userId]).catch(() => {});
     if (userId) await conn.execute("DELETE FROM users WHERE id = ?", [userId]).catch(() => {});
