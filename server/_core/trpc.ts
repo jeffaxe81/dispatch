@@ -2,6 +2,8 @@ import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
+import { currentHomologationRuntimeEnabled } from "../../shared/homologationProfiles";
+import { assertHomologationRouteAccess } from "../qaAccessGate";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -16,6 +18,11 @@ const requireUser = t.middleware(async opts => {
 
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+  }
+  // A QA operator must never inherit unrestricted actions from the legacy
+  // operationalRole. The allowlist is checked before any protected handler.
+  if (currentHomologationRuntimeEnabled()) {
+    await assertHomologationRouteAccess(ctx.user.id, opts.path);
   }
 
   return next({
