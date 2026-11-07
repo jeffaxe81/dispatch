@@ -12,6 +12,7 @@ import LocalCredentialsPage from "@/pages/LocalCredentialsPage";
 import VehiclesPage from "@/pages/VehiclesPage";
 import RolesPermissionsPage from "@/pages/RolesPermissionsPage";
 import GeneralSettingsPage from "@/pages/GeneralSettingsPage";
+import EvidenceRecoveryPage from "@/pages/EvidenceRecoveryPage";
 import OperationsLogPage from "@/pages/OperationsLogPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
 import EmbeddedApplicationsPage from "@/pages/EmbeddedApplicationsPage";
@@ -78,6 +79,7 @@ function Router() {
       <Route path={"/administracao/perfis"} component={RolesPermissionsPage} />
       <Route path={"/administracao/escopos"} component={AccessScopesPage} />
       <Route path={"/administracao/configuracoes"} component={GeneralSettingsPage} />
+      <Route path={"/administracao/conciliacao-evidencias"} component={() => <FieldRestrictedRoute component={EvidenceRecoveryPage} />} />
       <Route path={"/administracao/log-operacoes"} component={OperationsLogPage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
