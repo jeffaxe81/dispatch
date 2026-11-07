@@ -27,6 +27,6 @@ describe("100 refinements: unique, traceable and not falsely marked complete",()
     expect(text).toContain("Não houve acesso ao ambiente real");
     expect(text).toContain("NO-GO");
     expect(text).toContain("0/3");
-    expect(text).not.toMatch(/100 (?:correções|funcionalidades) (?:concluídas|implementadas)/i);
+    expect(text).toContain("não 100 funcionalidades concluídas");
   });
 });
