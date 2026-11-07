@@ -1470,10 +1470,26 @@ export function resolveAgentOperationalReconciliation(user: Pick<User, "operatio
 export async function reconcileOperationalRoleWithAssignments(user: User): Promise<User> {
   const db = await getDb();
   if (!db) return user;
-  const activeAssignments = await db.select({ id: userRoleAssignments.id, teamId: userRoleAssignments.teamId, roleCode: accessRoles.code }).from(userRoleAssignments).innerJoin(accessRoles, eq(accessRoles.id, userRoleAssignments.roleId)).where(and(eq(userRoleAssignments.userId, user.id), eq(userRoleAssignments.active, true), eq(accessRoles.active, true)));
-  // The context loader calls this on every authenticated request. A QA-only
-  // role is not a valid operational identity outside the isolated sandbox,
-  // even if a legacy operationalRole might otherwise allow a direct route.
+  const allAssignments = await db.select({
+    id: userRoleAssignments.id, teamId: userRoleAssignments.teamId,
+    roleCode: accessRoles.code, active: userRoleAssignments.active,
+    roleActive: accessRoles.active, expiresAt: userRoleAssignments.expiresAt,
+  }).from(userRoleAssignments).innerJoin(accessRoles, eq(accessRoles.id, userRoleAssignments.roleId))
+    .where(eq(userRoleAssignments.userId, user.id));
+  const now = new Date();
+  const activeAssignments = allAssignments.filter(assignment =>
+    assignment.active && assignment.roleActive &&
+    (!assignment.expiresAt || assignment.expiresAt > now));
+  const qaHistory = allAssignments.some(assignment => isReservedHomologationCode(assignment.roleCode));
+  // The auth context must fail closed even on endpoints using the legacy
+  // operational role instead of dynamic RBAC.
+  if (allAssignments.some(assignment => assignment.active &&
+      assignment.expiresAt && assignment.expiresAt <= now)) {
+    throw new Error("Atribuição operacional expirada; acesso negado.");
+  }
+  if (qaHistory && activeAssignments.length === 0) {
+    throw new Error("Conta de homologação sem perfil válido; acesso negado.");
+  }
   if (!currentHomologationRuntimeEnabled() &&
       activeAssignments.some(assignment => isReservedHomologationCode(assignment.roleCode))) {
     throw new Error("Conta de homologação bloqueada fora do ambiente isolado.");
