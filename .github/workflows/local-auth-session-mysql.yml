@@ -12,6 +12,7 @@ on:
       - 'scripts/security/session-cross-process-probe.ts'
       - 'scripts/security/session-http-node.ts'
       - 'scripts/security/session-http-dual-node-smoke.ts'
+      - 'scripts/security/storage-http-mysql-smoke.ts'
       - '.github/workflows/local-auth-session-mysql.yml'
   workflow_dispatch: {}
 
@@ -78,3 +79,9 @@ jobs:
           BUILT_IN_FORGE_API_URL: http://127.0.0.1:8765
           BUILT_IN_FORGE_API_KEY: ci-synthetic-storage-only
         run: corepack pnpm exec tsx scripts/security/session-http-dual-node-smoke.ts
+      - name: Exercise real loopback storage HTTP PUT and recovery with MySQL
+        env:
+          # Strictly disposable local provider; no production Forge credential.
+          BUILT_IN_FORGE_API_URL: http://127.0.0.1:8765
+          BUILT_IN_FORGE_API_KEY: ci-synthetic-storage-only
+        run: corepack pnpm exec tsx scripts/security/storage-http-mysql-smoke.ts
