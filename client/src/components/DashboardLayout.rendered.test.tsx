@@ -59,7 +59,7 @@ describe("DashboardLayout renderizado", () => {
     mocks.isSuperAdministrator = true;
     renderSidebar();
 
-    for (const label of ["Central", "Ocorrências", "Dashboards e Relatórios", "Equipes", "Kanban", "Aplicativo Agente", "Viaturas", "Integrações", "Administração", "Usuários", "Perfis", "Escopos", "Log de operações", "Configurações"]) {
+    for (const label of ["Central", "Ocorrências", "Dashboards e Relatórios", "Equipes", "Kanban", "Aplicativo Agente", "Viaturas", "Integrações", "Administração", "Usuários", "Perfis", "Escopos", "Log de operações", "Conciliação de evidências", "Configurações"]) {
       expect(screen.getByText(label)).toBeTruthy();
     }
     expect(screen.getByRole("button", { name: /sair do axe dispatch/i })).toBeTruthy();
@@ -73,6 +73,7 @@ describe("DashboardLayout renderizado", () => {
     expect(screen.getByText("Central")).toBeTruthy();
     expect(screen.getByText("Kanban")).toBeTruthy();
     expect(screen.queryByText("Configurações")).toBeNull();
+    expect(screen.queryByText("Conciliação de evidências")).toBeNull();
   });
 
   it("oculta Central e Kanban para agente de campo e mantém o Aplicativo Agente", () => {
