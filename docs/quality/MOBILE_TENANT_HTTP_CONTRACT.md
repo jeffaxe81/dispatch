@@ -11,13 +11,13 @@ O teste `server/mobileTenantHttpContract.test.ts` envia requisições GET sinté
 3. Duas organizações elegíveis: seleção obrigatória, nenhuma escolhida automaticamente.
 4. Cabeçalho `x-organization-id` elegível: organização ativa correta, `requiresSelection=false`.
 5. Cabeçalho fora do escopo: não torna o tenant ativo.
-6. IDs falsificados, negativos, fracionários, inválidos ou excessivamente grandes: HTTP 400.
+6. IDs falsificados, negativos, fracionários, inválidos ou excessivamente grandes: HTTP 400; cabeçalhos brutos com controle ou valores duplicados são rejeitados pelo gate de escopo.
 7. Uma organização: auto-seleção.
 8. Nenhuma organização: ausência de seleção.
 9. Contrato serializado SuperJSON conforme consumo do Mobile.
 10. `requireActiveTenant`: rejeita seleção ausente ou não autorizada antes da consulta operacional.
 
-**Valor técnico:** confirma a rota composta real e a verificação de autorização sem depender apenas de texto dos arquivos. A simulação substitui somente a fonte de organizações/roles, mantendo a lógica de seleção original.
+**Correção efetiva de segurança:** `parseTenantHeader()` passou a rejeitar `x-organization-id` recebido como array de valores, em vez de aceitar silenciosamente a primeira organização. Isso evita seleção ambígua quando intermediários encaminham cabeçalhos duplicados.\n\n**Valor técnico:** confirma a rota composta real e a verificação de autorização sem depender apenas de texto dos arquivos. A simulação substitui somente a fonte de organizações/roles, mantendo a lógica de seleção original.
 
 ## Limites — não é homologação real
 
