@@ -1,0 +1,111 @@
+name: Backend 5B synthetic policy campaign
+on:
+  pull_request:
+    paths:
+      - 'scripts/quality/backend10b.campaign.ts'
+      - 'scripts/quality/verify-5b-campaign.mjs'
+      - 'vitest.10b.config.ts'
+      - 'package.json'
+      - 'server/productHomologation1000.test.ts'
+      - '.github/workflows/product-5b-backend.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: 5b-backend-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: 'true'
+jobs:
+  smoke:
+    name: Verify 100k seed cases — ${{ matrix.group }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: true
+      max-parallel: 5
+      matrix:
+        group:
+          - incident_transitions
+          - operation_auth
+          - dynamic_rbac
+          - team_tenant_scope
+          - gis_coordinates
+          - gis_distance
+          - incident_list_schema
+          - openapi_security
+          - tenant_runtime_routes
+          - readiness_and_scopes
+    env:
+      CAMPAIGN_GROUP: ${{ matrix.group }}
+      CAMPAIGN_PARTITION: '0'
+      CAMPAIGN_ITERATIONS: '100000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: corepack enable && corepack pnpm install --frozen-lockfile
+      - name: Smoke real production policy functions
+        run: corepack pnpm test:10b:shard
+  full:
+    name: 100M checks — ${{ matrix.group }} / ${{ matrix.partition }}
+    needs: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        group:
+          - incident_transitions
+          - operation_auth
+          - dynamic_rbac
+          - team_tenant_scope
+          - gis_coordinates
+          - gis_distance
+          - incident_list_schema
+          - openapi_security
+          - tenant_runtime_routes
+          - readiness_and_scopes
+        partition: [0, 1, 2, 3, 4]
+    env:
+      CAMPAIGN_GROUP: ${{ matrix.group }}
+      CAMPAIGN_PARTITION: ${{ matrix.partition }}
+      CAMPAIGN_ITERATIONS: '100000000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: corepack enable && corepack pnpm install --frozen-lockfile
+      - name: Backend security preflight
+        run: node scripts/security-regression-check.mjs
+      - name: Execute counted production policy checks
+        run: corepack pnpm test:10b:shard
+      - name: Retain reproducible evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: campaign-backend-${{ matrix.group }}-${{ matrix.partition }}
+          path: artifacts/campaign-10b/backend-${{ matrix.group }}-${{ matrix.partition }}.json
+          if-no-files-found: error
+          retention-days: 14
+  verify:
+    name: Verify 5B complete receipts (NOT production GO)
+    needs: full
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: campaign-backend-*
+          merge-multiple: true
+          path: artifacts/campaign-10b
+      - name: Reject missing, duplicated, mixed-SHA and incomplete receipts
+        run: node scripts/quality/verify-5b-campaign.mjs

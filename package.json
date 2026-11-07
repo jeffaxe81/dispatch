@@ -29,7 +29,8 @@
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "test:gis-visual": "node scripts/gis-visual-homologation.mjs",
     "test:neo-visual": "node scripts/neo-workspace-visual-homologation.mjs",
-    "readiness:dispatch": "tsx server/operations/dispatchReleaseReadiness.cli.ts"
+    "readiness:dispatch": "tsx server/operations/dispatchReleaseReadiness.cli.ts",
+    "test:10b:shard": "vitest run --config vitest.10b.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1117.0",
