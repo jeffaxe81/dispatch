@@ -5,7 +5,7 @@ import type { OperationalRole } from "../shared/operations";
 import { getDb } from "./db";
 import { recordDeniedPermission } from "./deniedPermissionAudit";
 import { ENV } from "./_core/env";
-import { filterRolePermissionCodes } from "../shared/homologationProfiles";
+import { filterRolePermissionCodes, isReservedHomologationCode, mustUseDynamicAuthorization } from "../shared/homologationProfiles";
 
 export type PermissionCode = string;
 type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
@@ -84,7 +84,7 @@ export async function getAccessSnapshot(userId: number) {
     eq(accessRoles.active, true),
     or(isNull(userRoleAssignments.expiresAt), gt(userRoleAssignments.expiresAt, new Date())),
   );
-  const [assignments, permissions] = await Promise.all([
+  const [assignments, permissions, historyRoles] = await Promise.all([
     db.select({
       roleCode: accessRoles.code,
       defaultScope: accessRoles.defaultScope,
@@ -97,17 +97,21 @@ export async function getAccessSnapshot(userId: number) {
       .innerJoin(rolePermissions, eq(rolePermissions.roleId, accessRoles.id))
       .innerJoin(accessPermissions, eq(rolePermissions.permissionId, accessPermissions.id))
       .where(and(validAssignment, eq(accessPermissions.active, true))),
+    db.select({ roleCode: accessRoles.code }).from(userRoleAssignments)
+      .innerJoin(accessRoles, eq(userRoleAssignments.roleId, accessRoles.id))
+      .where(eq(userRoleAssignments.userId, userId)),
   ]);
   // Keep an inactive-stage QA assignment in the snapshot: stripping the role
   // itself could restore broad permissions from the user's legacy role.
-  return { assignments: assignments as AccessAssignment[],
+  const hasHistoricQaRole = historyRoles.some(row => isReservedHomologationCode(row.roleCode));
+  return { assignments: assignments as AccessAssignment[], hasHistoricQaRole,
     permissions: new Set(filterRolePermissionCodes(permissions,
       process.env.AXE_DEPLOYMENT_STAGE, process.env.AXE_HOMOLOGATION_ENABLED)) };
 }
 
 export async function hasPermission(user: CurrentUser, permission: PermissionCode) {
   const snapshot = await getAccessSnapshot(user.id);
-  return evaluatePermission({ active: user.active, operationalRole: user.operationalRole, hasDynamicAssignments: snapshot.assignments.length > 0, dynamicPermissions: snapshot.permissions }, permission);
+  return evaluatePermission({ active: user.active, operationalRole: user.operationalRole, hasDynamicAssignments: mustUseDynamicAuthorization(snapshot.assignments.length, snapshot.hasHistoricQaRole), dynamicPermissions: snapshot.permissions }, permission);
 }
 
 export async function getEffectiveAccess(user: CurrentUser) {
@@ -116,7 +120,7 @@ export async function getEffectiveAccess(user: CurrentUser) {
   const [snapshot, catalog] = await Promise.all([getAccessSnapshot(user.id), db.select({ code: accessPermissions.code }).from(accessPermissions).where(eq(accessPermissions.active, true))]);
   const input = { active: user.active, operationalRole: user.operationalRole, hasDynamicAssignments: snapshot.assignments.length > 0, dynamicPermissions: snapshot.permissions };
   const permissions = resolveEffectivePermissions(input, catalog.map(row => row.code));
-  return { permissions, assignments: snapshot.assignments, usesDynamicRoles: snapshot.assignments.length > 0, isSuperAdministrator: user.role === "admin" || user.openId === ENV.ownerOpenId || hasSuperAdministratorAssignment(snapshot.assignments) };
+  return { permissions, assignments: snapshot.assignments, usesDynamicRoles: mustUseDynamicAuthorization(snapshot.assignments.length, snapshot.hasHistoricQaRole), isSuperAdministrator: user.role === "admin" || user.openId === ENV.ownerOpenId || hasSuperAdministratorAssignment(snapshot.assignments) };
 }
 
 export async function assertPermission(user: CurrentUser, permission: PermissionCode) {
