@@ -17,7 +17,7 @@ import { trpc } from "@/lib/trpc";
 import { isFieldAgent, type AccessAssignmentLike } from "@/lib/operationalAccess";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { BarChart3, CarFront, CircleHelp, ClipboardList, Clock3, DoorOpen, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
+import { BarChart3, CarFront, CircleHelp, ClipboardList, Clock3, DoorOpen, FileWarning, LayoutDashboard, MapPinned, PanelLeft, PlugZap, Radio, Settings2, ShieldCheck, UsersRound } from "lucide-react";
 import React, { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -42,7 +42,7 @@ export function getMenuItems(permissions: string[] | undefined, role?: string, i
   if (can("roles.view")) items.push({ icon: ShieldCheck, label: "Perfis", path: "/administracao/perfis" });
   if (can("system.configure")) items.push({ icon: ShieldCheck, label: "Escopos", path: "/administracao/escopos" });
   if (can("audit.view")) items.push({ icon: ClipboardList, label: "Log de operações", path: "/administracao/log-operacoes" });
-  if (isSuperAdministrator) items.push({ icon: Settings2, label: "Configurações", path: "/administracao/configuracoes" });
+  if (isSuperAdministrator) items.push({ icon: FileWarning, label: "Conciliação de evidências", path: "/administracao/conciliacao-evidencias" }, { icon: Settings2, label: "Configurações", path: "/administracao/configuracoes" });
   return items;
 }
 
