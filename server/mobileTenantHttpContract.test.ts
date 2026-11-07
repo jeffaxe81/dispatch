@@ -107,7 +107,7 @@ describe("AXE Dispatch — Mobile consumer HTTP tenant.selection contract",()=>{
     });
   });
 
-  it.each(["0","-1","abc","1.5","9007199254740993","2,3"," 2 "])
+  it.each(["0","-1","abc","1.5","9007199254740993","2,3"])
     ("rejects malformed organization header before returning data: %s",async header=>{
       const r=await call({user:agent,header});
       expect(r.status).toBe(400);
@@ -158,6 +158,8 @@ describe("AXE Dispatch — Mobile consumer HTTP tenant.selection contract",()=>{
     await expect(requireActiveTenant(agent as never,{headers:{"x-organization-id":"INVALID"}}))
       .rejects.toMatchObject({code:"BAD_REQUEST"});
     await expect(requireActiveTenant(agent as never,{headers:{"x-organization-id":"2\n"}}))
+      .rejects.toMatchObject({code:"BAD_REQUEST"});
+    await expect(requireActiveTenant(agent as never,{headers:{"x-organization-id":" 2 "}}))
       .rejects.toMatchObject({code:"BAD_REQUEST"});
     await expect(requireActiveTenant(agent as never,{headers:{"x-organization-id":["2","999"]}}))
       .rejects.toMatchObject({code:"BAD_REQUEST"});
