@@ -10,7 +10,7 @@ import {
   AlertTriangle, ChevronLeft, ChevronRight, ClipboardCheck, Clock3,
   FileWarning, LockKeyhole, RefreshCw, ShieldCheck,
 } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 
 type RecoveryFilter = "all" | "cleanup_required" | "stale_reserved" | "missing_reference";
 type RecoveryReason = "cleanup_pending_review" | "stale_upload_reservation" | "missing_evidence_reference";
