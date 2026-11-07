@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import mysql, { type ResultSetHeader, type RowDataPacket } from "mysql2/promise";
-import { isReservedIncidentEvidenceKey } from "../../server/storage";
+import { isReservedIncidentEvidenceKey, storageGetSignedUrl } from "../../server/storage";
 
 type Mode = "success" | "presign_503" | "put_503_after_store" | "revoke_during_put";
 const STORE_ORIGIN = "http://127.0.0.1:8765";
@@ -51,7 +51,11 @@ async function main() {
   let mode: Mode = "success";
   let presignRequests = 0;
   let putRequests = 0;
+  let readPresignRequests = 0;
+  let readObjectRequests = 0;
+  let deleteRequests = 0;
   const objects = new Map<string, { bytes: Buffer; contentType: string }>();
+  const signedGetTokens = new Map<string, { key: string; expiresAt: number }>();
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     try {
@@ -94,7 +98,45 @@ async function main() {
         res.writeHead(200); res.end();
         return;
       }
-      // No HTTP DELETE is supported: this harness must never delete objects.
+      if (req.method === "GET" && url.pathname === "/v1/storage/presign/get") {
+        readPresignRequests++;
+        if (req.headers.authorization !== `Bearer ${CI_KEY}`) {
+          res.writeHead(401); res.end(); return;
+        }
+        const key = url.searchParams.get("path");
+        if (!key || !isReservedIncidentEvidenceKey(key)) {
+          res.writeHead(400); res.end(); return;
+        }
+        // The presign endpoint may return a URL even when the object is absent.
+        // Only the subsequent GET indicates whether the bytes exist.
+        const token = randomUUID();
+        signedGetTokens.set(token, { key, expiresAt: Date.now() + 30_000 });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ url: STORE_ORIGIN + "/ci-download/" + token }));
+        return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/ci-download/")) {
+        readObjectRequests++;
+        const token = url.pathname.slice("/ci-download/".length);
+        const signed = signedGetTokens.get(token);
+        if (!signed || Date.now() > signed.expiresAt) {
+          res.writeHead(403); res.end(); return;
+        }
+        const object = objects.get(signed.key);
+        if (!object) { res.writeHead(404); res.end(); return; }
+        res.writeHead(200, {
+          "content-type": object.contentType,
+          "content-length": String(object.bytes.length),
+          "cache-control": "no-store",
+        });
+        res.end(object.bytes);
+        return;
+      }
+      if (req.method === "DELETE") {
+        deleteRequests++;
+        res.writeHead(405); res.end(); return;
+      }
+      // Unknown methods and paths are never permitted.
       res.writeHead(405); res.end();
     } catch {
       res.writeHead(500); res.end("synthetic provider error");
@@ -170,6 +212,21 @@ async function main() {
     assert.ok(saved);
     assert.equal(saved.contentType, "application/pdf");
     assert.deepEqual(saved.bytes, Buffer.from(input.dataBase64, "base64"));
+    // Real HTTP GET round-trip via the existing production signing helper.
+    // The signed URL stays inside this process, never in a tRPC response.
+    const signedRead = await storageGetSignedUrl(String(afterSuccess[0].storage_key));
+    assert.equal(new URL(signedRead).origin, STORE_ORIGIN);
+    const readResponse = await fetch(signedRead, { redirect: "manual" });
+    assert.equal(readResponse.status, 200);
+    assert.equal(readResponse.headers.get("content-type"), "application/pdf");
+    assert.deepEqual(Buffer.from(await readResponse.arrayBuffer()), saved.bytes);
+    const deniedPresign = await fetch(
+      STORE_ORIGIN + "/v1/storage/presign/get?path=" +
+      encodeURIComponent(String(afterSuccess[0].storage_key)),
+    );
+    assert.equal(deniedPresign.status, 401);
+    assert.equal((await fetch(STORE_ORIGIN + "/ci-download/" + randomUUID())).status, 403,
+      "unsigned direct reads must not expose a stored object");
     await checkNoExtraEvidence(1);
 
     mode = "presign_503";
@@ -183,6 +240,9 @@ async function main() {
       String(row.storage_key).endsWith("-http-presign-503.pdf"));
     assert.equal(presignFailure?.state, "cleanup_required");
     assert.equal(objects.has(String(presignFailure?.storage_key)), false);
+    const signedMissing = await storageGetSignedUrl(String(presignFailure!.storage_key));
+    assert.equal((await fetch(signedMissing)).status, 404,
+      "presigned URL is not proof that remote object exists");
     assert.equal(putRequests, 1);
     await checkNoExtraEvidence(1);
 
@@ -198,6 +258,11 @@ async function main() {
     assert.equal(persistedOrphan?.state, "cleanup_required");
     assert.ok(objects.has(String(persistedOrphan?.storage_key)),
       "HTTP provider can persist bytes yet report failure; ledger must retain orphan");
+    const signedOrphan = await storageGetSignedUrl(String(persistedOrphan!.storage_key));
+    const orphanGet = await fetch(signedOrphan);
+    assert.equal(orphanGet.status, 200, "a failed PUT can leave retrievable bytes");
+    assert.deepEqual(Buffer.from(await orphanGet.arrayBuffer()),
+      Buffer.from(input.dataBase64, "base64"));
     await checkNoExtraEvidence(1);
 
     mode = "revoke_during_put";
@@ -233,7 +298,17 @@ async function main() {
       "only successful HTTP PUT may publish the evidence event");
     assert.equal(objects.size, 3,
       "a failed presign must create no object; ambiguous and revoked PUTs remain local");
-    console.log("PASS: real loopback presign + HTTP PUT, persistent bytes, 503 before/after PUT, concurrent revocation, durable cleanup and no remote delete.");
+    const readOnlySnapshot = objects.size;
+    const forbiddenDelete = await fetch(
+      STORE_ORIGIN + "/ci-blob/" + encodeURIComponent(String(persistedOrphan!.storage_key)),
+      { method: "DELETE" },
+    );
+    assert.equal(forbiddenDelete.status, 405);
+    assert.equal(deleteRequests, 1);
+    assert.equal(objects.size, readOnlySnapshot, "deletion must not remove any CI objects");
+    assert.ok(readPresignRequests >= 3);
+    assert.ok(readObjectRequests >= 4);
+    console.log("PASS: loopback HTTP presign/PUT/GET, denied anonymous reads, missing objects, 503 before/after PUT, concurrent revocation, durable cleanup and no deletion.");
   } finally {
     if (serverStarted) await new Promise<void>(resolve => server.close(() => resolve()));
     if (userId) await conn.execute("DELETE FROM incident_evidence_upload_attempts WHERE actor_user_id = ?", [userId]).catch(() => {});
@@ -243,6 +318,7 @@ async function main() {
     if (userId) await conn.execute("DELETE FROM users WHERE id = ?", [userId]).catch(() => {});
     await conn.end();
     objects.clear();
+    signedGetTokens.clear();
   }
 }
 
