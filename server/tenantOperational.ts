@@ -21,7 +21,12 @@ async function requireDb() {
 
 function parseTenantHeader(req: HeaderRequest) {
   const raw = req.headers?.["x-organization-id"];
-  const value = Array.isArray(raw) ? raw[0] : raw;
+  // A repeated tenant header is ambiguous and must never silently choose
+  // the first value. Reject forwarded duplicates before authorization.
+  if (Array.isArray(raw)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "O cabeçalho da empresa ativa está duplicado." });
+  }
+  const value = raw;
   if (!value) return null;
   if (!/^\d+$/.test(value)) throw new TRPCError({ code: "BAD_REQUEST", message: "Identificador da empresa ativa é inválido." });
   const tenantId = Number(value);
