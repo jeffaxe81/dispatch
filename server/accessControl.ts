@@ -5,6 +5,7 @@ import type { OperationalRole } from "../shared/operations";
 import { getDb } from "./db";
 import { recordDeniedPermission } from "./deniedPermissionAudit";
 import { ENV } from "./_core/env";
+import { currentHomologationRuntimeEnabled, isReservedHomologationCode } from "../shared/homologationProfiles";
 
 export type PermissionCode = string;
 type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
@@ -91,13 +92,19 @@ export async function getAccessSnapshot(userId: number) {
       organizationalUnitId: userRoleAssignments.organizationalUnitId,
       teamId: userRoleAssignments.teamId,
     }).from(userRoleAssignments).innerJoin(accessRoles, eq(userRoleAssignments.roleId, accessRoles.id)).where(validAssignment),
-    db.select({ code: accessPermissions.code }).from(userRoleAssignments)
+    db.select({ code: accessPermissions.code, roleCode: accessRoles.code }).from(userRoleAssignments)
       .innerJoin(accessRoles, eq(userRoleAssignments.roleId, accessRoles.id))
       .innerJoin(rolePermissions, eq(rolePermissions.roleId, accessRoles.id))
       .innerJoin(accessPermissions, eq(rolePermissions.permissionId, accessPermissions.id))
       .where(and(validAssignment, eq(accessPermissions.active, true))),
   ]);
-  return { assignments: assignments as AccessAssignment[], permissions: new Set(permissions.map(row => row.code)) };
+  // Keep a disabled QA assignment in the snapshot. Dropping it would restore
+  // the legacy-role fallback and could inadvertently grant more privileges.
+  const sandbox = currentHomologationRuntimeEnabled();
+  return { assignments: assignments as AccessAssignment[],
+    permissions: new Set(permissions
+      .filter(row => sandbox || !isReservedHomologationCode(row.roleCode))
+      .map(row => row.code)) };
 }
 
 export async function hasPermission(user: CurrentUser, permission: PermissionCode) {
