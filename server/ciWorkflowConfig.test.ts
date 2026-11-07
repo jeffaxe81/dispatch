@@ -68,19 +68,23 @@ describe("workflow de qualidade do GitHub", () => {
       .filter((step: { run?: string }) => step.run)
       .map((step: { run: string }) => step.run);
 
-    expect(commands).toHaveLength(9);
-    expect(commands.slice(0, 8)).toEqual([
+    expect(commands).toHaveLength(10);
+    expect(commands.slice(0, 6)).toEqual([
       "corepack enable",
       "corepack pnpm install --frozen-lockfile",
       "corepack pnpm security:check",
       "corepack pnpm check",
       "corepack pnpm test",
       "corepack pnpm readiness:dispatch",
+    ]);
+    expect(commands[6]).toContain("node --test scripts/quality/phase-handoff-audit.nodecheck.mjs");
+    expect(commands[6]).toContain("node scripts/quality/phase-handoff-audit.mjs");
+    expect(commands.slice(7, 9)).toEqual([
       "node --test scripts/inventory-external-preflight.test.mjs",
       "corepack pnpm build",
     ]);
-    expect(commands[8]).toContain("docker compose config");
-    expect(commands[8]).toContain("docker compose build app migrate");
+    expect(commands[9]).toContain("docker compose config");
+    expect(commands[9]).toContain("docker compose build app migrate");
   });
 
   it("não usa segredos, integração, escrita ou entrega", () => {

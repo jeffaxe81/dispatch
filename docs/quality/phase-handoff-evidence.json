@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "project": "AXE Despacho Web",
+  "repository": "jeffaxe81/dispatch",
+  "production_approved": false,
+  "manual_release_required": true,
+  "evidence_urls_are_not_automatically_verified": true,
+  "baseline_sha": "80116d9628a6a58f269f6562ef93570b1c44c7a4",
+  "phases": [
+    {
+      "id": "F01",
+      "status": "EVIDENCE_RECORDED",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "sha": "80116d9628a6a58f269f6562ef93570b1c44c7a4",
+          "url": "https://github.com/jeffaxe81/dispatch/blob/80116d9628a6a58f269f6562ef93570b1c44c7a4/docs/quality/dispatch-release-preflight-2026-10-24.md"
+        }
+      ]
+    },
+    {
+      "id": "F02",
+      "status": "EVIDENCE_RECORDED",
+      "evidence": [
+        {
+          "kind": "merged_pull_request",
+          "sha": "80116d9628a6a58f269f6562ef93570b1c44c7a4",
+          "url": "https://github.com/jeffaxe81/dispatch/pull/249"
+        }
+      ]
+    },
+    {
+      "id": "F03",
+      "status": "EVIDENCE_RECORDED",
+      "evidence": [
+        {
+          "kind": "github_actions_run",
+          "sha": "80116d9628a6a58f269f6562ef93570b1c44c7a4",
+          "url": "https://github.com/jeffaxe81/dispatch/actions/runs/42393728794"
+        }
+      ]
+    },
+    {
+      "id": "F04",
+      "status": "PENDING",
+      "evidence": []
+    },
+    {
+      "id": "F05",
+      "status": "PENDING",
+      "evidence": []
+    },
+    {
+      "id": "F06",
+      "status": "PENDING",
+      "evidence": []
+    }
+  ]
+}
