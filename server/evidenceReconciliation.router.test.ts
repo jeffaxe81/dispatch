@@ -50,10 +50,26 @@ describe("Super Administrator evidence recovery listing", () => {
     const result = await appRouter.createCaller(actor()).settings.evidenceRecovery({});
     expect(mocks.assertSuperAdministrator).toHaveBeenCalledTimes(1);
     expect(mocks.listEvidenceReconciliationCandidates).toHaveBeenCalledWith({
-      page: 1, pageSize: 25,
+      page: 1, pageSize: 25, state: "all",
     });
     expect(result.total).toBe(1);
     expect(result.rows[0]).not.toHaveProperty("storageKey");
+  });
+
+  it("forwards a server-side recovery filter across all pages", async () => {
+    await appRouter.createCaller(actor()).settings.evidenceRecovery({
+      page: 2, pageSize: 10, state: "stale_reserved",
+    });
+    expect(mocks.listEvidenceReconciliationCandidates).toHaveBeenCalledWith({
+      page: 2, pageSize: 10, state: "stale_reserved",
+    });
+  });
+
+  it("rejects unsupported filters without executing the database query", async () => {
+    await expect(appRouter.createCaller(actor()).settings.evidenceRecovery({
+      page: 1, pageSize: 10, state: "delete_now" as "all",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(mocks.listEvidenceReconciliationCandidates).not.toHaveBeenCalled();
   });
 
   it("denies access when Super Administrator check fails, without querying data", async () => {
