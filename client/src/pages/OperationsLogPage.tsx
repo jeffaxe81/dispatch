@@ -152,7 +152,23 @@ function OperationsLogContent() {
       <Card className="overflow-hidden border-slate-200 shadow-sm">
         <CardContent className="p-0">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3 text-sm text-slate-500"><span>{query.data?.total ?? 0} operação(ões) registrada(s) · mostrando {firstVisible}–{lastVisible}</span><span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-emerald-600" />Auditável e imutável</span></div>
-          <div className="overflow-x-auto">
+          <div className="divide-y divide-slate-100 md:hidden" aria-label="Log de operações em cartões">
+              {(query.data?.rows ?? []).map(({ audit, actorName, actorEmail }) => (
+                <article key={audit.id} className="space-y-2 px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <h3 className="min-w-0 break-words text-sm font-semibold text-slate-900">{getOperationLabel(audit.action)}</h3>
+                    <Badge variant="outline">{resourceLabels[audit.resourceType] ?? audit.resourceType}</Badge>
+                  </div>
+                  <p className="text-xs text-slate-600">Recurso #{audit.resourceId} · {actorName ?? actorEmail ?? "Sistema"}</p>
+                  <p className="text-xs text-slate-500">{formatDateTime(audit.createdAt)}</p>
+                  <Button variant="outline" size="sm" onClick={() => setSelectedAudit(audit)}><Eye className="mr-1.5 h-3.5 w-3.5" />Ver detalhes</Button>
+                </article>
+              ))}
+              {!query.isLoading && (query.data?.rows.length ?? 0) === 0 && (
+                <p className="p-8 text-center text-sm text-slate-500">Nenhum registro corresponde ao filtro atual.</p>
+              )}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[900px] text-left">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-[.1em] text-slate-500"><tr><th className="px-5 py-3 font-medium">Operação</th><th className="px-4 py-3 font-medium">Recurso</th><th className="px-4 py-3 font-medium">Responsável</th><th className="px-4 py-3 font-medium">Data e hora</th><th className="px-4 py-3 font-medium">Evidência</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
@@ -165,7 +181,7 @@ function OperationsLogContent() {
               </tbody>
             </table>
           </div>
-          <footer className="flex items-center justify-between border-t border-slate-100 px-5 py-3"><span className="text-sm text-slate-500">Página {page} de {totalPages}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(current => current - 1)}><ChevronLeft className="h-4 w-4" />Anterior</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(current => current + 1)}>Próxima<ChevronRight className="h-4 w-4" /></Button></div></footer>
+          <footer className="flex flex-col gap-3 border-t border-slate-100 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"><span className="text-sm text-slate-500">Página {page} de {totalPages}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(current => current - 1)}><ChevronLeft className="h-4 w-4" />Anterior</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(current => current + 1)}>Próxima<ChevronRight className="h-4 w-4" /></Button></div></footer>
         </CardContent>
       </Card>
       <Dialog open={Boolean(selectedAudit)} onOpenChange={open => !open && setSelectedAudit(null)}>
