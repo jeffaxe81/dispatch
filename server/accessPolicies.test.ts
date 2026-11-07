@@ -5,6 +5,7 @@ describe("proteção de perfis padrão", () => {
   it("impede desativação e alteração da matriz de perfis padrão", () => {
     expect(canUpdateRoleDefinition({ isSystem: true, active: false, permissionIdsProvided: false })).toBe(false);
     expect(canUpdateRoleDefinition({ isSystem: true, permissionIdsProvided: true })).toBe(false);
+    expect(canUpdateRoleDefinition({ isSystem: true, permissionIdsProvided: false, defaultScopeProvided: true })).toBe(false);
   });
 
   it("permite administrar perfis personalizados", () => {
