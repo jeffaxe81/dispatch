@@ -915,6 +915,7 @@ export async function uploadUserProfilePhoto(input: { userId: number; actorUserI
 export async function listEvidenceReconciliationCandidates(input: {
   page: number;
   pageSize: number;
+  state?: "all" | "cleanup_required" | "stale_reserved" | "missing_reference";
   now?: Date;
 }) {
   if (!Number.isSafeInteger(input.page) || input.page < 1 || input.page > 10000 ||
@@ -929,11 +930,20 @@ export async function listEvidenceReconciliationCandidates(input: {
   // EXISTS resolves to the inner table and silently makes every row "linked".
   const referenceExists = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM incident_evidence AS ie WHERE ie.storage_key = incident_evidence_upload_attempts.storage_key) THEN 1 ELSE 0 END`;
   const incidentExists = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM incidents AS i WHERE i.id = incident_evidence_upload_attempts.incident_id) THEN 1 ELSE 0 END`;
-  const pending = or(
-    eq(incidentEvidenceUploadAttempts.state, "cleanup_required"),
-    and(eq(incidentEvidenceUploadAttempts.state, "reserved"), lt(incidentEvidenceUploadAttempts.updatedAt, cutoff)),
-    and(eq(incidentEvidenceUploadAttempts.state, "committed"), sql`NOT (${referenceExists})`),
-  );
+  const byReason = {
+    cleanup_required: eq(incidentEvidenceUploadAttempts.state, "cleanup_required"),
+    stale_reserved: and(
+      eq(incidentEvidenceUploadAttempts.state, "reserved"),
+      lt(incidentEvidenceUploadAttempts.updatedAt, cutoff),
+    )!,
+    missing_reference: and(
+      eq(incidentEvidenceUploadAttempts.state, "committed"),
+      sql`NOT (${referenceExists})`,
+    )!,
+  };
+  const pending = input.state && input.state !== "all"
+    ? byReason[input.state]
+    : or(byReason.cleanup_required, byReason.stale_reserved, byReason.missing_reference);
   const [rows, countRows] = await Promise.all([
     db.select({
       attemptId: incidentEvidenceUploadAttempts.attemptId,
@@ -955,6 +965,7 @@ export async function listEvidenceReconciliationCandidates(input: {
   ]);
   return {
     page: input.page, pageSize: input.pageSize,
+    state: input.state ?? "all",
     total: Number(countRows[0]?.total ?? 0),
     staleAfterMinutes: EVIDENCE_RESERVATION_STALE_MINUTES,
     rows: rows.map(row => ({
