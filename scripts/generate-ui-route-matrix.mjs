@@ -8,6 +8,7 @@ const outputPath = path.join(root, "docs/UI_ROUTE_STATE_MATRIX.md");
 const routes = [
   ["/login", "LoginPage.tsx", "desktop+mobile", []],
   ["/", "Home.tsx", "desktop+mobile", []],
+  ["/workspace/external", "WorkspaceExternalScreenPage.tsx", "HTTP 200 + teste de segurança", ["client/src/pages/WorkspaceExternalScreenPage.test.tsx"]],
   ["/dashboards-relatorios", "DashboardsReportsPage.tsx", "desktop+mobile", []],
   ["/ocorrencias", "IncidentsPage.tsx", "desktop+mobile", []],
   ["/ocorrencias/:id", "IncidentDetailPage.tsx", "HTTP 200 + fonte preservada", []],
@@ -32,11 +33,12 @@ const routes = [
   ["/administracao/perfis", "RolesPermissionsPage.tsx", "HTTP 200 + fonte preservada", []],
   ["/administracao/escopos", "AccessScopesPage.tsx", "HTTP 200 + fonte preservada", []],
   ["/administracao/configuracoes", "GeneralSettingsPage.tsx", "desktop+mobile", ["client/src/pages/GeneralSettingsPage.test.tsx"]],
+  ["/administracao/conciliacao-evidencias", "EvidenceRecoveryPage.tsx", "HTTP 200 + fonte responsiva e testes", ["client/src/pages/EvidenceRecoveryPage.test.tsx"]],
   ["/administracao/log-operacoes", "OperationsLogPage.tsx", "HTTP 200 + fonte preservada", ["client/src/pages/OperationsLogPage.test.ts"]],
   ["/404", "NotFound.tsx", "HTTP 200 + fallback global", []],
 ];
 
-const primaryPages = new Set(["Home.tsx", "DashboardsReportsPage.tsx", "IncidentsPage.tsx", "TeamsPage.tsx", "KanbanPage.tsx", "AgentPage.tsx", "IntegrationsPage.tsx", "GeneralSettingsPage.tsx", "ManualsHelpPage.tsx"]);
+const primaryPages = new Set(["Home.tsx", "DashboardsReportsPage.tsx", "IncidentsPage.tsx", "TeamsPage.tsx", "KanbanPage.tsx", "AgentPage.tsx", "IntegrationsPage.tsx", "GeneralSettingsPage.tsx", "ManualsHelpPage.tsx", "EvidenceRecoveryPage.tsx"]);
 const loadingPattern = /isLoading|isFetching|isPending|QueryState|loading/;
 const emptyPattern = /Nenhum|Nenhuma|Ainda não|Sem ocorr|length === 0|!.*length/;
 const errorPattern = /\.error|isError|role="alert"|QueryState|error=/;
@@ -62,7 +64,7 @@ const rows = routes.map(([route, page, visual, tests]) => {
   };
 });
 
-if (rows.length !== 28) throw new Error(`Matriz incompleta: ${rows.length} rotas; eram esperadas 28.`);
+if (rows.length !== 30) throw new Error(`Matriz incompleta: ${rows.length} rotas; eram esperadas 30.`);
 if (!appSource.includes("<Route component={NotFound} />")) throw new Error("Fallback global 404 ausente.");
 if (!appSource.includes("<ErrorBoundary>")) throw new Error("ErrorBoundary global ausente.");
 
