@@ -5,7 +5,7 @@ import type { OperationalRole } from "../shared/operations";
 import { getDb } from "./db";
 import { recordDeniedPermission } from "./deniedPermissionAudit";
 import { ENV } from "./_core/env";
-import { currentHomologationRuntimeEnabled, isReservedHomologationCode } from "../shared/homologationProfiles";
+import { filterRolePermissionCodes } from "../shared/homologationProfiles";
 
 export type PermissionCode = string;
 type CurrentUser = Pick<User, "id" | "openId" | "role" | "operationalRole" | "teamId" | "active">;
@@ -98,13 +98,11 @@ export async function getAccessSnapshot(userId: number) {
       .innerJoin(accessPermissions, eq(rolePermissions.permissionId, accessPermissions.id))
       .where(and(validAssignment, eq(accessPermissions.active, true))),
   ]);
-  // Keep a disabled QA assignment in the snapshot. Dropping it would restore
-  // the legacy-role fallback and could inadvertently grant more privileges.
-  const sandbox = currentHomologationRuntimeEnabled();
+  // Keep an inactive-stage QA assignment in the snapshot: stripping the role
+  // itself could restore broad permissions from the user's legacy role.
   return { assignments: assignments as AccessAssignment[],
-    permissions: new Set(permissions
-      .filter(row => sandbox || !isReservedHomologationCode(row.roleCode))
-      .map(row => row.code)) };
+    permissions: new Set(filterRolePermissionCodes(permissions,
+      process.env.AXE_DEPLOYMENT_STAGE, process.env.AXE_HOMOLOGATION_ENABLED)) };
 }
 
 export async function hasPermission(user: CurrentUser, permission: PermissionCode) {
