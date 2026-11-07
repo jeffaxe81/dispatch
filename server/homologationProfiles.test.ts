@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   HOMOLOGATION_PROFILES, homologationRuntimeEnabled, isHomologationProfileCode,
-  isReservedHomologationCode, validateHomologationRoleAssignment,
+  isReservedHomologationCode, validateHomologationRoleAssignment, filterRolePermissionCodes,
 } from "../shared/homologationProfiles";
 
 const now = new Date("2026-11-07T12:00:00.000Z");
@@ -46,6 +46,17 @@ describe("Perfis P0 de homologação — concessão mínima e validade limitada"
     for (const expiry of [null,undefined,new Date("2026-11-06"),new Date("2026-12-05"),new Date("invalid")]) {
       expect(validateHomologationRoleAssignment({...scoped,expiresAt:expiry},now)).toBe(false);
     }
+  });
+  it("suppresses reserved permissions outside sandbox without reviving legacy fallback",()=>{
+    const rows=[
+      {code:"occurrences.create",roleCode:"homolog_executor"},
+      {code:"reports.view",roleCode:"homolog_auditor"},
+      {code:"occurrences.view",roleCode:"supervisor"},
+    ];
+    expect(filterRolePermissionCodes(rows,"production","false")).toEqual(["occurrences.view"]);
+    expect(filterRolePermissionCodes(rows,"homologation","true")).toEqual([
+      "occurrences.create","reports.view","occurrences.view"
+    ]);
   });
   it("requires explicit team for a field QA agent",()=>{
     const base={...scoped,code:"homolog_agente_campo"};
