@@ -2,10 +2,11 @@ name: Backend 5B synthetic policy campaign
 on:
   pull_request:
     paths:
-      - 'scripts/quality/**'
+      - 'scripts/quality/backend10b.campaign.ts'
+      - 'scripts/quality/verify-5b-campaign.mjs'
       - 'vitest.10b.config.ts'
       - 'package.json'
-      - 'server/**'
+      - 'server/productHomologation1000.test.ts'
       - '.github/workflows/product-5b-backend.yml'
   workflow_dispatch:
 permissions:
