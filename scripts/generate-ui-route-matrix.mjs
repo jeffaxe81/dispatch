@@ -38,7 +38,7 @@ const routes = [
   ["/404", "NotFound.tsx", "HTTP 200 + fallback global", []],
 ];
 
-const primaryPages = new Set(["Home.tsx", "DashboardsReportsPage.tsx", "IncidentsPage.tsx", "TeamsPage.tsx", "KanbanPage.tsx", "AgentPage.tsx", "IntegrationsPage.tsx", "GeneralSettingsPage.tsx", "ManualsHelpPage.tsx", "EvidenceRecoveryPage.tsx"]);
+const primaryPages = new Set(["Home.tsx", "DashboardsReportsPage.tsx", "IncidentsPage.tsx", "TeamsPage.tsx", "KanbanPage.tsx", "AgentPage.tsx", "IntegrationsPage.tsx", "GeneralSettingsPage.tsx", "ManualsHelpPage.tsx", "EvidenceRecoveryPage.tsx", "WorkspaceExternalScreenPage.tsx"]);
 const loadingPattern = /isLoading|isFetching|isPending|QueryState|loading/;
 const emptyPattern = /Nenhum|Nenhuma|Ainda não|Sem ocorr|length === 0|!.*length/;
 const errorPattern = /\.error|isError|role="alert"|QueryState|error=/;
