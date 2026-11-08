@@ -14,8 +14,7 @@ describe("R014 — cabeçalho tenant não aceita aliases, duplicidade ou overflo
     "0","-1","+2","01","0002"," 2","2 ","2.0","2e0","0x2","Infinity",
     "NaN","1\n2","2,3","",String(Number.MAX_SAFE_INTEGER+1),"9999999999999999999"
   ])("rejeita valor ambíguo %s",raw=>{
-    if(raw==="")expect(parseTenantHeader({headers:{"x-organization-id":raw}})).toBeNull();
-    else expect(()=>parseTenantHeader({headers:{"x-organization-id":raw}})).toThrow();
+    expect(()=>parseTenantHeader({headers:{"x-organization-id":raw}})).toThrow();
   });
   it("rejeita cabeçalhos duplicados mesmo com o mesmo identificador",()=>{
     expect(()=>parseTenantHeader({headers:{"x-organization-id":["2","2"]}})).toThrow(/duplicado/);
