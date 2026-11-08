@@ -78,7 +78,10 @@ describe("Module C: 100 tenant/team authorization scope cases",()=>{
     };
     const team={id:7,organizationId:2,organizationalUnitId:9};
     const allowedOrg=activeOrg===undefined||activeOrg===null||activeOrg===2;
-    const allowed=scope==="global"||match.team===7||
+    // A malformed global grant (non-null org/unit/team) is always denied,
+    // even if its team happens to match the requested target. Non-global
+    // legacy scope semantics remain the same in this compatibility matrix.
+    const allowed=(scope!=="global"&&match.team===7)||
       scope==="organizacao"&&match.org===2||
       ["unidade","departamento","grupo"].includes(scope)&&match.org===2&&match.unit===9;
     expect(evaluateTeamScope([assigned],team,activeOrg)).toBe(allowedOrg&&allowed);
