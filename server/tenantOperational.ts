@@ -21,7 +21,8 @@ async function requireDb() {
   return db;
 }
 
-function parseTenantHeader(req: HeaderRequest) {
+/** Canonical tenant header: no aliases such as 0002, signs or whitespace. */
+export function parseTenantHeader(req: HeaderRequest) {
   const raw = req.headers?.["x-organization-id"];
   // A repeated tenant header is ambiguous and must never silently choose
   // the first value. Reject forwarded duplicates before authorization.
@@ -30,7 +31,7 @@ function parseTenantHeader(req: HeaderRequest) {
   }
   const value = raw;
   if (!value) return null;
-  if (!/^\d+$/.test(value)) throw new TRPCError({ code: "BAD_REQUEST", message: "Identificador da empresa ativa é inválido." });
+  if (!/^[1-9]\d*$/.test(value)) throw new TRPCError({ code: "BAD_REQUEST", message: "Identificador da empresa ativa é inválido." });
   const tenantId = Number(value);
   if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Identificador da empresa ativa é inválido." });
   return tenantId;
