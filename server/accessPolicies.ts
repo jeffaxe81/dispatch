@@ -24,6 +24,17 @@ export function isCanonicalGlobalScope(input: RoleScopeAssignment): boolean {
     input.teamId == null;
 }
 
+/**
+ * Retain non-global grants and only canonical global grants. The effective
+ * access snapshot keeps the original assignments to prevent legacy fallback,
+ * but must not issue permissions through a malformed global assignment.
+ */
+export function filterCanonicalGlobalPermissions<T extends RoleScopeAssignment>(
+  rows: readonly T[],
+): T[] {
+  return rows.filter(row => row.defaultScope !== "global" || isCanonicalGlobalScope(row));
+}
+
 export function isRoleScopeAssignmentValid(input: RoleScopeAssignment) {
   if (input.defaultScope === "global") return isCanonicalGlobalScope(input);
   if (input.defaultScope === "organizacao") return input.organizationId !== null && input.organizationId !== undefined;
