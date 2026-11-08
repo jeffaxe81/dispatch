@@ -5,6 +5,7 @@ import type { OperationalRole } from "../shared/operations";
 import { getDb } from "./db";
 import { recordDeniedPermission } from "./deniedPermissionAudit";
 import { ENV } from "./_core/env";
+import { isCanonicalGlobalScope } from "./accessPolicies";
 import { filterRolePermissionCodes, isReservedHomologationCode, mustUseDynamicAuthorization } from "../shared/homologationProfiles";
 
 export type PermissionCode = string;
@@ -27,18 +28,19 @@ export type AccessAssignment = {
 };
 
 export function hasSuperAdministratorAssignment(assignments: AccessAssignment[]) {
-  return assignments.some(assignment => assignment.roleCode === "super_administrador");
+  return assignments.some(assignment => assignment.roleCode === "super_administrador" && isCanonicalGlobalScope(assignment));
 }
 
 export function hasAdministratorAssignment(assignments: AccessAssignment[]) {
-  return assignments.some(assignment => assignment.roleCode === "administrador");
+  return assignments.some(assignment => assignment.roleCode === "administrador" &&
+    (assignment.defaultScope !== "global" || isCanonicalGlobalScope(assignment)));
 }
 
 export function hasAdministratorAssignmentForOrganization(assignments: AccessAssignment[], organizationId: number) {
   if (!Number.isInteger(organizationId) || organizationId <= 0) return false;
   return assignments.some(assignment => {
     if (assignment.roleCode !== "administrador") return false;
-    if (assignment.defaultScope === "global") return true;
+    if (assignment.defaultScope === "global") return isCanonicalGlobalScope(assignment);
     return assignment.organizationId === organizationId;
   });
 }
@@ -61,7 +63,7 @@ export function resolveEffectivePermissions(input: { active: boolean; operationa
 export function evaluateTeamScope(assignments: AccessAssignment[], team: { organizationId: number | null; organizationalUnitId: number | null; id: number }, activeOrganizationId?: number | null) {
   if (activeOrganizationId !== undefined && activeOrganizationId !== null && team.organizationId !== activeOrganizationId) return false;
   return assignments.some(assignment => {
-    if (assignment.defaultScope === "global") return true;
+    if (assignment.defaultScope === "global") return isCanonicalGlobalScope(assignment);
     if (assignment.teamId === team.id) return true;
     if (assignment.defaultScope === "organizacao") return assignment.organizationId !== null && assignment.organizationId === team.organizationId;
     if (["unidade", "departamento", "grupo"].includes(assignment.defaultScope)) {
@@ -72,7 +74,7 @@ export function evaluateTeamScope(assignments: AccessAssignment[], team: { organ
 }
 
 export function requiresExplicitTeamSelection(assignments: AccessAssignment[]) {
-  return assignments.length > 0 && !assignments.some(assignment => assignment.defaultScope === "global");
+  return assignments.length > 0 && !assignments.some(isCanonicalGlobalScope);
 }
 
 export async function getAccessSnapshot(userId: number) {
