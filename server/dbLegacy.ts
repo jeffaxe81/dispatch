@@ -48,6 +48,7 @@ import { assertShiftHandoffRequest, assertShiftHandoffConfirmation, HANDOFF_WIND
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import { assertRequiredIncidentClosureForms } from "./forms/incidentClosureFormGate";
 import { incidentListOrder } from "./incidentListOrder";
+import { incidentLiteralSearchPattern } from "./incidentSearchLiteral";
 import { fetchIncidentStageSummary } from "./incidentStageSummary";
 import type { IncidentPriority, IncidentStatus, OperationalRole } from "../shared/operations";
 import type { WorkShiftAction } from "../shared/workShifts";
@@ -159,8 +160,12 @@ export async function listIncidents(input: IncidentListInput) {
   const db = await requireDb();
   const filters = [];
   if (input.search) {
-    const query = `%${input.search.trim()}%`;
-    filters.push(or(like(incidents.code, query), like(incidents.category, query), like(incidents.address, query)));
+    const pattern = incidentLiteralSearchPattern(input.search);
+    filters.push(or(
+      sql`${incidents.code} LIKE ${pattern} ESCAPE '!'`,
+      sql`${incidents.category} LIKE ${pattern} ESCAPE '!'`,
+      sql`${incidents.address} LIKE ${pattern} ESCAPE '!'`,
+    ));
   }
   if (input.status) filters.push(eq(incidents.status, input.status));
   if (input.priority) filters.push(eq(incidents.priority, input.priority));

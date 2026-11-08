@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, like, lt, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, like, lt, lte, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { incidentTenantScopes, vehicleTenantScopes } from "../drizzle/tenantScopeSchema";
 import { incidents, organizations, teams, users, vehicles, type User } from "../drizzle/schema";
@@ -8,6 +8,7 @@ import { getAccessSnapshot } from "./accessControl";
 import { isCanonicalGlobalScope } from "./accessPolicies";
 import { withIncidentStageEntry } from "./incidentStageMetrics";
 import { incidentListOrder } from "./incidentListOrder";
+import { incidentLiteralSearchPattern } from "./incidentSearchLiteral";
 import { fetchIncidentStageSummary } from "./incidentStageSummary";
 import { createIncident, createTeam, createVehicle, getDb, type IncidentListInput, type OperationalReportInput } from "./db";
 
@@ -96,8 +97,12 @@ export async function listIncidentsForTenant(tenantId: number, input: IncidentLi
   const db = await requireDb();
   const filters = [eq(incidentTenantScopes.organizationId, tenantId)];
   if (input.search) {
-    const query = `%${input.search.trim()}%`;
-    filters.push(or(like(incidents.code, query), like(incidents.category, query), like(incidents.address, query))!);
+    const pattern = incidentLiteralSearchPattern(input.search);
+    filters.push(or(
+      sql`${incidents.code} LIKE ${pattern} ESCAPE '!'`,
+      sql`${incidents.category} LIKE ${pattern} ESCAPE '!'`,
+      sql`${incidents.address} LIKE ${pattern} ESCAPE '!'`,
+    )!);
   }
   if (input.status) filters.push(eq(incidents.status, input.status));
   if (input.priority) filters.push(eq(incidents.priority, input.priority));

@@ -19,6 +19,8 @@ export function incidentListOrder(sortOrder: IncidentListInput["sortOrder"]) {
       return [desc(sql`CASE ${incidents.priority} WHEN 'critica' THEN 4 WHEN 'alta' THEN 3 WHEN 'media' THEN 2 WHEN 'baixa' THEN 1 ELSE 0 END`), asc(incidents.createdAt), asc(incidents.id)];
     case "oldest": return [asc(incidents.createdAt), asc(incidents.id)];
     case "newest": return [desc(incidents.createdAt), asc(incidents.id)];
-    default: return [desc(incidents.createdAt)];
+    // Stable secondary key prevents duplicated/missing cards between pages
+    // when multiple incidents share the same creation timestamp.
+    default: return [desc(incidents.createdAt), asc(incidents.id)];
   }
 }

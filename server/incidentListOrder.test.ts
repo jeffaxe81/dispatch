@@ -27,6 +27,14 @@ describe("AXED-F015 — ordenação SQL global do Kanban", () => {
     expect(compiledOrder("priority").sql).toContain("WHEN 'critica' THEN 4");
     expect(compiledOrder("oldest").sql.toLowerCase()).toContain("asc");
     expect(compiledOrder("newest").sql.toLowerCase()).toContain("desc");
-    expect(compiledOrder(undefined).sql.toLowerCase()).toContain("desc");
+    const fallback = compiledOrder(undefined).sql.toLowerCase();
+    expect(fallback).toContain("desc");
+    expect(fallback).toMatch(/order|created_at|createdat/);
+    expect(fallback).toMatch(/\bid\b/);
+    expect(fallback).toContain("asc");
+    for (const sort of ["priority", "oldest", "newest", "stage-oldest"] as const) {
+      const query = compiledOrder(sort).sql.toLowerCase();
+      expect(query).toMatch(/\bid\b/);
+    }
   });
 });
