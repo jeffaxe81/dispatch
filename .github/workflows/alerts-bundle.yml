@@ -1,0 +1,75 @@
+name: Alerts optional bundle
+
+on:
+  pull_request:
+    paths:
+      - compose.alerts.yml
+      - .env.alerts.example
+      - scripts/test-alerts-bundle.test.mjs
+      - docs/alerts-bundle.md
+      - .github/workflows/alerts-bundle.yml
+  push:
+    paths:
+      - compose.alerts.yml
+      - .env.alerts.example
+      - scripts/test-alerts-bundle.test.mjs
+      - docs/alerts-bundle.md
+      - .github/workflows/alerts-bundle.yml
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test independent module structure
+        run: node --test scripts/test-alerts-bundle.test.mjs
+      - name: Validate Compose models and profiles
+        run: |
+          cp .env.example .env
+          cp .env.alerts.example .env.alerts
+          docker compose --env-file .env -f docker-compose.yml config --quiet
+          docker compose --env-file .env --env-file .env.alerts -f docker-compose.yml -f compose.alerts.yml --profile alerts config --quiet
+          docker compose --env-file .env --env-file .env.alerts -f docker-compose.yml -f compose.alerts.yml --profile alerts config --services | grep -Fx 'alerts-app'
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare isolated secrets for ephemeral test stack
+        run: |
+          cp .env.example .env
+          cp .env.alerts.example .env.alerts
+      - name: Build Alerts runtime and migration from pinned upstream commit
+        run: |
+          docker compose --env-file .env --env-file .env.alerts \
+            -f docker-compose.yml -f compose.alerts.yml \
+            --profile alerts build alerts-app alerts-migrate
+      - name: Run Alerts only (Dispatch intentionally not started)
+        run: |
+          docker compose --env-file .env --env-file .env.alerts \
+            -f docker-compose.yml -f compose.alerts.yml \
+            --profile alerts up -d alerts-app
+      - name: Verify liveness and SQL readiness
+        run: |
+          for n in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3003/health/live >/dev/null && \
+               curl --fail --silent http://127.0.0.1:3003/health/ready >/dev/null; then
+              echo "Alerts isolated service and database are ready."
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+      - name: Diagnostic service logs on failure
+        if: failure()
+        run: |
+          docker compose --env-file .env --env-file .env.alerts \
+            -f docker-compose.yml -f compose.alerts.yml \
+            --profile alerts logs --no-color --tail 80 alerts-app alerts-migrate alerts-mysql
+      - name: Remove ephemeral CI containers without deleting data volumes
+        if: always()
+        run: |
+          docker compose --env-file .env --env-file .env.alerts \
+            -f docker-compose.yml -f compose.alerts.yml \
+            --profile alerts down --remove-orphans
