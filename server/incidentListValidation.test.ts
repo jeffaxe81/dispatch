@@ -36,14 +36,20 @@ describe("AXED-F014: intervalo de abertura de ocorrências", () => {
 const read = (relative: string) => fs.readFileSync(path.resolve(import.meta.dirname, "..", relative), "utf8");
 
 describe("AXED-F013/F014/F018: contrato de listagem tenant-aware", () => {
-  it("ambos os routers usam o mesmo validador de período e preservam autorização", () => {
+  it("ambos os routers exigem filtro de equipe autorizado em vez de ampliar a listagem", () => {
     for (const file of ["server/routers.ts", "server/tenantAwareAppRouter.ts"]) {
       const code = read(file);
       const incidentArea = code.slice(code.indexOf("  incidents: router({"));
-      expect(incidentArea).toContain(".input(incidentListInputSchema)");
-      expect(incidentArea).toContain('assertPermission(ctx.user, "occurrences.view")');
-      expect(incidentArea).toContain("assertTeamScope(ctx.user, teamId");
+      const listHandler = incidentArea.slice(0, incidentArea.indexOf("    get: operationalProcedure"));
+      expect(listHandler).toContain(".input(incidentListInputSchema)");
+      expect(listHandler).toContain('resolveAuthorizedTeamFilter(ctx.user, input.teamId, "occurrences.view")');
+      expect(listHandler).not.toContain('ctx.user.operationalRole === "agente" ?');
     }
+    const tenantRouter = read("server/tenantAwareAppRouter.ts");
+    const tenantList = tenantRouter.slice(tenantRouter.indexOf("  incidents: router({"), tenantRouter.indexOf("    get: operationalProcedure", tenantRouter.indexOf("  incidents: router({")));
+    expect(tenantList).toContain("await assertTeamTenant(tenantId, teamId)");
+    expect(tenantList).toContain('await assertTeamScope(ctx.user, teamId, "occurrences.view", tenantId)');
+    expect(tenantList).toContain("return listIncidentsForTenant(tenantId, { ...input, teamId })");
   });
 
   it("data de abertura é filtrada na consulta SQL, antes da contagem/paginação", () => {
