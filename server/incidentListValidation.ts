@@ -5,8 +5,11 @@ import { INCIDENT_PRIORITIES, INCIDENT_STATUSES } from "../shared/operations";
  * Intervalo de abertura: [openedFrom, openedBefore).
  * Limites validados antes de consultar, contar e paginar registros.
  */
+/** Guard deep SQL OFFSET until cursor-based pagination is available. */
+export const MAX_INCIDENT_PAGE = 100_000;
+
 export const incidentListInputSchema = z.object({
-  page: z.number().int().min(1).default(1),
+  page: z.number().int().min(1).max(MAX_INCIDENT_PAGE).default(1),
   pageSize: z.number().int().min(1).max(100).default(25),
   search: z.string().trim().max(120).optional(),
   status: z.enum(INCIDENT_STATUSES).optional(),

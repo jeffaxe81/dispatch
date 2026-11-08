@@ -54,6 +54,7 @@ import type { IncidentPriority, IncidentStatus, OperationalRole } from "../share
 import type { WorkShiftAction } from "../shared/workShifts";
 import { ENV } from "./_core/env";
 import { canUpdateRoleDefinition, isRoleScopeAssignmentValid } from "./accessPolicies";
+import { assertRoleReactivationAllowed } from "./roleReactivationGuard";
 import {
   HOMOLOGATION_PROFILES, currentHomologationRuntimeEnabled,
   isReservedHomologationCode, validateHomologationRoleAssignment,
@@ -749,7 +750,7 @@ export async function recordTeamLocation(input: { teamId: number; userId: number
       capturedAt: input.capturedAt,
     });
     await tx.update(teams).set({ lastLatitude: input.latitude.toFixed(7), lastLongitude: input.longitude.toFixed(7), lastLocationAt: input.capturedAt }).where(teamLocationAdvancePredicate(input.teamId, input.capturedAt));
-    await tx.insert(auditLogs).values({ resourceType: "team", resourceId: input.teamId, action: "location_received", actorUserId: input.userId, beforeData: null, afterData: { latitude: input.latitude, longitude: input.longitude, capturedAt: input.capturedAt.toISOString() } });
+    await tx.insert(auditLogs).values({ resourceType: "team", resourceId: input.teamId, action: "location_received", actorUserId: input.userId, beforeData: null, afterData: { locationStored: true, capturedAt: input.capturedAt.toISOString() } });
   });
 }
 
@@ -1200,7 +1201,7 @@ export async function saveDashboardFilter(input: { userId: number; name: string;
     if (before) await tx.update(dashboardSavedFilters).set(values).where(eq(dashboardSavedFilters.id, before.id));
     else await tx.insert(dashboardSavedFilters).values(values);
     const after = (await tx.select().from(dashboardSavedFilters).where(and(eq(dashboardSavedFilters.userId, input.userId), eq(dashboardSavedFilters.name, values.name))).limit(1))[0];
-    await tx.insert(auditLogs).values({ resourceType: "dashboard_filter", resourceId: after?.id ?? 0, action: before ? "update" : "create", actorUserId: input.userId, beforeData: before ? { name: before.name, startDate: before.startDate?.toISOString() ?? null, endDate: before.endDate?.toISOString() ?? null, teamId: before.teamId, isDefault: before.isDefault } : null, afterData: { name: values.name, startDate: values.startDate?.toISOString() ?? null, endDate: values.endDate?.toISOString() ?? null, teamId: values.teamId, isDefault: values.isDefault } });
+    await tx.insert(auditLogs).values({ resourceType: "dashboard_filter", resourceId: after?.id ?? 0, action: before ? "update" : "create", actorUserId: input.userId, beforeData: before ? { teamId: before.teamId, isDefault: before.isDefault } : null, afterData: { teamId: values.teamId, isDefault: values.isDefault, filterSaved: true } });
     return after;
   });
 }
@@ -2004,9 +2005,28 @@ export async function setUserRoleAssignmentActive(input: { assignmentId: number;
     if (!before) throw new Error("Vínculo de perfil não encontrado.");
     // Prevent issuance from crossing a role reassignment without observing
     // its revocation; use the same users-row lock as JWT registration.
-    const lockedUser = (await tx.select({ id: users.id }).from(users)
+    const lockedUser = (await tx.select({ id: users.id, role: users.role, openId: users.openId }).from(users)
       .where(eq(users.id, before.userId)).limit(1).for("update"))[0];
     if (!lockedUser) throw new Error("Usuário do vínculo não encontrado.");
+    if (input.active) {
+      const role = (await tx.select({
+        code: accessRoles.code, active: accessRoles.active, defaultScope: accessRoles.defaultScope,
+      }).from(accessRoles).where(eq(accessRoles.id, before.roleId)).limit(1))[0];
+      if (!role) throw new Error("Perfil do vínculo não encontrado.");
+      const team = before.teamId && isReservedHomologationCode(role.code)
+        ? (await tx.select({organizationId:teams.organizationId}).from(teams)
+          .where(eq(teams.id,before.teamId)).limit(1))[0] : null;
+      // Validate inside the same transaction and user row lock, BEFORE
+      // replacing roles or revoking existing sessions.
+      assertRoleReactivationAllowed({
+        activate:true,roleCode:role.code,roleActive:role.active,
+        defaultScope:role.defaultScope,organizationId:before.organizationId,
+        organizationalUnitId:before.organizationalUnitId,teamId:before.teamId,
+        teamOrganizationId:team?.organizationId ?? null,expiresAt:before.expiresAt,
+        userIsBaseAdmin:lockedUser.role === "admin" || lockedUser.openId === ENV.ownerOpenId,
+        stage:process.env.AXE_DEPLOYMENT_STAGE,qaEnabled:process.env.AXE_HOMOLOGATION_ENABLED,
+      });
+    }
     const replaced = input.active ? await tx.select({ id: userRoleAssignments.id }).from(userRoleAssignments).where(and(eq(userRoleAssignments.userId, before.userId), eq(userRoleAssignments.active, true), ne(userRoleAssignments.id, input.assignmentId))) : [];
     if (replaced.length) await tx.update(userRoleAssignments).set({ active: false, activeUserId: null }).where(and(eq(userRoleAssignments.userId, before.userId), eq(userRoleAssignments.active, true), ne(userRoleAssignments.id, input.assignmentId)));
     await tx.update(userRoleAssignments).set({ active: input.active, activeUserId: input.active ? before.userId : null }).where(eq(userRoleAssignments.id, input.assignmentId));
