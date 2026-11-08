@@ -30,7 +30,7 @@ services:
   alerts-migrate:
     profiles: ["alerts"]
     build:
-      context: "${ALERTS_BUILD_CONTEXT:-https://github.com/jeffaxe81/central-despacho-alertas-publicacao.git#c237fa9b88407ca72df835309bc2ced5ec873465}"
+      context: "${ALERTS_BUILD_CONTEXT:-https://github.com/jeffaxe81/central-despacho-alertas-publicacao.git#9f1ab76cc0bacee1a4cd70b8bf0d9862aaa03f40}"
       dockerfile: Dockerfile
       target: migration
     image: axe-alertas-migration:local
@@ -46,7 +46,7 @@ services:
   alerts-app:
     profiles: ["alerts"]
     build:
-      context: "${ALERTS_BUILD_CONTEXT:-https://github.com/jeffaxe81/central-despacho-alertas-publicacao.git#c237fa9b88407ca72df835309bc2ced5ec873465}"
+      context: "${ALERTS_BUILD_CONTEXT:-https://github.com/jeffaxe81/central-despacho-alertas-publicacao.git#9f1ab76cc0bacee1a4cd70b8bf0d9862aaa03f40}"
       dockerfile: Dockerfile
       target: runtime
     image: axe-alertas:local

@@ -62,7 +62,7 @@ pacote único ainda não implementa SSO ou um painel administrativo único.
 
 ## Versionamento do módulo
 
-`compose.alerts.yml` fixa o commit upstream `c237fa9b88407ca72df835309bc2ced5ec873465` da
+`compose.alerts.yml` fixa o commit upstream `9f1ab76cc0bacee1a4cd70b8bf0d9862aaa03f40` da
 Central de Alertas. O Docker realiza o build a partir desse commit,
 evitando atualizações silenciosas de `main`. A revisão pode ser atualizada
 separadamente do Despacho depois de os testes de compatibilidade passarem.
