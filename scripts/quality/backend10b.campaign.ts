@@ -5,6 +5,7 @@ import {INCIDENT_STATUSES,INCIDENT_TRANSITIONS,INCIDENT_PRIORITIES,
 import {assertOperation} from "../../server/authorization";
 import {evaluatePermission,evaluateTeamScope,requiresExplicitTeamSelection,
   type AccessAssignment} from "../../server/accessControl";
+import {isCanonicalGlobalScope} from "../../server/accessPolicies";
 import {isValidGeoPoint,haversineDistanceMeters} from "../../shared/gis";
 import {incidentListInputSchema} from "../../server/incidentListValidation";
 import {getInternalOpenapiCatalog,parseOpenapiDocument} from "../../server/openapi";
@@ -125,12 +126,21 @@ function check(group:Group,x:number,i:number):boolean {
     assignment.defaultScope=(x&1)===0?"equipe":(x&2)===0?"organizacao":"global";
     assignment.teamId=(x&4)===0?7:8;
     assignment.organizationId=(x&8)===0?2:3;
+    assignment.organizationalUnitId=9;
+    // Cover both valid canonical and malformed global records in the
+    // deterministic team/tenant campaign, without widening permissions.
+    if(assignment.defaultScope==="global" && (x&64)===0){
+      assignment.organizationId=null;
+      assignment.organizationalUnitId=null;
+      assignment.teamId=null;
+    }
     team.organizationId=(x&16)===0?2:3;
     const activeOrg=(x&32)===0?2:null;
     const permittedOrg=activeOrg===null||activeOrg===team.organizationId;
-    const permitted=assignment.defaultScope==="global"||
-      assignment.teamId===team.id||
-      assignment.defaultScope==="organizacao"&&assignment.organizationId===team.organizationId;
+    const permitted=assignment.defaultScope==="global"
+      ? isCanonicalGlobalScope(assignment)
+      : assignment.teamId===team.id||
+        assignment.defaultScope==="organizacao"&&assignment.organizationId===team.organizationId;
     return evaluateTeamScope([assignment],team,activeOrg)===(permittedOrg&&permitted);
   }
   case "gis_coordinates": {
@@ -179,7 +189,10 @@ function check(group:Group,x:number,i:number):boolean {
   }
   case "readiness_and_scopes": {
     assignment.defaultScope=(x&1)===0?"global":"equipe";
-    const expected=assignment.defaultScope!=="global";
+    assignment.organizationId=(x&8)===0?2:null;
+    assignment.organizationalUnitId=(x&16)===0?9:null;
+    assignment.teamId=(x&4)===0?7:null;
+    const expected=!isCanonicalGlobalScope(assignment);
     if(requiresExplicitTeamSelection([assignment])!==expected)return false;
     if((i&65_535)===0){
       const actual=evaluateDispatchReadiness(readinessManifest,new Date("2026-11-07T23:00:00Z"));
