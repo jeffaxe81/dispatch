@@ -1,4 +1,5 @@
 import { incidentListInputSchema } from "./incidentListValidation";
+import { assertRecentTeamLocation } from "./teamLocationFreshness";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { INCIDENT_PRIORITIES, INCIDENT_STATUSES, INCIDENT_TRANSITIONS } from "../shared/operations";
@@ -298,6 +299,8 @@ const tenantOverrides = router({
       await assertTeamTenant(tenantId, input.teamId);
       await assertTeamScope(ctx.user, input.teamId, "occurrences.transition", tenantId);
       assertOwnTeam(ctx.user, input.teamId);
+      // Reject stale/future GPS on the central itself before persisting it.
+      assertRecentTeamLocation(input.capturedAt);
       await recordTeamLocation({ ...input, userId: ctx.user.id });
       return { success: true };
     }),
