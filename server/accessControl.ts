@@ -127,7 +127,11 @@ export async function getEffectiveAccess(user: CurrentUser) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   const [snapshot, catalog] = await Promise.all([getAccessSnapshot(user.id), db.select({ code: accessPermissions.code }).from(accessPermissions).where(eq(accessPermissions.active, true))]);
-  const input = { active: user.active, operationalRole: user.operationalRole, hasDynamicAssignments: snapshot.assignments.length > 0, dynamicPermissions: snapshot.permissions };
+  // A QA account with expired/revoked role history must not show legacy grants
+  // in the access.me response when all dynamic assignments have expired.
+  const input = { active: user.active, operationalRole: user.operationalRole,
+    hasDynamicAssignments: mustUseDynamicAuthorization(snapshot.assignments.length, snapshot.hasHistoricQaRole),
+    dynamicPermissions: snapshot.permissions };
   const permissions = resolveEffectivePermissions(input, catalog.map(row => row.code));
   return { permissions, assignments: snapshot.assignments, usesDynamicRoles: mustUseDynamicAuthorization(snapshot.assignments.length, snapshot.hasHistoricQaRole), isSuperAdministrator: user.role === "admin" || user.openId === ENV.ownerOpenId || hasSuperAdministratorAssignment(snapshot.assignments) };
 }
