@@ -56,6 +56,25 @@ describe("decisão de permissões RBAC", () => {
     expect(evaluateTeamScope([{ roleCode: "agente_campo", defaultScope: "equipe", organizationId: null, organizationalUnitId: null, teamId: 8 }], team)).toBe(false);
   });
 
+  it("nega acesso por grants globais inconsistentes mesmo quando a equipe coincide", () => {
+    const team = { id: 7, organizationId: 10, organizationalUnitId: 20 };
+    for (const malformed of [
+      { roleCode: "administrador", defaultScope: "global", organizationId: 10, organizationalUnitId: null, teamId: null },
+      { roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: 20, teamId: null },
+      { roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: 7 },
+    ] as const) {
+      expect(evaluateTeamScope([malformed], team, 10)).toBe(false);
+      expect(requiresExplicitTeamSelection([malformed])).toBe(true);
+      expect(hasAdministratorAssignmentForOrganization([malformed], 10)).toBe(false);
+      expect(hasAdministratorAssignment([malformed])).toBe(false);
+    }
+    const invalidSuperAdmin = {
+      roleCode: "super_administrador", defaultScope: "global",
+      organizationId: 10, organizationalUnitId: null, teamId: null,
+    } as const;
+    expect(hasSuperAdministratorAssignment([invalidSuperAdmin])).toBe(false);
+  });
+
   it("não permite que escopo global atravesse a empresa ativa", () => {
     const globalAssignment = [{ roleCode: "administrador", defaultScope: "global", organizationId: null, organizationalUnitId: null, teamId: null }] as const;
     const sameTenantTeam = { id: 7, organizationId: 10, organizationalUnitId: 20 };

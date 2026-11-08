@@ -5,6 +5,7 @@ import {
 } from "../drizzle/schema";
 import { incidentTenantScopes, vehicleTenantScopes } from "../drizzle/tenantScopeSchema";
 import { getAccessSnapshot } from "./accessControl";
+import { isCanonicalGlobalScope } from "./accessPolicies";
 import { getDb } from "./db";
 
 /**
@@ -36,7 +37,7 @@ export function deriveTenantAuditVisibility(
   const unitIds = new Set<number>();
   for (const grant of grants) {
     if (grant.defaultScope === "global") {
-      allTenant = true;
+      if (isCanonicalGlobalScope(grant)) allTenant = true;
     } else if (grant.organizationId === organizationId) {
       if (grant.defaultScope === "organizacao") allTenant = true;
       else if (grant.defaultScope === "equipe" && grant.teamId && Number.isSafeInteger(grant.teamId) && grant.teamId > 0)
