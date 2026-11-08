@@ -718,6 +718,18 @@ export async function respondToAssignment(input: { incidentId: number; teamId: n
   });
 }
 
+/**
+ * The current team position must only advance in time. Enforce this in the
+ * UPDATE predicate so overlapping requests cannot overwrite a newer GPS fix.
+ * Historical points are still appended to teamLocations for reconciliation.
+ */
+export function teamLocationAdvancePredicate(teamId: number, capturedAt: Date) {
+  return and(
+    eq(teams.id, teamId),
+    or(isNull(teams.lastLocationAt), lt(teams.lastLocationAt, capturedAt)),
+  );
+}
+
 export async function recordTeamLocation(input: { teamId: number; userId: number; latitude: number; longitude: number; accuracyMeters?: number; speedMetersPerSecond?: number; headingDegrees?: number; capturedAt: Date }) {
   const db = await requireDb();
   await db.transaction(async tx => {
@@ -731,7 +743,7 @@ export async function recordTeamLocation(input: { teamId: number; userId: number
       headingDegrees: input.headingDegrees?.toFixed(2) ?? null,
       capturedAt: input.capturedAt,
     });
-    await tx.update(teams).set({ lastLatitude: input.latitude.toFixed(7), lastLongitude: input.longitude.toFixed(7), lastLocationAt: input.capturedAt }).where(eq(teams.id, input.teamId));
+    await tx.update(teams).set({ lastLatitude: input.latitude.toFixed(7), lastLongitude: input.longitude.toFixed(7), lastLocationAt: input.capturedAt }).where(teamLocationAdvancePredicate(input.teamId, input.capturedAt));
     await tx.insert(auditLogs).values({ resourceType: "team", resourceId: input.teamId, action: "location_received", actorUserId: input.userId, beforeData: null, afterData: { latitude: input.latitude, longitude: input.longitude, capturedAt: input.capturedAt.toISOString() } });
   });
 }
