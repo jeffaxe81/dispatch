@@ -30,7 +30,7 @@ export function parseTenantHeader(req: HeaderRequest) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "O cabeçalho da empresa ativa está duplicado." });
   }
   const value = raw;
-  if (!value) return null;
+  if (value === undefined) return null;
   if (!/^[1-9]\d*$/.test(value)) throw new TRPCError({ code: "BAD_REQUEST", message: "Identificador da empresa ativa é inválido." });
   const tenantId = Number(value);
   if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Identificador da empresa ativa é inválido." });
