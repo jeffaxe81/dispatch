@@ -5,6 +5,7 @@ import test from "node:test";
 const compose = readFileSync(new URL("../compose.alerts.yml", import.meta.url), "utf8");
 const env = readFileSync(new URL("../.env.alerts.example", import.meta.url), "utf8");
 const base = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
+const gitignore = readFileSync(new URL("../.gitignore", import.meta.url), "utf8");
 
 test("alerts is a separate optional profile, without modifying the base package", () => {
   assert.match(compose, /alerts-app:\s*\n\s*profiles: \["alerts"\]/);
@@ -31,4 +32,9 @@ test("databases, permissions and readiness are independent", () => {
   assert.match(env, /ALERTS_MYSQL_ROOT_PASSWORD=/);
   assert.match(env, /ALERTS_MYSQL_PASSWORD=/);
   assert.match(env, /ALERTS_JWT_SECRET=/);
+});
+
+test("local upstream checkout and alert secrets cannot be accidentally committed", () => {
+  assert.match(gitignore, /^\.env\.alerts$/m);
+  assert.match(gitignore, /^\.modules\/alerts\/$/m);
 });
