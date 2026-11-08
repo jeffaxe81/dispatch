@@ -1,0 +1,82 @@
+name: Signature optional bundle
+
+on:
+  pull_request:
+    paths:
+      - compose.signature.yml
+      - .env.signature.example
+      - .gitignore
+      - docs/signature-bundle.md
+      - scripts/test-signature-bundle.test.mjs
+      - .github/workflows/signature-bundle.yml
+  push:
+    paths:
+      - compose.signature.yml
+      - .env.signature.example
+      - .gitignore
+      - docs/signature-bundle.md
+      - scripts/test-signature-bundle.test.mjs
+      - .github/workflows/signature-bundle.yml
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify module contract
+        run: node --test scripts/test-signature-bundle.test.mjs
+      - name: Validate Compose standalone and combined
+        run: |
+          cp .env.example .env
+          cp .env.alerts.example .env.alerts
+          cp .env.signature.example .env.signature
+          docker compose --env-file .env -f docker-compose.yml config --quiet
+          docker compose --env-file .env --env-file .env.signature -f docker-compose.yml -f compose.signature.yml --profile signature config --quiet
+          docker compose --env-file .env --env-file .env.alerts --env-file .env.signature -f docker-compose.yml -f compose.alerts.yml -f compose.signature.yml --profile alerts --profile signature config --quiet
+          docker compose --env-file .env --env-file .env.signature -f docker-compose.yml -f compose.signature.yml --profile signature config --services | grep -Fx 'signature-app'
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare ephemeral Compose project
+        run: |
+          cp .env.example .env
+          cp .env.signature.example .env.signature
+      - name: Build signature container from reviewed upstream commit
+        run: |
+          docker compose --env-file .env --env-file .env.signature \
+            -f docker-compose.yml -f compose.signature.yml \
+            --profile signature build signature-app
+      - name: Start signature only, without Dispatch or Alerts
+        run: |
+          docker compose --env-file .env --env-file .env.signature \
+            -f docker-compose.yml -f compose.signature.yml \
+            --profile signature up -d --no-deps signature-app
+      - name: Verify liveness and closed signing API
+        run: |
+          for n in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3004/health | grep -Fq '"status":"ok"'; then
+              code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+                -X POST -H 'Content-Type: application/json' --data '{}' \
+                http://127.0.0.1:3004/v1/signature-requests)
+              [ "$code" = "404" ] && exit 0
+              echo "Expected closed signature endpoint 404, got $code"
+              exit 1
+            fi
+            sleep 5
+          done
+          exit 1
+      - name: Diagnostic service logs on failure
+        if: failure()
+        run: |
+          docker compose --env-file .env --env-file .env.signature \
+            -f docker-compose.yml -f compose.signature.yml \
+            --profile signature logs --no-color --tail 80 signature-app
+      - name: Stop ephemeral signature containers
+        if: always()
+        run: |
+          docker compose --env-file .env --env-file .env.signature \
+            -f docker-compose.yml -f compose.signature.yml \
+            --profile signature down --remove-orphans

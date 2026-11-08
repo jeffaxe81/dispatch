@@ -8,6 +8,8 @@ build/
 *.dist
 
 # Environment variables
+.env.signature
+.modules/signature/
 .env.alerts
 .modules/alerts/
 .env

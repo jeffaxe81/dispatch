@@ -1,0 +1,35 @@
+# Optional AXE Signature Service module. Compose alongside docker-compose.yml.
+# This service currently exposes health only; productive signing APIs are NOT bootstrapped.
+# The upstream repository is pinned to an immutable reviewed commit.
+services:
+  app:
+    networks:
+      - dispatch-net
+      - signature-api-net
+
+  signature-app:
+    profiles: ["signature"]
+    build:
+      context: "${SIGNATURE_BUILD_CONTEXT:-https://github.com/jeffaxe81/axesistemas-signature-service.git#945cbccfb99ef7d96eed9886ca4a7ad80639ed35}"
+      dockerfile: Dockerfile
+      target: runtime
+    image: axe-signature-service:local
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:${SIGNATURE_PORT:-3004}:3000"
+    networks:
+      - signature-api-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  signature-api-net:
+    driver: bridge
