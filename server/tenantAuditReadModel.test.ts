@@ -31,6 +31,20 @@ describe("AXED-F091: isolamento de escopo de auditoria", () => {
     expect(deriveTenantAuditVisibility(101, [grant("organizacao", 101)], false).allTenant).toBe(true);
   });
 
+  it("concessão global com empresa/unidade/equipe embutida não amplia auditoria", () => {
+    for (const malformed of [
+      grant("global", 101),
+      grant("global", null, 77),
+      grant("global", null, null, 44),
+      grant("global", 101, 77, 44),
+    ]) {
+      expect(deriveTenantAuditVisibility(101, [malformed], false))
+        .toEqual({ allTenant: false, teamIds: [], unitIds: [] });
+      expect(deriveTenantAuditVisibility(202, [malformed], false))
+        .toEqual({ allTenant: false, teamIds: [], unitIds: [] });
+    }
+  });
+
   it("concessão global válida continua limitada pelo tenant ativo na consulta", () => {
     expect(deriveTenantAuditVisibility(101, [grant("global", null)], false).allTenant).toBe(true);
     expect(deriveTenantAuditVisibility(202, [grant("global", null)], false).allTenant).toBe(true);
