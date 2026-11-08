@@ -120,11 +120,14 @@ const tenantOverrides = router({
     list: operationalProcedure
       .input(incidentListInputSchema)
       .query(async ({ ctx, input }) => {
-        await assertPermission(ctx.user, "occurrences.view");
         const tenantId = await tenantFor(ctx);
-        const teamId = ctx.user.operationalRole === "agente" ? ctx.user.teamId ?? -1 : input.teamId;
-        if (teamId && teamId > 0) await assertTeamTenant(tenantId, teamId);
-        if (teamId && teamId > 0) await assertTeamScope(ctx.user, teamId, "occurrences.view", tenantId);
+        // Tenant and team restrictions must both hold: the database filter
+        // is applied before counting and paginating incident records.
+        const teamId = await resolveAuthorizedTeamFilter(ctx.user, input.teamId, "occurrences.view");
+        if (teamId !== undefined) {
+          await assertTeamTenant(tenantId, teamId);
+          await assertTeamScope(ctx.user, teamId, "occurrences.view", tenantId);
+        }
         return listIncidentsForTenant(tenantId, { ...input, teamId });
       }),
     get: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
