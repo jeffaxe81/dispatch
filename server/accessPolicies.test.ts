@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canUpdateRoleDefinition, isCanonicalGlobalScope, isRoleScopeAssignmentValid } from "./accessPolicies";
+import { canUpdateRoleDefinition, filterCanonicalGlobalPermissions, isCanonicalGlobalScope, isRoleScopeAssignmentValid } from "./accessPolicies";
 
 describe("proteção de perfis padrão", () => {
   it("impede desativação e alteração da matriz de perfis padrão", () => {
@@ -27,6 +27,17 @@ describe("proteção de perfis padrão", () => {
       expect(isCanonicalGlobalScope(scope)).toBe(false);
       expect(isRoleScopeAssignmentValid(scope)).toBe(false);
     }
+  });
+
+  it("não emite permissão dinâmica para vínculo global malformado", () => {
+    const rows = [
+      { code: "system.configure", defaultScope: "global" as const, organizationId: 10, organizationalUnitId: null, teamId: null },
+      { code: "reports.view", defaultScope: "global" as const, organizationId: null, organizationalUnitId: null, teamId: null },
+      { code: "occurrences.view", defaultScope: "organizacao" as const, organizationId: 10, organizationalUnitId: null, teamId: null },
+      { code: "occurrences.transition", defaultScope: "equipe" as const, organizationId: 10, organizationalUnitId: null, teamId: 7 },
+    ];
+    expect(filterCanonicalGlobalPermissions(rows).map(row => row.code))
+      .toEqual(["reports.view", "occurrences.view", "occurrences.transition"]);
   });
 
   it("preserva o escopo QA por organização e equipe sem atribuir poderes globais", () => {
