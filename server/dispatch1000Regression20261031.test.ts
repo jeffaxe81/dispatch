@@ -13,6 +13,7 @@ import {
 } from "./dispatchEligibilityService";
 import { rankTeamCandidates, type CandidateTeamPoint } from "./gisService";
 import { evaluateTeamScope, requiresExplicitTeamSelection, type AccessAssignment } from "./accessControl";
+import { isCanonicalGlobalScope } from "./accessPolicies";
 import { INCIDENT_STATUSES, INCIDENT_TRANSITIONS, type IncidentStatus } from "../shared/operations";
 
 const hundred = (base: number) =>
@@ -254,12 +255,18 @@ describe("Despacho - 1.000 novos cenários D10001-D11000", () => {
       const scopes = ["global", "organizacao", "unidade", "equipe"] as const;
       const scope = scopes[index % 4];
       assignment = { ...base, defaultScope: scope };
+      if (scope === "global") {
+        // A valid global grant must not carry legacy tenant/team fields.
+        assignment.organizationId = null;
+        assignment.organizationalUnitId = null;
+        assignment.teamId = null;
+      }
       if (scope === "organizacao") assignment.teamId = null;
       if (scope === "unidade") assignment.teamId = null;
     }
     expect(evaluateTeamScope([assignment], team, organization)).toBe(expected);
     expect(requiresExplicitTeamSelection([assignment])).toBe(
-      assignment.defaultScope !== "global",
+      !isCanonicalGlobalScope(assignment),
     );
   });
 
