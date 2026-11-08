@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { incidentListInputSchema } from "./incidentListValidation";
+import { incidentListInputSchema, MAX_INCIDENT_PAGE } from "./incidentListValidation";
 
 describe("AXED-F014: intervalo de abertura de ocorrências", () => {
   it("mantém paginação e parâmetros existentes sem exigir intervalo", () => {
@@ -20,6 +20,14 @@ describe("AXED-F014: intervalo de abertura de ocorrências", () => {
   it("permite filtrar somente o início ou somente o fim", () => {
     expect(incidentListInputSchema.parse({ openedFrom: new Date("2026-10-01T00:00:00Z") }).openedFrom).toBeInstanceOf(Date);
     expect(incidentListInputSchema.parse({ openedBefore: new Date("2026-11-01T00:00:00Z") }).openedBefore).toBeInstanceOf(Date);
+  });
+
+  it("impede paginação profunda ilimitada e preserva o limite permitido", () => {
+    expect(incidentListInputSchema.parse({page:MAX_INCIDENT_PAGE,pageSize:100}).page)
+      .toBe(MAX_INCIDENT_PAGE);
+    for (const page of [MAX_INCIDENT_PAGE+1,Number.MAX_SAFE_INTEGER,Infinity,NaN,1.5]) {
+      expect(()=>incidentListInputSchema.parse({page})).toThrow();
+    }
   });
 
   it("nega intervalo invertido, vazio, data inválida e página inválida", () => {
