@@ -19,9 +19,11 @@ describe("100 refinements: unique, traceable and not falsely marked complete",()
       expect(["P0","P1","P2"]).toContain(cells[1]);
       expect(cells[2].length).toBeGreaterThan(12);
       expect(cells[3].length).toBeGreaterThan(30);
-      expect(["PENDENTE","CODIFICADO / CI PENDENTE"]).toContain(cells[4]);
+      expect(["PENDENTE","CODIFICADO / CI PENDENTE","INTEGRADO / CI VALIDADA"]).toContain(cells[4]);
     }
-    expect(rows.filter(x=>x.includes("CODIFICADO / CI PENDENTE"))).toHaveLength(3);
+    expect(rows.filter(x=>x.includes("CODIFICADO / CI PENDENTE"))).toHaveLength(2);
+    expect(rows.filter(x=>x.includes("INTEGRADO / CI VALIDADA"))).toHaveLength(3);
+    expect(rows.filter(x=>x.includes("| PENDENTE |"))).toHaveLength(95);
   });
   it("explicitly does not claim real field homologation",()=>{
     expect(text).toContain("Não houve acesso ao ambiente real");
