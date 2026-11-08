@@ -26,3 +26,4 @@ describe("AXE Dispatch — search text is literal and tenant-safe",()=>{
     expect(compiled.params).toEqual(["%100!%!_!!%"]);
     expect(compiled.sql).not.toContain("100%_!");
   });
+});
