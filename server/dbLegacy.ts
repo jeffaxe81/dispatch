@@ -750,7 +750,7 @@ export async function recordTeamLocation(input: { teamId: number; userId: number
       capturedAt: input.capturedAt,
     });
     await tx.update(teams).set({ lastLatitude: input.latitude.toFixed(7), lastLongitude: input.longitude.toFixed(7), lastLocationAt: input.capturedAt }).where(teamLocationAdvancePredicate(input.teamId, input.capturedAt));
-    await tx.insert(auditLogs).values({ resourceType: "team", resourceId: input.teamId, action: "location_received", actorUserId: input.userId, beforeData: null, afterData: { latitude: input.latitude, longitude: input.longitude, capturedAt: input.capturedAt.toISOString() } });
+    await tx.insert(auditLogs).values({ resourceType: "team", resourceId: input.teamId, action: "location_received", actorUserId: input.userId, beforeData: null, afterData: { locationStored: true, capturedAt: input.capturedAt.toISOString() } });
   });
 }
 
@@ -1201,7 +1201,7 @@ export async function saveDashboardFilter(input: { userId: number; name: string;
     if (before) await tx.update(dashboardSavedFilters).set(values).where(eq(dashboardSavedFilters.id, before.id));
     else await tx.insert(dashboardSavedFilters).values(values);
     const after = (await tx.select().from(dashboardSavedFilters).where(and(eq(dashboardSavedFilters.userId, input.userId), eq(dashboardSavedFilters.name, values.name))).limit(1))[0];
-    await tx.insert(auditLogs).values({ resourceType: "dashboard_filter", resourceId: after?.id ?? 0, action: before ? "update" : "create", actorUserId: input.userId, beforeData: before ? { name: before.name, startDate: before.startDate?.toISOString() ?? null, endDate: before.endDate?.toISOString() ?? null, teamId: before.teamId, isDefault: before.isDefault } : null, afterData: { name: values.name, startDate: values.startDate?.toISOString() ?? null, endDate: values.endDate?.toISOString() ?? null, teamId: values.teamId, isDefault: values.isDefault } });
+    await tx.insert(auditLogs).values({ resourceType: "dashboard_filter", resourceId: after?.id ?? 0, action: before ? "update" : "create", actorUserId: input.userId, beforeData: before ? { teamId: before.teamId, isDefault: before.isDefault } : null, afterData: { teamId: values.teamId, isDefault: values.isDefault, filterSaved: true } });
     return after;
   });
 }
