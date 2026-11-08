@@ -5,7 +5,7 @@ import type { OperationalRole } from "../shared/operations";
 import { getDb } from "./db";
 import { recordDeniedPermission } from "./deniedPermissionAudit";
 import { ENV } from "./_core/env";
-import { isCanonicalGlobalScope } from "./accessPolicies";
+import { filterCanonicalGlobalPermissions, isCanonicalGlobalScope } from "./accessPolicies";
 import { filterRolePermissionCodes, isReservedHomologationCode, mustUseDynamicAuthorization } from "../shared/homologationProfiles";
 
 export type PermissionCode = string;
@@ -94,7 +94,14 @@ export async function getAccessSnapshot(userId: number) {
       organizationalUnitId: userRoleAssignments.organizationalUnitId,
       teamId: userRoleAssignments.teamId,
     }).from(userRoleAssignments).innerJoin(accessRoles, eq(userRoleAssignments.roleId, accessRoles.id)).where(validAssignment),
-    db.select({ code: accessPermissions.code, roleCode: accessRoles.code }).from(userRoleAssignments)
+    db.select({
+      code: accessPermissions.code,
+      roleCode: accessRoles.code,
+      defaultScope: accessRoles.defaultScope,
+      organizationId: userRoleAssignments.organizationId,
+      organizationalUnitId: userRoleAssignments.organizationalUnitId,
+      teamId: userRoleAssignments.teamId,
+    }).from(userRoleAssignments)
       .innerJoin(accessRoles, eq(userRoleAssignments.roleId, accessRoles.id))
       .innerJoin(rolePermissions, eq(rolePermissions.roleId, accessRoles.id))
       .innerJoin(accessPermissions, eq(rolePermissions.permissionId, accessPermissions.id))
@@ -107,7 +114,7 @@ export async function getAccessSnapshot(userId: number) {
   // itself could restore broad permissions from the user's legacy role.
   const hasHistoricQaRole = historyRoles.some(row => isReservedHomologationCode(row.roleCode));
   return { assignments: assignments as AccessAssignment[], hasHistoricQaRole,
-    permissions: new Set(filterRolePermissionCodes(permissions,
+    permissions: new Set(filterRolePermissionCodes(filterCanonicalGlobalPermissions(permissions),
       process.env.AXE_DEPLOYMENT_STAGE, process.env.AXE_HOMOLOGATION_ENABLED)) };
 }
 
