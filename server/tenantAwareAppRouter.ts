@@ -22,7 +22,7 @@ import {
   updateVehicleStatus,
 } from "./db";
 import { rankTeamCandidates } from "./gisService";
-import { listTenantOperationLogs } from "./tenantAuditReadModel";
+import { assertTenantIncidentAuditAccess, listTenantOperationLogs, sanitizeIncidentAuditRows } from "./tenantAuditReadModel";
 import { OsrmRouteProvider } from "./routingProvider";
 import { appRouter } from "./routers";
 import { requireOperationalSessionIdentity } from "./localAuth";
@@ -249,8 +249,16 @@ const tenantOverrides = router({
     audit: operationalProcedure.input(z.object({ incidentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       await assertPermission(ctx.user, "audit.view");
       const tenantId = await tenantFor(ctx);
-      requireIncident(await getIncidentForTenant(tenantId, input.incidentId));
-      return getIncidentAudit(input.incidentId);
+      const incident = requireIncident(await getIncidentForTenant(tenantId, input.incidentId));
+      // audit.view alone does not authorize the entire organization. Only the
+      // audit.view grant's own team/unit/organization scope grants visibility.
+      await assertTenantIncidentAuditAccess({
+        actorUserId: ctx.user.id,
+        organizationId: tenantId,
+        assignedTeamId: incident.assignedTeamId,
+      });
+      assertCanReadIncident(ctx.user, incident);
+      return sanitizeIncidentAuditRows(await getIncidentAudit(input.incidentId));
     }),
     export: operationalProcedure
       .input(z.object({ search: z.string().trim().max(120).optional(), status: statusEnum.optional(), priority: priorityEnum.optional(), teamId: z.number().int().positive().optional() }))

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { deriveTenantAuditVisibility, sanitizeTenantAuditSnapshot, type TenantAuditScopeGrant } from "./tenantAuditReadModel";
+import { deriveTenantAuditVisibility, isTenantIncidentAuditVisible, sanitizeIncidentAuditRows, sanitizeTenantAuditSnapshot, type TenantAuditScopeGrant } from "./tenantAuditReadModel";
 
 const grant = (scope: TenantAuditScopeGrant["defaultScope"], organizationId: number | null, teamId: number | null = null, unitId: number | null = null): TenantAuditScopeGrant => ({
   defaultScope: scope, organizationId, organizationalUnitId: unitId, teamId,
@@ -60,6 +60,85 @@ describe("AXED-F091: isolamento de escopo de auditoria", () => {
       allTenant: false, teamIds: [], unitIds: [],
     });
     expect(() => deriveTenantAuditVisibility(0, [], true)).toThrow();
+  });
+});
+
+describe("P0 — incidente auditado somente dentro do escopo audit.view", () => {
+  const organizationId = 101;
+  const assignedTeamId = 77;
+  const team = { id: 77, organizationId, organizationalUnitId: 9 };
+  const denied = { allTenant: false, teamIds: [], unitIds: [] };
+
+  it("nega acesso se papel dinâmico não traz concessão de auditoria", () => {
+    expect(isTenantIncidentAuditVisible({scope:denied,organizationId,assignedTeamId,team})).toBe(false);
+  });
+
+  it("um auditor de equipe vê sua própria equipe, mas nunca outra equipe/tenant", () => {
+    const scope = { allTenant: false, teamIds: [77], unitIds: [] };
+    expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId,team})).toBe(true);
+    expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId:88,
+      team:{id:88,organizationId,organizationalUnitId:9}})).toBe(false);
+    expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId,
+      team:{...team,organizationId:202}})).toBe(false);
+  });
+
+  it("auditoria por unidade só vê equipes pertencentes à unidade autorizada", () => {
+    const scope = { allTenant: false, teamIds: [], unitIds: [9] };
+    expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId,team})).toBe(true);
+    expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId,
+      team:{...team,organizationalUnitId:10}})).toBe(false);
+    expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId,
+      team:{...team,organizationalUnitId:null}})).toBe(false);
+  });
+
+  it("ocorrência sem equipe não é revelada a auditor com escopo restrito", () => {
+    const scope = { allTenant: false, teamIds: [77], unitIds: [9] };
+    expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId:null,team:null})).toBe(false);
+  });
+
+  it("auditor de organização pode consultar ocorrências não atribuídas do próprio tenant", () => {
+    const scope = { allTenant: true, teamIds: [], unitIds: [] };
+    expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId:null,team:null})).toBe(true);
+  });
+
+  it.each([0,-1,NaN,1.5,Number.MAX_SAFE_INTEGER+1])(
+    "nega id de organização inválido: %s", organizationId => {
+      const scope = { allTenant: true, teamIds: [], unitIds: [] };
+      expect(isTenantIncidentAuditVisible({scope,organizationId,assignedTeamId:null,team:null})).toBe(false);
+    },
+  );
+
+  it("oculta identificação do ator, contatos e payloads mantendo a cronologia legível", () => {
+    const entries = [{ audit: {
+      id: 1, actorUserId: 17,
+      action: "incident_updated", createdAt: new Date("2026-11-07T16:00:00Z"),
+      beforeData: { status:"triagem", requesterName:"Dado pessoal", token:"SECRET" },
+      afterData: { status:"aguardando_despacho", address:"Dado pessoal", priority:"alta" },
+    }, actorName:"Pessoa identificável" }];
+    const sanitized = sanitizeIncidentAuditRows(entries);
+    expect(sanitized).toHaveLength(1);
+    expect(sanitized[0].audit.id).toBe(1);
+    expect(sanitized[0].audit.actorUserId).toBeNull();
+    expect(sanitized[0].actorName).toBe("Usuário auditado");
+    expect(sanitized[0].audit.beforeData).toEqual({status:"triagem"});
+    expect(sanitized[0].audit.afterData).toEqual({status:"aguardando_despacho",priority:"alta"});
+    expect(JSON.stringify(sanitized)).not.toMatch(/SECRET|Dado pessoal|Pessoa identificável/);
+    expect(entries[0].audit.actorUserId).toBe(17); // Never mutate audit source.
+  });
+
+  it("o router verifica tenant, concessão de auditoria, equipe e redige antes da leitura", () => {
+    const source=fs.readFileSync(path.resolve(import.meta.dirname, "tenantAwareAppRouter.ts"),"utf8");
+    const start=source.indexOf("    audit: operationalProcedure.input",source.indexOf("  incidents: router({"));
+    const end=source.indexOf("    export: operationalProcedure",start);
+    const handler=source.slice(start,end);
+    expect(handler).toContain('await assertPermission(ctx.user, "audit.view")');
+    expect(handler).toContain("const tenantId = await tenantFor(ctx)");
+    expect(handler).toContain("const incident = requireIncident(await getIncidentForTenant");
+    expect(handler).toContain("await assertTenantIncidentAuditAccess({");
+    expect(handler).toContain("assignedTeamId: incident.assignedTeamId");
+    expect(handler.indexOf("await assertTenantIncidentAuditAccess("))
+      .toBeLessThan(handler.indexOf("await getIncidentAudit(input.incidentId)"));
+    expect(handler).toContain("sanitizeIncidentAuditRows(await getIncidentAudit(input.incidentId))");
   });
 });
 
