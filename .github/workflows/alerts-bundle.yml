@@ -1,0 +1,32 @@
+name: Alerts optional bundle
+
+on:
+  pull_request:
+    paths:
+      - compose.alerts.yml
+      - .env.alerts.example
+      - scripts/test-alerts-bundle.test.mjs
+      - docs/alerts-bundle.md
+      - .github/workflows/alerts-bundle.yml
+  push:
+    paths:
+      - compose.alerts.yml
+      - .env.alerts.example
+      - scripts/test-alerts-bundle.test.mjs
+      - docs/alerts-bundle.md
+      - .github/workflows/alerts-bundle.yml
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test independent module structure
+        run: node --test scripts/test-alerts-bundle.test.mjs
+      - name: Validate Compose models and profiles
+        run: |
+          cp .env.example .env
+          cp .env.alerts.example .env.alerts
+          docker compose --env-file .env -f docker-compose.yml config --quiet
+          docker compose --env-file .env --env-file .env.alerts -f docker-compose.yml -f compose.alerts.yml --profile alerts config --quiet
+          docker compose --env-file .env --env-file .env.alerts -f docker-compose.yml -f compose.alerts.yml --profile alerts config --services | grep -Fx 'alerts-app'

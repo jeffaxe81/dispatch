@@ -1,0 +1,81 @@
+# Optional AXE Alerts module. Always combine with docker-compose.yml.
+# A dedicated build ref, database, migration job and network keep Alerts decoupled.
+# The upstream commit is pinned; override ALERTS_BUILD_CONTEXT for a local checkout.
+services:
+  app:
+    networks:
+      - dispatch-net
+      - alerts-api-net
+
+  alerts-mysql:
+    profiles: ["alerts"]
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${ALERTS_MYSQL_DATABASE:-central_alertas}
+      MYSQL_USER: ${ALERTS_MYSQL_USER:-alertas}
+      MYSQL_PASSWORD: ${ALERTS_MYSQL_PASSWORD:?Set ALERTS_MYSQL_PASSWORD separately}
+      MYSQL_ROOT_PASSWORD: ${ALERTS_MYSQL_ROOT_PASSWORD:?Set ALERTS_MYSQL_ROOT_PASSWORD separately}
+    volumes:
+      - alerts_mysql_data:/var/lib/mysql
+    networks:
+      - alerts-db-net
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql -h 127.0.0.1 -u \"$$MYSQL_USER\" -D \"$$MYSQL_DATABASE\" -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  alerts-migrate:
+    profiles: ["alerts"]
+    build:
+      context: "${ALERTS_BUILD_CONTEXT:-https://github.com/jeffaxe81/central-despacho-alertas-publicacao.git#c237fa9b88407ca72df835309bc2ced5ec873465}"
+      dockerfile: Dockerfile
+      target: migration
+    image: axe-alertas-migration:local
+    restart: "no"
+    depends_on:
+      alerts-mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql://${ALERTS_MYSQL_USER:-alertas}:${ALERTS_MYSQL_PASSWORD:?Set ALERTS_MYSQL_PASSWORD separately}@alerts-mysql:3306/${ALERTS_MYSQL_DATABASE:-central_alertas}"
+    networks:
+      - alerts-db-net
+
+  alerts-app:
+    profiles: ["alerts"]
+    build:
+      context: "${ALERTS_BUILD_CONTEXT:-https://github.com/jeffaxe81/central-despacho-alertas-publicacao.git#c237fa9b88407ca72df835309bc2ced5ec873465}"
+      dockerfile: Dockerfile
+      target: runtime
+    image: axe-alertas:local
+    restart: unless-stopped
+    depends_on:
+      alerts-migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: "mysql://${ALERTS_MYSQL_USER:-alertas}:${ALERTS_MYSQL_PASSWORD:?Set ALERTS_MYSQL_PASSWORD separately}@alerts-mysql:3306/${ALERTS_MYSQL_DATABASE:-central_alertas}"
+      JWT_SECRET: "${ALERTS_JWT_SECRET:?Set an independent ALERTS_JWT_SECRET}"
+    ports:
+      - "127.0.0.1:${ALERTS_PORT:-3003}:3000"
+    networks:
+      - alerts-db-net
+      - alerts-api-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  alerts_mysql_data:
+
+networks:
+  alerts-db-net:
+    driver: bridge
+  alerts-api-net:
+    driver: bridge
