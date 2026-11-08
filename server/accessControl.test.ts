@@ -1,5 +1,41 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { mustUseDynamicAuthorization } from "../shared/homologationProfiles";
 import { evaluatePermission, evaluateTeamScope, hasAdministratorAssignment, hasAdministratorAssignmentForOrganization, hasSuperAdministratorAssignment, requiresExplicitTeamSelection, resolveEffectivePermissions } from "./accessControl";
+
+describe("R003 — access.me must not show legacy grants after QA expiry", () => {
+  const catalog = ["system.configure", "occurrences.create", "audit.view"];
+  it("denies every catalog permission when only expired QA history remains", () => {
+    const dynamic = mustUseDynamicAuthorization(0, true);
+    expect(dynamic).toBe(true);
+    const values = resolveEffectivePermissions({
+      active: true, operationalRole: "administrador",
+      hasDynamicAssignments: dynamic, dynamicPermissions: [],
+    },catalog);
+    expect(values).toEqual([]);
+  });
+
+  it("does not change legacy access for identities with no QA history", () => {
+    expect(mustUseDynamicAuthorization(0,false)).toBe(false);
+    expect(resolveEffectivePermissions({
+      active:true, operationalRole:"administrador",
+      hasDynamicAssignments:mustUseDynamicAuthorization(0,false),
+      dynamicPermissions: [],
+    }, catalog)).toContain("system.configure");
+  });
+
+  it("enforces the same legacy-fallback gate in the user-visible access.me response", () => {
+    const src=fs.readFileSync(path.resolve(import.meta.dirname,"accessControl.ts"),"utf8");
+    const start=src.indexOf("export async function getEffectiveAccess(");
+    const end=src.indexOf("export async function assertPermission(",start);
+    expect(start).toBeGreaterThan(-1);
+    const segment=src.slice(start,end);
+    expect(segment).toContain(
+      "hasDynamicAssignments: mustUseDynamicAuthorization(snapshot.assignments.length, snapshot.hasHistoricQaRole)",
+    );
+  });
+});
 
 describe("decisão de permissões RBAC", () => {
   it("mantém a compatibilidade de administrador legado durante a transição", () => {
